@@ -1,0 +1,39 @@
+# Node
+node_modules/
+**/node_modules/
+
+# Build outputs
+frontend/build/
+backend/dist/
+**/coverage/
+
+# Environment & local config
+.env
+*.env
+**/.env
+**/*.env
+.env.local
+**/.env.local
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+
+# macOS & editor cruft
+.DS_Store
+.idea/
+.vscode/
+
+# Local dev JSON (do not push QR, queues, whatsapps from DEV)
+backend/public/dev-queues.json
+backend/public/dev-whatsapps.json
+backend/public/dev-whatsapp-sessions.json
+
+# Cypress screenshots/videos
+cypress/screenshots/
+cypress/videos/
+
+# Large archives
+trmultichat.zip

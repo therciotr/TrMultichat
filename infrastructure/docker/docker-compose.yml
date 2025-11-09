@@ -1,0 +1,83 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:14
+    env_file:
+      - ./.env.local
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    networks: [trnet]
+
+  redis:
+    image: redis:6-alpine
+    env_file:
+      - ./.env.local
+    command: ["sh", "-lc", "redis-server --requirepass \"$REDIS_PASSWORD\""]
+    networks: [trnet]
+
+  backend:
+    image: node:20
+    working_dir: /app
+    volumes:
+      - ../../trmultichat/backend:/app
+    env_file:
+      - ./.env.local
+    environment:
+      NODE_ENV: development
+      PORT: 4004
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${POSTGRES_USER:-trmultichat_user}
+      DB_NAME: ${POSTGRES_DB:-trmultichat}
+      DB_DIALECT: postgres
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-trmultichat_local}
+      REDIS_URI: "redis://:${REDIS_PASSWORD:-trmultichat_local}@redis:6379"
+      MULTI_TENANT: "true"
+      ALLOW_ORIGIN: http://localhost:9089,http://127.0.0.1:9089
+      FRONTEND_URL: http://localhost:9089,http://127.0.0.1:9089
+      DEV_MODE: "true"
+      # License (local DEV_MODE bypassa)
+      LICENSE_AUD: trmultichat
+      LICENSE_ISS: "TR MULTICHAT"
+      LICENSE_PUBLIC_KEY_PATH: /app/certs/public.pem
+      LICENSE_FILE: /app/license.json
+      LICENSE_REQUIRED: "false"
+    command: bash -lc 'npm install && npm run build && npm run start'
+    depends_on:
+      - postgres
+      - redis
+    ports:
+      - "4004:4004"
+    networks: [trnet]
+
+  frontend:
+    image: node:18
+    working_dir: /app
+    volumes:
+      - ../../trmultichat/frontend:/app
+    environment:
+      NODE_ENV: development
+      PORT: 9089
+      REACT_APP_API_BASE_URL: http://localhost:4004
+      REACT_APP_BACKEND_URL: http://localhost:4004
+      REACT_APP_TITLE: "TR TECNOLOGIAS"
+      NODE_OPTIONS: --openssl-legacy-provider --max-old-space-size=2048
+      SKIP_PREFLIGHT_CHECK: "true"
+    command: bash -lc "rm -rf node_modules build .cache 2>/dev/null || true && CI=false npm install --legacy-peer-deps && CI=false npm run build && node server.js"
+    depends_on:
+      - backend
+    ports:
+      - "9089:9089"
+    networks: [trnet]
+
+volumes:
+  db_data:
+
+networks:
+  trnet:
+    driver: bridge
+
+

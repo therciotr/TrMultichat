@@ -1,0 +1,180 @@
+#!/bin/bash
+
+###############################################################################
+# Instalador TR TECNOLOGIAS – Tr Multichat SaaS
+# (instalador do Sistema MultiChat)
+###############################################################################
+
+# ===== Identidade da sua empresa (centralize aqui) ===========================
+COMPANY_NAME="TR TECNOLOGIAS"
+COMPANY_BANNER="Instalação $COMPANY_NAME - TR Multichat SaaS"
+COMPANY_SUPPORT_EMAIL="suporte@trtecnologias.com.br"   # ajuste se desejar
+# ============================================================================
+
+# Parâmetros padrão da instalação TR Multichat (pode sobrescrever via env)
+AUTO_INSTALL=${AUTO_INSTALL:-false}
+FRONTEND_DOMAIN=${FRONTEND_DOMAIN:-app.trmultichat.com.br}
+BACKEND_DOMAIN=${BACKEND_DOMAIN:-api.trmultichat.com.br}
+VPS_IP=${VPS_IP:-5.161.196.30}
+# Defaults de instância/portas
+instancia_add=${instancia_add:-trmultichat}
+max_whats=${max_whats:-50}
+max_user=${max_user:-50}
+frontend_url=${frontend_url:-$FRONTEND_DOMAIN}
+backend_url=${backend_url:-$BACKEND_DOMAIN}
+frontend_port=${frontend_port:-3000}
+backend_port=${backend_port:-4004}
+redis_port=${redis_port:-5637}
+
+# reset shell colors
+tput init
+
+# Banner
+echo ""
+echo "======================================================================="
+echo "   $COMPANY_BANNER"
+echo "======================================================================="
+echo ""
+
+# Localização do diretório do script (suporta symlinks)
+SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$SOURCE" ]; do
+  PROJECT_ROOT="$( cd -P "$( dirname "$SOURCE" )" >/dev/null 2>&1 && pwd )"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ $SOURCE != /* ]] && SOURCE="$PROJECT_ROOT/$SOURCE"
+done
+PROJECT_ROOT="( cd -P "$( dirname "$SOURCE" )" >/dev/null 2>&1 && pwd )"
+
+# Imports necessários (funções e variáveis)
+# Observação: customize mensagens dentro dos manifests se quiser expandir o branding.
+source "${PROJECT_ROOT}"/variables/manifest.sh
+source "${PROJECT_ROOT}"/utils/manifest.sh
+source "${PROJECT_ROOT}"/lib/manifest.sh
+
+# Arquivo de configuração do usuário (gerado se não existir)
+if [[ ! -e "${PROJECT_ROOT}"/config ]]; then
+  echo "[INFO] [$COMPANY_NAME] Gerando arquivo de configuração inicial (config)."
+  cat << EOF > "${PROJECT_ROOT}"/config
+deploy_password=${deploy_password}
+mysql_root_password=${mysql_root_password}
+db_pass=${db_pass}
+EOF
+else
+  echo "[INFO] [$COMPANY_NAME] Usando arquivo de configuração existente (config)."
+fi
+
+# Proteger o arquivo config (contém segredos)
+sudo su - root <<EOF
+chown root:root "${PROJECT_ROOT}"/config
+chmod 700 "${PROJECT_ROOT}"/config
+EOF
+# Carregar variáveis do config
+source "${PROJECT_ROOT}"/config
+
+# Modo automático: executa instalação completa sem perguntas
+if [ "${AUTO_INSTALL}" = "true" ]; then
+  echo "[INFO] [$COMPANY_NAME] AUTO_INSTALL=true — Iniciando instalação não interativa."
+  echo "[INFO] Domínios: FRONTEND=${frontend_url} | BACKEND=${backend_url} | IP=${VPS_IP}"
+
+  echo "[INFO] [$COMPANY_NAME] Instalando dependências do sistema…"
+  system_update
+  system_node_install
+  system_pm2_install
+  system_docker_install
+  system_snapd_install
+  system_nginx_install
+  system_certbot_install
+
+  echo "[INFO] [$COMPANY_NAME] Configurando usuário e diretórios…"
+  system_create_user
+
+  echo "[INFO] [$COMPANY_NAME] Preparando backend…"
+  system_create_folder
+  system_mv_folder
+  system_unzip_trmultichat
+  backend_set_env
+  backend_redis_create
+  backend_node_dependencies
+  backend_node_build
+  backend_db_migrate
+  backend_db_seed
+  backend_start_pm2
+  backend_nginx_setup
+
+  echo "[INFO] [$COMPANY_NAME] Preparando frontend…"
+  frontend_set_env
+  frontend_node_dependencies
+  frontend_node_build
+  frontend_start_pm2
+  frontend_nginx_setup
+
+  echo "[INFO] [$COMPANY_NAME] Configurando Nginx e SSL…"
+  system_nginx_conf
+  system_nginx_restart
+  system_certbot_setup
+
+  echo ""
+  echo "======================================================================="
+  echo "[SUCESSO] Instalação concluída por $COMPANY_NAME."
+  echo "Domínios: https://$FRONTEND_DOMAIN | https://$BACKEND_DOMAIN"
+  echo "======================================================================="
+  echo ""
+  exit 0
+fi
+
+# Fluxo interativo (padrão)
+echo "[INFO] [$COMPANY_NAME] Iniciando assistente interativo…"
+# Interface interativa (opções iniciais)
+inquiry_options
+
+echo "[INFO] [$COMPANY_NAME] Instalando dependências do sistema…"
+# Dependências de sistema
+system_update
+system_node_install
+system_pm2_install
+system_docker_install
+system_snapd_install
+system_nginx_install
+system_certbot_install
+
+echo "[INFO] [$COMPANY_NAME] Configurando usuário e diretórios…"
+# Configuração de sistema/usuário
+system_create_user
+
+echo "[INFO] [$COMPANY_NAME] Preparando backend…"
+# Backend
+system_create_folder
+system_mv_folder
+system_unzip_trmultichat
+backend_set_env          # Ajusta .env do backend (complete branding lá, se quiser)
+backend_redis_create
+backend_node_dependencies
+backend_node_build
+backend_db_migrate
+backend_db_seed
+backend_start_pm2
+backend_nginx_setup      # Ajusta Nginx do backend
+
+echo "[INFO] [$COMPANY_NAME] Preparando frontend…"
+# Frontend
+frontend_set_env         # Ajusta .env do frontend (ex.: título, domínio, etc.)
+frontend_node_dependencies
+frontend_node_build
+frontend_start_pm2
+frontend_nginx_setup     # Ajusta Nginx do frontend
+
+echo "[INFO] [$COMPANY_NAME] Configurando Nginx e SSL…"
+# Rede/SSL
+system_nginx_conf
+system_nginx_restart
+system_certbot_setup     # Verifique e-mail/domínio usados pelo certbot nos manifests
+
+echo ""
+echo "======================================================================="
+echo "[SUCESSO] Instalação concluída por $COMPANY_NAME."
+echo "Se necessário, ajuste domínios/e-mails do Certbot e mensagens nos manifests:"
+echo " - ${PROJECT_ROOT}/variables/manifest.sh"
+echo " - ${PROJECT_ROOT}/utils/manifest.sh"
+echo " - ${PROJECT_ROOT}/lib/manifest.sh"
+echo "======================================================================="
+echo ""

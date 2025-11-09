@@ -1,0 +1,191 @@
+##REQUESITOS 
+
+-UBUNTU 20.04 (OBRIGATORIO)
+-VM COM MINIMO: 2CPU 4GB RAM
+-VM COM RECOMENDADO: 4CPU 6GB RAM
+
+-----------------
+
+## CRIAR SUBDOMINIO E APONTAR PARA O IP DA SUA VPS ##
+
+FRONTEND_URL: app.seudominio.com
+BACKEND_URL:  api.seudominio.com
+
+## CHECAR PROPAGAÇÃO DO DOMÍNIO ##
+
+https://dnschecker.org/
+
+## COPIAR A PASTA PARA ROOT E RODAR OS COMANDOS ABAIXO no Seu SERVIDOR SSH ##
+
+cd ./trmultichat
+sudo chmod +x trmultichatsaas
+sudo ./trmultichatsaas
+
+===================================================
+
+login: admin@admin.com
+senha: 123456
+
+===================================================
+
+Configuração de e-mail dentro do BACKEND no arquivo ENV
+
+MAIL_HOST="smtp.gmail.com"
+MAIL_USER="seu-email"
+MAIL_PASS="sua-senha"
+MAIL_FROM="seu-email"
+MAIL_PORT="587"
+
+Configuração de pagamento GERENCIANET dentro BACKEND no arquivo ENV
+
+GERENCIANET_SANDBOX=true
+GERENCIANET_CLIENT_ID=sua-id
+GERENCIANET_CLIENT_SECRET=sua_chave_secreta
+GERENCIANET_PIX_CERT=nome_do_certificado
+GERENCIANET_PIX_KEY=chave_pix_gerencianet
+
+# para usar GERENCIANET Em backend\certs
+# Salvar o certificado no formato .p12
+
+
+===================================================
+
+O conteúdo do arquivo config esta abaixo 
+
+
+
+deploy_password=n7Pn1l6mw8Euwx06xqRnRkLqsUiE5Aar
+mysql_root_password=h95WzrA5C5xea12ixGc-mfq5uXxtq43YWUjeRCYcH64.
+db_pass=-Vzi8Q9_yoVFhRyULGFQeATr0WiJg9rIfiUnOoqA
+redis_pass=Crqy6eoPZUBswCFtDFSXBmNb6waqQ8WtaHA0qgjwJG0.
+jwt_secret=65619ab0c1f24461023cbdb12f94571ecd804c8d6292483316255be7f38818c27ec4ec3df4b23503e3f5e0f217c8185c4abba76a87d79e36c23cc13f879ef936
+jwt_refresh_secret=22fd8cc26b0901f09b1ae0b389d36f8750fd6ea492ff502650515b4913a4169a7d028031f60ab624c5656eb8381398051ded1094d0525152a2b16d3dce2d7d84
+deploy_email=deploy@trtecnologias.com.br
+db_user=root
+db_name=trmultichat
+
+
+
+
+===================================================
+
+O conteúdo do arquivo trmultichatsaas esta abaixo
+
+
+
+
+#!/bin/bash
+
+###############################################################################
+# Instalador TR TECNOLOGIAS – Tr Multichat SaaS
+# (instalador do Sistema MultiChat)
+###############################################################################
+
+# ===== Identidade da sua empresa (centralize aqui) ===========================
+COMPANY_NAME="TR TECNOLOGIAS"
+COMPANY_BANNER="Instalação $COMPANY_NAME - TR Multichat SaaS"
+COMPANY_SUPPORT_EMAIL="suporte@trtecnologias.com.br"   # ajuste se desejar
+# ============================================================================
+
+# reset shell colors
+tput init
+
+# Banner
+echo ""
+echo "======================================================================="
+echo "   $COMPANY_BANNER"
+echo "======================================================================="
+echo ""
+
+# Localização do diretório do script (suporta symlinks)
+SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$SOURCE" ]; do
+  PROJECT_ROOT="$( cd -P "$( dirname "$SOURCE" )" >/dev/null 2>&1 && pwd )"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ $SOURCE != /* ]] && SOURCE="$PROJECT_ROOT/$SOURCE"
+done
+PROJECT_ROOT="$( cd -P "$( dirname "$SOURCE" )" >/dev/null 2>&1 && pwd )"
+
+# Imports necessários (funções e variáveis)
+# Observação: customize mensagens dentro dos manifests se quiser expandir o branding.
+source "${PROJECT_ROOT}"/variables/manifest.sh
+source "${PROJECT_ROOT}"/utils/manifest.sh
+source "${PROJECT_ROOT}"/lib/manifest.sh
+
+# Arquivo de configuração do usuário (gerado se não existir)
+if [[ ! -e "${PROJECT_ROOT}"/config ]]; then
+  echo "[INFO] [$COMPANY_NAME] Gerando arquivo de configuração inicial (config)."
+  cat << EOF > "${PROJECT_ROOT}"/config
+deploy_password=\${deploy_password}
+mysql_root_password=\${mysql_root_password}
+db_pass=\${db_pass}
+EOF
+else
+  echo "[INFO] [$COMPANY_NAME] Usando arquivo de configuração existente (config)."
+fi
+
+# Proteger o arquivo config (contém segredos)
+sudo su - root <<EOF
+chown root:root "${PROJECT_ROOT}"/config
+chmod 700 "${PROJECT_ROOT}"/config
+EOF
+# Carregar variáveis do config
+source "${PROJECT_ROOT}"/config
+
+echo "[INFO] [$COMPANY_NAME] Iniciando assistente interativo…"
+# Interface interativa (opções iniciais)
+inquiry_options
+
+echo "[INFO] [$COMPANY_NAME] Instalando dependências do sistema…"
+# Dependências de sistema
+system_update
+system_node_install
+system_pm2_install
+system_docker_install
+system_snapd_install
+system_nginx_install
+system_certbot_install
+
+echo "[INFO] [$COMPANY_NAME] Configurando usuário e diretórios…"
+# Configuração de sistema/usuário
+system_create_user
+
+echo "[INFO] [$COMPANY_NAME] Preparando backend…"
+# Backend
+system_create_folder
+system_mv_folder
+system_unzip_trmultichat
+backend_set_env          # Ajusta .env do backend (complete branding lá, se quiser)
+backend_redis_create
+backend_node_dependencies
+backend_node_build
+backend_db_migrate
+backend_db_seed
+backend_start_pm2
+backend_nginx_setup      # Ajusta Nginx do backend
+
+echo "[INFO] [$COMPANY_NAME] Preparando frontend…"
+# Frontend
+frontend_set_env         # Ajusta .env do frontend (ex.: título, domínio, etc.)
+frontend_node_dependencies
+frontend_node_build
+frontend_start_pm2
+frontend_nginx_setup     # Ajusta Nginx do frontend
+
+echo "[INFO] [$COMPANY_NAME] Configurando Nginx e SSL…"
+# Rede/SSL
+system_nginx_conf
+system_nginx_restart
+system_certbot_setup     # Verifique e-mail/domínio usados pelo certbot nos manifests
+
+echo ""
+echo "======================================================================="
+echo "[SUCESSO] Instalação concluída por $COMPANY_NAME."
+echo "Se necessário, ajuste domínios/e-mails do Certbot e mensagens nos manifests:"
+echo " - ${PROJECT_ROOT}/variables/manifest.sh"
+echo " - ${PROJECT_ROOT}/utils/manifest.sh"
+echo " - ${PROJECT_ROOT}/lib/manifest.sh"
+echo "======================================================================="
+echo ""
+
+

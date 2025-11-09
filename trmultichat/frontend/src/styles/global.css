@@ -1,0 +1,23 @@
+body {
+  background: var(--tr-bg);
+  color: var(--tr-text);
+  font-family: var(--tr-font, 'Inter, sans-serif');
+}
+
+::selection { background: var(--tr-secondary); color: #fff; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: rgba(0,0,0,0.05); }
+::-webkit-scrollbar-thumb { background: var(--tr-primary); border-radius: 8px; }
+
+a { color: var(--tr-secondary); transition: 0.3s; }
+a:hover { color: var(--tr-primary); }
+
+/* Simple helpers for titles/cards when not using MUI overrides */
+.tr-card-title { color: var(--tr-primary); }
+.tr-card-border { border: 1px solid rgba(0,0,0,0.05); border-left: 3px solid var(--tr-primary); border-radius: var(--tr-radius, 12px); }
+
+.card, .MuiPaper-root { border-radius: var(--tr-radius, 12px); }
+button, .MuiButton-root { border-radius: var(--tr-radius, 12px); }
+

@@ -1,0 +1,53 @@
+LICENÇA DE USO E DISTRIBUIÇÃO DE SOFTWARE
+TR TECNOLOGIAS EM INFORMÁTICA LTDA
+CNPJ: 27.159.505/0001-50
+Todos os direitos reservados.
+
+1. DEFINIÇÕES
+1.1. “Software” significa o sistema, os scripts, o código-fonte, a documentação e todos os ativos correlatos 
+      desenvolvidos, mantidos ou distribuídos por TR TECNOLOGIAS EM INFORMÁTICA LTDA.
+1.2. “Licenciado” significa qualquer pessoa física ou jurídica que possua autorização expressa para instalar,
+      utilizar ou operar o Software.
+
+2. CONCESSÃO DE LICENÇA
+2.1. A presente licença concede ao Licenciado o direito limitado, não exclusivo e intransferível de instalar 
+      e utilizar o Software para fins internos ou comerciais autorizados, conforme os termos aqui previstos.
+2.2. É expressamente vedada a reprodução, modificação, sublicenciamento, redistribuição ou revenda do Software 
+      sem autorização prévia e por escrito da TR TECNOLOGIAS EM INFORMÁTICA LTDA.
+
+3. RESTRIÇÕES
+3.1. O Licenciado não poderá:
+      a) Copiar, vender, locar, sublicenciar, redistribuir ou publicar o Software, total ou parcialmente;
+      b) Praticar engenharia reversa, descompilação, desmontagem ou qualquer forma de modificação não autorizada;
+      c) Remover ou alterar avisos de direitos autorais, marcas ou informações de propriedade;
+      d) Utilizar o Software de forma contrária à legislação vigente.
+
+4. DIREITOS DE PROPRIEDADE
+4.1. Todos os direitos autorais, de propriedade intelectual e industrial sobre o Software, incluindo código-fonte,
+      design, documentação, marcas e interface, permanecem de titularidade exclusiva da TR TECNOLOGIAS EM INFORMÁTICA LTDA.
+4.2. Nenhum direito de propriedade é transferido ao Licenciado, sendo concedido apenas o direito de uso limitado.
+
+5. GARANTIAS E LIMITAÇÃO DE RESPONSABILIDADE
+5.1. O Software é fornecido “NO ESTADO EM QUE SE ENCONTRA”, sem qualquer garantia expressa ou implícita, 
+      incluindo, mas não se limitando, a garantias de adequação a uma finalidade específica.
+5.2. Em hipótese alguma a TR TECNOLOGIAS EM INFORMÁTICA LTDA será responsável por quaisquer danos diretos, 
+      indiretos, incidentais, especiais ou consequenciais decorrentes do uso ou da impossibilidade de uso do Software.
+
+6. RESCISÃO
+6.1. O descumprimento de quaisquer cláusulas desta licença implica na sua rescisão imediata.
+6.2. Após a rescisão, o Licenciado deverá cessar toda e qualquer utilização do Software e destruir todas as cópias existentes.
+
+7. SUPORTE E LICENÇA COMERCIAL
+7.1. Para suporte técnico, atualizações, integrações ou aquisição de licenças comerciais adicionais, 
+      o Licenciado deverá contatar oficialmente a TR TECNOLOGIAS EM INFORMÁTICA LTDA.
+
+8. CONTATO
+   TR TECNOLOGIAS EM INFORMÁTICA LTDA  
+   CNPJ: 27.159.505/0001-50  
+   E-mail: suporte@trtecnologias.com.br  
+   Site: https://www.trtecnologias.com.br  
+
+Para utilizar, distribuir ou comercializar este software, é necessária uma licença comercial válida
+emitida pela TR TECNOLOGIAS EM INFORMÁTICA LTDA.
+
+FIM DOS TERMOS E CONDIÇÕES

@@ -1,0 +1,51 @@
+SOFTWARE LICENSE AGREEMENT
+TR TECNOLOGIAS EM INFORMÁTICA LTDA
+CNPJ (Brazilian Business ID): 27.159.505/0001-50
+All rights reserved.
+
+1. DEFINITIONS
+1.1. “Software” means the system, scripts, source code, documentation and all related assets developed, maintained, 
+      or distributed by TR TECNOLOGIAS EM INFORMÁTICA LTDA.
+1.2. “Licensee” means any individual or entity who has been granted explicit permission to install, use or operate the Software.
+
+2. LICENSE GRANT
+2.1. This License grants the Licensee a limited, non-exclusive and non-transferable right to install and use the Software 
+      for internal or authorized commercial purposes, under the terms set forth herein.
+2.2. Reproduction, modification, resale, sublicensing or redistribution of the Software without prior written authorization 
+      from TR TECNOLOGIAS EM INFORMÁTICA LTDA is strictly prohibited.
+
+3. RESTRICTIONS
+3.1. The Licensee shall not:
+      a) Copy, sell, lease, sublicense, or redistribute the Software, in whole or in part;
+      b) Perform reverse engineering, decompilation, disassembly, or any unauthorized modification;
+      c) Remove or alter any copyright notices, trademarks or proprietary information;
+      d) Use the Software in violation of applicable laws.
+
+4. OWNERSHIP
+4.1. All intellectual property rights, including but not limited to source code, design, documentation and interface, 
+      remain the exclusive property of TR TECNOLOGIAS EM INFORMÁTICA LTDA.
+4.2. This License does not transfer any ownership rights to the Licensee; it only grants a limited right of use.
+
+5. WARRANTY AND LIABILITY
+5.1. The Software is provided “AS IS” without warranty of any kind, express or implied, including but not limited to 
+      warranties of merchantability or fitness for a particular purpose.
+5.2. In no event shall TR TECNOLOGIAS EM INFORMÁTICA LTDA be liable for any damages arising from the use or inability 
+      to use the Software.
+
+6. TERMINATION
+6.1. This License is automatically terminated if the Licensee fails to comply with any of its terms.
+6.2. Upon termination, the Licensee must cease all use of the Software and destroy all copies.
+
+7. SUPPORT AND COMMERCIAL LICENSE
+7.1. For technical support, updates, integrations or commercial licensing, the Licensee must contact 
+      TR TECNOLOGIAS EM INFORMÁTICA LTDA.
+
+8. CONTACT
+   TR TECNOLOGIAS EM INFORMÁTICA LTDA  
+   E-mail: suporte@trtecnologias.com.br  
+   Website: https://www.trtecnologias.com.br  
+
+To use, distribute or commercialize this software, you must obtain a valid commercial license 
+issued by TR TECNOLOGIAS EM INFORMÁTICA LTDA.
+
+END OF TERMS AND CONDITIONS
