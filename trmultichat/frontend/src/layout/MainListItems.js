@@ -29,6 +29,7 @@ import ForumIcon from "@material-ui/icons/Forum";
 import LocalAtmIcon from '@material-ui/icons/LocalAtm';
 import RotateRight from "@material-ui/icons/RotateRight";
 import StoreIcon from "@material-ui/icons/Store";
+import VerifiedUserIcon from "@material-ui/icons/VerifiedUser";
 import { i18n } from "../translate/i18n";
 import { WhatsAppsContext } from "../context/WhatsApp/WhatsAppsContext";
 import { AuthContext } from "../context/Auth/AuthContext";
@@ -519,6 +520,20 @@ const MainListItems = (props) => {
                   icon={<CodeRoundedIcon />}
                 />
               </>
+            )}
+            {(String(user?.profile || "").toLowerCase() === "admin" || user?.admin || user?.super) && (
+              <ListItemLink
+                to="/admin/license"
+                primary="Licenças"
+                icon={<VerifiedUserIcon />}
+              />
+            )}
+            {(String(user?.profile || "").toLowerCase() === "admin" || user?.admin || user?.super) && (
+              <ListItemLink
+                to="/admin/plans"
+                primary="Planos"
+                icon={<ListIcon />}
+              />
             )}
             <ListItemLink
               to="/financeiro"

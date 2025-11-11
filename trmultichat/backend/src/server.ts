@@ -29,6 +29,7 @@ import companiesRoutes from "./modules/companies/companies.routes";
 import plansRoutes from "./modules/plans/plans.routes";
 import invoicesRoutes from "./modules/invoices/invoices.routes";
 import whatsappSessionRoutes from "./modules/whatsappSession/whatsappSession.routes";
+import mercadoPagoRoutes from "./modules/payments/mercadopago.routes";
 import redis from "./redis/redisClient";
 import jwt from "jsonwebtoken";
 import fs from "fs";
@@ -108,6 +109,7 @@ app.use("/companies", companiesRoutes);
 app.use("/plans", plansRoutes);
 app.use("/invoices", invoicesRoutes);
 app.use("/whatsappsession", whatsappSessionRoutes);
+app.use("/payments/mercadopago", mercadoPagoRoutes);
 
 // Serve swagger.json at /api-docs
 app.get("/api-docs", (_req, res) => {

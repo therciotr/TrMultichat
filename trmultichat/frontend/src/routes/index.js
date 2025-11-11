@@ -39,6 +39,8 @@ import Files from "../pages/Files/";
 import Prompts from "../pages/Prompts";
 import QueueIntegration from "../pages/QueueIntegration";
 import AdminBranding from "../pages/Admin/Branding";
+import LicenseManager from "../pages/Admin/License";
+import PlansAdmin from "../pages/Admin/Plans";
 import { ThemeProvider } from "../context/ThemeContext";
 
 const Routes = () => {
@@ -119,6 +121,18 @@ const Routes = () => {
                   exact
                   path="/admin/branding"
                   component={AdminBranding}
+                  isPrivate
+                />
+                <Route
+                  exact
+                  path="/admin/license"
+                  component={LicenseManager}
+                  isPrivate
+                />
+                <Route
+                  exact
+                  path="/admin/plans"
+                  component={PlansAdmin}
                   isPrivate
                 />
 				        <Route 

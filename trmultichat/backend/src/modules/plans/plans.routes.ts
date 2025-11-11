@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { findAllSafe } from "../../utils/legacyModel";
+import { findAllSafe, getLegacyModel } from "../../utils/legacyModel";
 
 const router = Router();
 
@@ -20,6 +20,73 @@ router.get("/all", async (_req, res) => {
     return res.json(plans);
   } catch {
     return res.json([]);
+  }
+});
+
+// POST /plans - criar plano
+router.post("/", async (req, res) => {
+  try {
+    const Plan = getLegacyModel("Plan");
+    if (!Plan || typeof Plan.create !== "function") {
+      return res.status(501).json({ error: true, message: "plans create not available" });
+    }
+    const body = req.body || {};
+    const payload = {
+      name: body.name || "",
+      users: Number(body.users || 0),
+      connections: Number(body.connections || 0),
+      campaigns: Boolean(body.campaigns),
+      schedules: Boolean(body.schedules),
+      price: Number(body.price || 0)
+    };
+    const created = await Plan.create(payload);
+    const json = created?.toJSON ? created.toJSON() : created;
+    return res.status(201).json(json);
+  } catch (e: any) {
+    return res.status(400).json({ error: true, message: e?.message || "create error" });
+  }
+});
+
+// PUT /plans/:id - atualizar plano
+router.put("/:id", async (req, res) => {
+  try {
+    const Plan = getLegacyModel("Plan");
+    if (!Plan || typeof Plan.findByPk !== "function") {
+      return res.status(501).json({ error: true, message: "plans update not available" });
+    }
+    const id = Number(req.params.id);
+    const instance = await Plan.findByPk(id);
+    if (!instance) return res.status(404).json({ error: true, message: "not found" });
+    const body = req.body || {};
+    const up = {
+      name: body.name,
+      users: body.users,
+      connections: body.connections,
+      campaigns: body.campaigns,
+      schedules: body.schedules,
+      price: body.price
+    };
+    await instance.update(up);
+    const json = instance?.toJSON ? instance.toJSON() : instance;
+    return res.json(json);
+  } catch (e: any) {
+    return res.status(400).json({ error: true, message: e?.message || "update error" });
+  }
+});
+
+// DELETE /plans/:id - remover plano
+router.delete("/:id", async (req, res) => {
+  try {
+    const Plan = getLegacyModel("Plan");
+    if (!Plan || typeof Plan.destroy !== "function") {
+      return res.status(501).json({ error: true, message: "plans delete not available" });
+    }
+    const id = Number(req.params.id);
+    const count = await Plan.destroy({ where: { id } });
+    if (!count) return res.status(404).json({ error: true, message: "not found" });
+    return res.status(204).end();
+  } catch (e: any) {
+    return res.status(400).json({ error: true, message: e?.message || "delete error" });
   }
 });
 

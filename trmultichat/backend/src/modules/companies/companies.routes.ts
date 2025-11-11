@@ -2,6 +2,7 @@ import { Router } from "express";
 import jwt from "jsonwebtoken";
 import env from "../../config/env";
 import { findAllSafe, getLegacyModel } from "../../utils/legacyModel";
+import { validateLicenseForCompany } from "../../utils/license";
 
 const router = Router();
 
@@ -61,6 +62,28 @@ router.get("/:id", async (req, res) => {
   }
 });
 
+// GET /companies/:id/license - resume da licença (não retorna token)
+router.get("/:id/license", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const check = await validateLicenseForCompany(id);
+    if (!check.ok) return res.json({ has: false, valid: false, error: check.error || "LICENSE_INVALID" });
+    const payload = check.payload || {};
+    const data = (payload as any).data || {};
+    const exp = (payload as any).exp ? Number((payload as any).exp) : undefined;
+    return res.json({
+      has: true,
+      valid: true,
+      subject: (payload as any).sub || "",
+      plan: data.plan || "",
+      maxUsers: data.maxUsers || 0,
+      exp
+    });
+  } catch (e: any) {
+    return res.status(200).json({ has: false, valid: false, error: e?.message || "error" });
+  }
+});
+
 // POST /companies - criação mínima
 router.post("/", async (req, res) => {
   try {
@@ -105,6 +128,50 @@ router.post("/", async (req, res) => {
       }
     } catch {}
     return res.status(400).json({ error: true, message: e?.message || "create error" });
+  }
+});
+
+// PUT /companies/:id/license - salva token em Settings (key: licenseToken)
+router.put("/:id/license", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const { token } = req.body || {};
+    if (!token || typeof token !== "string") return res.status(400).json({ error: true, message: "token is required" });
+    const Setting = getLegacyModel("Setting");
+    if (!Setting || typeof Setting.findOne !== "function") {
+      return res.status(501).json({ error: true, message: "settings not available" });
+    }
+    let row = await Setting.findOne({ where: { companyId: id, key: "licenseToken" } });
+    if (row) {
+      await row.update({ value: token });
+    } else if (typeof Setting.create === "function") {
+      row = await Setting.create({ companyId: id, key: "licenseToken", value: token });
+    }
+    return res.json({ ok: true });
+  } catch (e: any) {
+    return res.status(400).json({ error: true, message: e?.message || "license save error" });
+  }
+});
+
+// PUT /companies/:id/mp-access-token - salva Access Token do Mercado Pago
+router.put("/:id/mp-access-token", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const { token } = req.body || {};
+    if (!token || typeof token !== "string") return res.status(400).json({ error: true, message: "token is required" });
+    const Setting = getLegacyModel("Setting");
+    if (!Setting || typeof Setting.findOne !== "function") {
+      return res.status(501).json({ error: true, message: "settings not available" });
+    }
+    let row = await Setting.findOne({ where: { companyId: id, key: "mpAccessToken" } });
+    if (row) {
+      await row.update({ value: token });
+    } else if (typeof Setting.create === "function") {
+      row = await Setting.create({ companyId: id, key: "mpAccessToken", value: token });
+    }
+    return res.json({ ok: true });
+  } catch (e: any) {
+    return res.status(400).json({ error: true, message: e?.message || "mp token save error" });
   }
 });
 

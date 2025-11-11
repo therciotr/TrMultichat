@@ -3,6 +3,8 @@ import * as AuthService from "./auth.service";
 import jwt from "jsonwebtoken";
 import env from "../../config/env";
 import { getLegacyModel } from "../../utils/legacyModel";
+import { validateLicenseForCompany } from "../../utils/license";
+import bcrypt from "bcryptjs";
 
 export async function login(req: Request, res: Response) {
   const { email, password } = req.body || {};
@@ -15,6 +17,14 @@ export async function login(req: Request, res: Response) {
   const isDev = String(process.env.DEV_MODE || "false").toLowerCase() === "true";
   const Company = isDev ? undefined : getLegacyModel("Company");
   const Setting = isDev ? undefined : getLegacyModel("Setting");
+
+  // Validate license per company (prod)
+  if (!isDev) {
+    const licenseCheck = await validateLicenseForCompany(result.user.tenantId);
+    if (!licenseCheck.ok) {
+      return res.status(401).json({ error: licenseCheck.error || "LICENSE_INVALID" });
+    }
+  }
 
   let company = Company?.findByPk ? await Company.findByPk(result.user.tenantId) : undefined;
   let settings = Setting?.findAll ? await Setting.findAll({ where: { companyId: result.user.tenantId } }) : [];
@@ -58,6 +68,54 @@ export async function login(req: Request, res: Response) {
   return res.json(legacy);
 }
 
+export async function signup(req: Request, res: Response) {
+  try {
+    const body = req.body || {};
+    const companyName = String(body.companyName || body.company || "").trim();
+    const name = String(body.name || "").trim();
+    const email = String(body.email || "").trim().toLowerCase();
+    const password = String(body.password || "");
+    if (!companyName || !name || !email || !password) {
+      return res.status(400).json({ error: true, message: "companyName, name, email and password are required" });
+    }
+    const Company = getLegacyModel("Company");
+    const User = getLegacyModel("User");
+    if (!Company || !User || typeof Company.create !== "function" || typeof User.create !== "function") {
+      return res.status(501).json({ error: true, message: "signup not available" });
+    }
+    const exists = (await User.findOne?.({ where: { email } })) || null;
+    if (exists) return res.status(409).json({ error: true, message: "email already exists" });
+    const company = await Company.create({ name: companyName });
+    const hash = bcrypt.hashSync(password, 10);
+    const user = await User.create({
+      name,
+      email,
+      passwordHash: hash,
+      companyId: company.id,
+      admin: true,
+      super: true,
+      profile: "admin"
+    });
+    const accessToken = jwt.sign({ userId: user.id, tenantId: company.id }, env.JWT_SECRET, { expiresIn: "15m" });
+    const refreshToken = jwt.sign({ userId: user.id, tenantId: company.id }, env.JWT_REFRESH_SECRET, { expiresIn: "7d" });
+    return res.status(201).json({
+      token: accessToken,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        companyId: user.companyId,
+        admin: true,
+        profile: "admin"
+      },
+      accessToken,
+      refreshToken
+    });
+  } catch (e: any) {
+    return res.status(400).json({ error: true, message: e?.message || "signup error" });
+  }
+}
+
 export async function refresh(req: Request, res: Response) {
   const { refreshToken } = req.body || {};
   if (!refreshToken) {
@@ -85,6 +143,13 @@ export async function refreshLegacy(req: Request, res: Response) {
       userInstance = { id: payload.userId, name: "TR Admin", email: process.env.ADMIN_EMAIL || "thercio@trtecnologias.com.br", companyId: payload.tenantId, admin: true, profile: "admin" };
     }
     if (!userInstance) return res.status(401).json({ error: true, message: "user not found" });
+
+    if (!isDev) {
+      const licenseCheck = await validateLicenseForCompany(userInstance.companyId);
+      if (!licenseCheck.ok) {
+        return res.status(401).json({ error: licenseCheck.error || "LICENSE_INVALID" });
+      }
+    }
 
     let company = Company?.findByPk ? await Company.findByPk(userInstance.companyId) : undefined;
     let settings = Setting?.findAll ? await Setting.findAll({ where: { companyId: userInstance.companyId } }) : [];
