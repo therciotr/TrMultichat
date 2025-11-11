@@ -23,6 +23,12 @@ import quickMessagesRoutes from "./modules/quickMessages/quickMessages.routes";
 import chatsRoutes from "./modules/chats/chats.routes";
 import messagesRoutes from "./modules/messages/messages.routes";
 import whatsappRoutes from "./modules/whatsapp/whatsapp.routes";
+import settingsRoutes from "./modules/settings/settings.routes";
+import queueListRoutes from "./modules/queueList/queueList.routes";
+import companiesRoutes from "./modules/companies/companies.routes";
+import plansRoutes from "./modules/plans/plans.routes";
+import invoicesRoutes from "./modules/invoices/invoices.routes";
+import whatsappSessionRoutes from "./modules/whatsappSession/whatsappSession.routes";
 import redis from "./redis/redisClient";
 import jwt from "jsonwebtoken";
 import fs from "fs";
@@ -85,6 +91,7 @@ app.use("/contacts", contactsRoutes);
 app.use("/users", usersRoutes);
 app.use("/queue", queueRoutes);
 app.use("/queueIntegration", queueIntegrationRoutes);
+app.use("/queue-list", queueListRoutes);
 app.use("/files", filesRoutes);
 app.use("/prompt", promptRoutes);
 app.use("/tags", tagsRoutes);
@@ -96,6 +103,11 @@ app.use("/quick-messages", quickMessagesRoutes);
 app.use("/chats", chatsRoutes);
 app.use("/messages", messagesRoutes);
 app.use("/whatsapp", whatsappRoutes);
+app.use("/settings", settingsRoutes);
+app.use("/companies", companiesRoutes);
+app.use("/plans", plansRoutes);
+app.use("/invoices", invoicesRoutes);
+app.use("/whatsappsession", whatsappSessionRoutes);
 
 // Serve swagger.json at /api-docs
 app.get("/api-docs", (_req, res) => {
