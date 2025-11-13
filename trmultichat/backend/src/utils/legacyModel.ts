@@ -58,6 +58,24 @@ export async function findByPkSafe(modelName: string, id: number): Promise<any |
   return null;
 }
 
+export function getSequelize(): any | undefined {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const mod = require("../models");
+    const sequelize = (mod && (mod.sequelize || (mod.default && mod.default.sequelize))) || undefined;
+    if (sequelize) return sequelize;
+  } catch {}
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const path = require("path");
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const mod = require(path.resolve(process.cwd(), "dist", "models"));
+    const sequelize = (mod && (mod.sequelize || (mod.default && mod.default.sequelize))) || undefined;
+    if (sequelize) return sequelize;
+  } catch {}
+  return undefined;
+}
+
 
 
 

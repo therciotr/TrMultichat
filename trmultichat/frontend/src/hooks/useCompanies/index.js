@@ -20,11 +20,17 @@ const useCompanies = () => {
     }
 
     const list = async (id) => {
-        const { data } = await api.request({
-            url: `/companies/list`,
-            method: 'GET'
-        });
-        return data;
+        // tenta em ordem: /companies/list -> /companies/all -> /companies/safe
+        const paths = ['/companies/list', '/companies/all', '/companies/safe', '/companies-safe', '/companies'];
+        for (const p of paths) {
+            try {
+                const { data } = await api.request({ url: p, method: 'GET' });
+                if (Array.isArray(data)) return data;
+            } catch (_) {
+                // tenta o próximo
+            }
+        }
+        return [];
     }
 
     const find = async (id) => {
