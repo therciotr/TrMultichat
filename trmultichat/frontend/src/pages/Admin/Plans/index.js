@@ -30,7 +30,10 @@ export default function PlansAdmin() {
     setLoading(true);
     try {
       const { data } = await api.get("/plans/list");
-      setList(Array.isArray(data) ? data : []);
+      const rows = Array.isArray(data) ? data : [];
+      // normalizar para sempre conter price
+      const normalized = rows.map((p) => ({ ...p, price: p.price ?? p.value ?? 0 }));
+      setList(normalized);
     } catch (e) {
       toastError(e);
     } finally {
@@ -46,7 +49,13 @@ export default function PlansAdmin() {
 
   async function save() {
     try {
-      const payload = { ...edit, users: Number(edit.users || 0), connections: Number(edit.connections || 0), price: Number(edit.price || 0) };
+      const payload = {
+        ...edit,
+        users: Number(edit.users || 0),
+        connections: Number(edit.connections || 0),
+        // enviar price; backend aceita price/value e persiste em value
+        price: Number(edit.price ?? edit.value ?? 0)
+      };
       if (isEditing) {
         await api.put(`/plans/${edit.id}`, payload);
       } else {
@@ -130,9 +139,24 @@ export default function PlansAdmin() {
                       <TableCell align="right">{p.connections}</TableCell>
                       <TableCell align="center">{String(p.campaigns) === "true" || p.campaigns ? "Sim" : "Não"}</TableCell>
                       <TableCell align="center">{String(p.schedules) === "true" || p.schedules ? "Sim" : "Não"}</TableCell>
-                      <TableCell align="right">R$ {Number(p.price || 0).toFixed(2)}</TableCell>
+                      <TableCell align="right">R$ {Number((p.price ?? p.value ?? 0)).toFixed(2)}</TableCell>
                       <TableCell align="center">
-                        <TrButton size="small" onClick={() => setEdit({ id: p.id, name: p.name || "", users: p.users || 0, connections: p.connections || 0, campaigns: !!p.campaigns, schedules: !!p.schedules, price: p.price || 0 })}>Editar</TrButton>
+                        <TrButton
+                          size="small"
+                          onClick={() =>
+                            setEdit({
+                              id: p.id,
+                              name: p.name || "",
+                              users: p.users || 0,
+                              connections: p.connections || 0,
+                              campaigns: !!p.campaigns,
+                              schedules: !!p.schedules,
+                              price: p.price ?? p.value ?? 0
+                            })
+                          }
+                        >
+                          Editar
+                        </TrButton>
                         <TrButton size="small" variant="outlined" onClick={() => remove(p.id)}>Excluir</TrButton>
                       </TableCell>
                     </TableRow>

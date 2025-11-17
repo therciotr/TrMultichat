@@ -2,7 +2,7 @@ import { Request, Response } from "express";
 import * as AuthService from "./auth.service";
 import jwt from "jsonwebtoken";
 import env from "../../config/env";
-import { getLegacyModel } from "../../utils/legacyModel";
+import { getLegacyModel, getSequelize } from "../../utils/legacyModel";
 import { validateLicenseForCompany } from "../../utils/license";
 import bcrypt from "bcryptjs";
 
@@ -22,7 +22,12 @@ export async function login(req: Request, res: Response) {
   if (!isDev) {
     const licenseCheck = await validateLicenseForCompany(result.user.tenantId);
     if (!licenseCheck.ok) {
-      return res.status(401).json({ error: licenseCheck.error || "LICENSE_INVALID" });
+      // Permitir login se licença apenas está ausente (para onboarding/ambientes sem chave pública)
+      if (String(licenseCheck.error || "").toUpperCase().includes("MISSING")) {
+        // proceed
+      } else {
+        return res.status(401).json({ error: licenseCheck.error || "LICENSE_INVALID" });
+      }
     }
   }
 
@@ -66,6 +71,109 @@ export async function login(req: Request, res: Response) {
   };
 
   return res.json(legacy);
+}
+
+// POST /auth/forgot-password
+export async function forgotPassword(req: Request, res: Response) {
+  try {
+    const emailRaw = String((req.body?.email || "")).toLowerCase().trim();
+    if (!emailRaw) return res.status(400).json({ error: true, message: "email is required" });
+    const User = getLegacyModel("User");
+    if (!User || typeof User.findOne !== "function") {
+      return res.status(501).json({ error: true, message: "not available" });
+    }
+    const user = await User.findOne({ where: { email: emailRaw } });
+    if (!user) {
+      // avoid leaking if user exists: respond ok anyway
+      return res.json({ ok: true });
+    }
+    const plain = user?.get ? user.get({ plain: true }) : (user as any);
+    const currentHash = String((plain as any).passwordHash || (plain as any).password || "");
+    const token = jwt.sign(
+      { userId: plain.id, tenantId: plain.companyId, purpose: "pwdReset", pwdHash: currentHash || undefined },
+      env.JWT_REFRESH_SECRET,
+      { expiresIn: "30m" }
+    );
+    const appUrl = process.env.APP_BASE_URL || process.env.FRONTEND_URL || "https://app.trmultichat.com.br";
+    const link = `${appUrl.replace(/\/+$/,"")}/reset-password?token=${encodeURIComponent(token)}`;
+    // We don't have mail provider configured; return link so the UI can show/copy
+    return res.json({ ok: true, link, expiresInMinutes: 30, source: "controller" });
+  } catch (e: any) {
+    return res.status(400).json({ error: true, message: e?.message || "forgot password error" });
+  }
+}
+
+// POST /auth/reset-password (token-based, user flow)
+export async function resetPasswordByEmail(req: Request, res: Response) {
+  try {
+    const token = String((req.body as any)?.token || "");
+    const password = String((req.body as any)?.password || "");
+    const debugFlag = Boolean((req.body as any)?.debug);
+    if (!token || !password) {
+      return res.status(400).json({ error: true, message: "token and password are required" });
+    }
+
+    const payload = jwt.verify(token, env.JWT_REFRESH_SECRET) as {
+      userId: number;
+      tenantId: number;
+      purpose?: string;
+      pwdHash?: string;
+      iat?: number;
+    };
+    if (!payload || payload.purpose !== "pwdReset" || !payload.userId) {
+      return res.status(400).json({ error: true, message: "invalid token" });
+    }
+
+    const sequelize = getSequelize();
+    if (!sequelize || typeof (sequelize as any).query !== "function") {
+      return res.status(501).json({ error: true, message: "not available" });
+    }
+
+    const [rows]: any = await (sequelize as any).query(
+      'SELECT "passwordHash","updatedAt" FROM "Users" WHERE id = :id LIMIT 1',
+      { replacements: { id: payload.userId } }
+    );
+    const row = Array.isArray(rows) && rows[0];
+    if (!row) {
+      return res.status(404).json({ error: true, message: "user not found" });
+    }
+
+    const currentHash = String(row.passwordHash || "");
+    const tokenHash = String(payload.pwdHash || "");
+    const tokenIat = typeof (payload as any).iat === "number" ? (payload as any).iat : 0;
+    const updatedAtSeconds = row.updatedAt ? Math.floor(new Date(row.updatedAt).getTime() / 1000) : 0;
+
+    const reusedByHash = Boolean(tokenHash && currentHash && tokenHash !== currentHash);
+    const reusedByTime = Boolean(tokenIat && updatedAtSeconds && updatedAtSeconds > tokenIat + 1);
+
+    if (debugFlag) {
+      return res.json({
+        ok: true,
+        debug: {
+          currentHashEmpty: !currentHash,
+          tokenHashEmpty: !tokenHash,
+          sameHash: currentHash === tokenHash,
+          tokenIat,
+          updatedAtSeconds,
+          reusedByHash,
+          reusedByTime
+        }
+      });
+    }
+
+    if (reusedByHash || reusedByTime) {
+      return res.status(400).json({ error: true, message: "invalid or already used token" });
+    }
+
+    const hash = bcrypt.hashSync(password, 10);
+    await (sequelize as any).query(
+      'UPDATE "Users" SET "passwordHash" = :hash, "updatedAt" = NOW() WHERE id = :id',
+      { replacements: { id: payload.userId, hash } }
+    );
+    return res.json({ ok: true });
+  } catch (e: any) {
+    return res.status(400).json({ error: true, message: e?.message || "reset password error" });
+  }
 }
 
 export async function signup(req: Request, res: Response) {
@@ -147,7 +255,11 @@ export async function refreshLegacy(req: Request, res: Response) {
     if (!isDev) {
       const licenseCheck = await validateLicenseForCompany(userInstance.companyId);
       if (!licenseCheck.ok) {
-        return res.status(401).json({ error: licenseCheck.error || "LICENSE_INVALID" });
+        if (String(licenseCheck.error || "").toUpperCase().includes("MISSING")) {
+          // proceed
+        } else {
+          return res.status(401).json({ error: licenseCheck.error || "LICENSE_INVALID" });
+        }
       }
     }
 

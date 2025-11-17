@@ -28,8 +28,9 @@ const useStyles = makeStyles((theme) => ({
   },
   mainPaper: {
     ...theme.scrollbarStyles,
-    overflowY: "scroll",
+    overflowY: "auto",
     flex: 1,
+    maxHeight: "calc(100vh - 140px)"
   },
   tab: {
     backgroundColor: theme.palette.options,

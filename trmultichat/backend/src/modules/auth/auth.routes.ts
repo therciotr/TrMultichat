@@ -6,6 +6,8 @@ import env from "../../config/env";
 const router = Router();
 
 router.post("/signup", AuthController.signup);
+router.post("/forgot-password", AuthController.forgotPassword);
+router.post("/reset-password", AuthController.resetPasswordByEmail);
 
 if (String(process.env.DEV_MODE || env.DEV_MODE || "false").toLowerCase() === "true") {
   router.post("/login", AuthController.login);

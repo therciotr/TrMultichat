@@ -15,6 +15,9 @@ import {
   IconButton,
   Select,
 } from "@material-ui/core";
+import { Card, CardHeader, CardContent } from "@material-ui/core";
+import BusinessIcon from "@material-ui/icons/Business";
+import ListAltIcon from "@material-ui/icons/ListAlt";
 import { Formik, Form, Field } from "formik";
 import ButtonWithSpinner from "../ButtonWithSpinner";
 import ConfirmationModal from "../ConfirmationModal";
@@ -45,7 +48,9 @@ const useStyles = makeStyles((theme) => ({
   },
   tableContainer: {
     width: "100%",
-    overflowX: "scroll",
+    overflowX: "auto",
+    overflowY: "auto",
+    maxHeight: "60vh",
     ...theme.scrollbarStyles,
   },
   textfield: {
@@ -100,14 +105,13 @@ export function CompanyForm(props) {
 
   useEffect(() => {
     setRecord((prev) => {
-      if (moment(initialValue).isValid()) {
-        initialValue.dueDate = moment(initialValue.dueDate).format(
-          "YYYY-MM-DD"
-        );
-      }
+      const next = { ...initialValue };
+      const d = next && next.dueDate ? moment(next.dueDate) : null;
+      next.dueDate =
+        d && d.isValid() ? d.format("YYYY-MM-DD") : "";
       return {
         ...prev,
-        ...initialValue,
+        ...next,
       };
     });
   }, [initialValue]);
@@ -404,7 +408,9 @@ export function CompaniesManagerGrid(props) {
   };
 
   const renderPlan = (row) => {
-    return row.planId !== null ? row.plan.name : "-";
+    if (row && row.plan && row.plan.name) return row.plan.name;
+    if (row && (row.planId || row.planId === 0)) return String(row.planId);
+    return "-";
   };
 
   const renderCampaignsStatus = (row) => {
@@ -462,7 +468,7 @@ export function CompaniesManagerGrid(props) {
           </TableRow>
         </TableHead>
         <TableBody>
-          {records.map((row, key) => (
+          {records.filter(Boolean).map((row, key) => (
             <TableRow style={rowStyle(row)} key={key}>
               <TableCell align="center" style={{ width: "1%" }}>
                 <IconButton onClick={() => onSelect(row)} aria-label="delete">
@@ -516,7 +522,10 @@ export default function CompaniesManager() {
     setLoading(true);
     try {
       const companyList = await list();
-      setRecords(companyList);
+      const safe = Array.isArray(companyList)
+        ? companyList.filter((c) => c && typeof c === "object" && (c.id !== undefined || c.name !== undefined))
+        : [];
+      setRecords(safe);
     } catch (e) {
       toast.error("Não foi possível carregar a lista de registros");
     }
@@ -576,9 +585,9 @@ export default function CompaniesManager() {
   const handleSelect = (data) => {
     let campaignsEnabled = false;
 
-    const setting = data.settings.find(
-      (s) => s.key.indexOf("campaignsEnabled") > -1
-    );
+    const setting = Array.isArray(data?.settings)
+      ? data.settings.find((s) => String(s?.key || "").indexOf("campaignsEnabled") > -1)
+      : null;
     if (setting) {
       campaignsEnabled =
         setting.value === "true" || setting.value === "enabled";
@@ -602,16 +611,34 @@ export default function CompaniesManager() {
     <Paper className={classes.mainPaper} elevation={0}>
       <Grid spacing={2} container>
         <Grid xs={12} item>
-          <CompanyForm
-            initialValue={record}
-            onDelete={handleOpenDeleteDialog}
-            onSubmit={handleSubmit}
-            onCancel={handleCancel}
-            loading={loading}
-          />
+          <Card elevation={2}>
+            <CardHeader
+              avatar={<BusinessIcon color="primary" />}
+              title="Cadastro de Empresas"
+              subheader="Gerencie nome, contato, plano e recorrência"
+            />
+            <CardContent>
+              <CompanyForm
+                initialValue={record}
+                onDelete={handleOpenDeleteDialog}
+                onSubmit={handleSubmit}
+                onCancel={handleCancel}
+                loading={loading}
+              />
+            </CardContent>
+          </Card>
         </Grid>
         <Grid xs={12} item>
-          <CompaniesManagerGrid records={records} onSelect={handleSelect} />
+          <Card elevation={2}>
+            <CardHeader
+              avatar={<ListAltIcon color="primary" />}
+              title="Empresas cadastradas"
+              subheader="Clique no lápis para editar"
+            />
+            <CardContent>
+              <CompaniesManagerGrid records={records} onSelect={handleSelect} />
+            </CardContent>
+          </Card>
         </Grid>
       </Grid>
       <ConfirmationModal

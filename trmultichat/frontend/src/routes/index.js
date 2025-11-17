@@ -41,7 +41,10 @@ import QueueIntegration from "../pages/QueueIntegration";
 import AdminBranding from "../pages/Admin/Branding";
 import LicenseManager from "../pages/Admin/License";
 import PlansAdmin from "../pages/Admin/Plans";
+import CompaniesAdmin from "../pages/Admin/Companies";
 import { ThemeProvider } from "../context/ThemeContext";
+import ForgotPassword from "../pages/ForgotPassword";
+import ResetPassword from "../pages/ResetPassword";
 
 const Routes = () => {
   const [showCampaigns, setShowCampaigns] = useState(false);
@@ -62,6 +65,8 @@ const Routes = () => {
           <TicketsContextProvider>
             <Switch>
             <Route exact path="/login" component={Login} />
+            <Route exact path="/forgot-password" component={ForgotPassword} />
+            <Route exact path="/reset-password" component={ResetPassword} />
             <Route exact path="/signup" component={Signup} />
             <WhatsAppsProvider>
               <LoggedInLayout>
@@ -133,6 +138,12 @@ const Routes = () => {
                   exact
                   path="/admin/plans"
                   component={PlansAdmin}
+                  isPrivate
+                />
+                <Route
+                  exact
+                  path="/admin/companies"
+                  component={CompaniesAdmin}
                   isPrivate
                 />
 				        <Route 

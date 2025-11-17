@@ -83,8 +83,133 @@ const corsOptions: cors.CorsOptions = {
 app.options("*", cors(corsOptions));
 app.use(cors(corsOptions));
 
+// Debug ping to confirm this entrypoint is active
+app.get("/__ping_for_pwd", (_req, res) => res.json({ ok: true, ts: Date.now() }));
+
+// Password recovery endpoints - registered early and inline to avoid legacy collisions
+app.post("/auth/forgot-password", async (req, res) => {
+  try {
+    const email = String((req.body?.email || "")).trim().toLowerCase();
+    if (!email) return res.status(400).json({ error: true, message: "email is required" });
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const UserModel = require("./models/User");
+    const User = UserModel.default || UserModel;
+    if (!User || typeof User.findOne !== "function") {
+      return res.status(501).json({ error: true, message: "not available" });
+    }
+    const u = await User.findOne({ where: { email } });
+    if (!u) return res.json({ ok: true }); // do not leak existence
+    const plain = u?.get ? u.get({ plain: true }) : u;
+    const currentHash = String((plain as any).passwordHash || (plain as any).password || "");
+    const token = jwt.sign(
+      {
+        userId: Number((plain as any).id),
+        tenantId: Number((plain as any).companyId || (plain as any).company_id || 0),
+        purpose: "pwdReset",
+        pwdHash: currentHash || undefined
+      },
+      env.JWT_REFRESH_SECRET,
+      { expiresIn: "30m" }
+    );
+    const appUrl = process.env.APP_BASE_URL || process.env.FRONTEND_URL || "https://app.trmultichat.com.br";
+    const link = `${String(appUrl).replace(/\/+$/, "")}/reset-password?token=${encodeURIComponent(token)}`;
+    return res.json({ ok: true, link, expiresInMinutes: 30 });
+  } catch (e: any) {
+    return res.status(400).json({ error: true, message: e?.message || "forgot password error" });
+  }
+});
+// Aliases to avoid proxy rewrites
+app.post("/auth/forgot_password", (req, res) => (app as any)._router.handle(req, res));
+app.post("/auth/password/forgot", (req, res) => (app as any)._router.handle(req, res));
+app.post("/auth/forgotPassword", (req, res) => (app as any)._router.handle(req, res));
+
+app.post("/auth/reset-password", async (req, res) => {
+  try {
+    const token = String(req.body?.token || "");
+    const password = String(req.body?.password || "");
+    const debugFlag = Boolean((req.body as any)?.debug);
+    if (!token || !password) return res.status(400).json({ error: true, message: "token and password are required" });
+    const payload = jwt.verify(token, env.JWT_REFRESH_SECRET) as {
+      userId: number;
+      tenantId: number;
+      purpose?: string;
+      pwdHash?: string;
+      iat?: number;
+    };
+    if (!payload || payload.purpose !== "pwdReset") {
+      return res.status(400).json({ error: true, message: "invalid token" });
+    }
+    // Use raw SQL via sequelize to avoid ORM quirks
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const db = require("./database").default || require("./database");
+    const [rows] = await db.query('SELECT "passwordHash","updatedAt" FROM "Users" WHERE id = :id LIMIT 1', {
+      replacements: { id: payload.userId }
+    });
+    const row: any = Array.isArray(rows) && (rows as any[])[0];
+    if (!row) return res.status(404).json({ error: true, message: "user not found" });
+
+    const currentHash = String(row.passwordHash || "");
+    const tokenHash = String((payload as any).pwdHash || "");
+    const tokenIat = typeof (payload as any).iat === "number" ? (payload as any).iat : 0;
+    const updatedAtSeconds = row.updatedAt ? Math.floor(new Date(row.updatedAt).getTime() / 1000) : 0;
+
+    // Prevent token reuse:
+    const reusedByHash = Boolean(tokenHash && currentHash && tokenHash !== currentHash);
+    const reusedByTime = Boolean(tokenIat && updatedAtSeconds && updatedAtSeconds > tokenIat + 1);
+    if (debugFlag) {
+      return res.json({
+        ok: true,
+        debug: {
+          currentHashEmpty: !currentHash,
+          tokenHashEmpty: !tokenHash,
+          sameHash: currentHash === tokenHash,
+          tokenIat,
+          updatedAtSeconds,
+          reusedByHash,
+          reusedByTime
+        }
+      });
+    }
+    if (reusedByHash || reusedByTime) {
+      return res.status(400).json({ error: true, message: "invalid or already used token" });
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const bcrypt = require("bcryptjs");
+    const hash = bcrypt.hashSync(password, 10);
+    await db.query('UPDATE "Users" SET "passwordHash" = :hash, "updatedAt" = NOW() WHERE id = :id', {
+      replacements: { id: payload.userId, hash }
+    });
+    return res.json({ ok: true });
+  } catch (e: any) {
+    return res.status(400).json({ error: true, message: e?.message || "reset password error" });
+  }
+});
+app.post("/auth/reset_password", (req, res) => (app as any)._router.handle(req, res));
+app.post("/auth/password/reset", (req, res) => (app as any)._router.handle(req, res));
+app.post("/auth/resetPassword", (req, res) => (app as any)._router.handle(req, res));
+
 // New public routes (registered BEFORE mounting compiled app)
 app.use("/auth", authRoutes);
+// Direct fallback for forgot-password (ensure available even if route file caching)
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const authCtrl = require("./modules/auth/auth.controller");
+  if (authCtrl && typeof authCtrl.forgotPassword === "function") {
+    app.post("/auth/forgot-password", (req, res) => authCtrl.forgotPassword(req, res));
+    app.post("/auth/forgot_password", (req, res) => authCtrl.forgotPassword(req, res));
+    app.post("/auth/forgotPassword", (req, res) => authCtrl.forgotPassword(req, res));
+    app.post("/auth/password/forgot", (req, res) => authCtrl.forgotPassword(req, res));
+  }
+  if (authCtrl && typeof authCtrl.resetPasswordByEmail === "function") {
+    app.post("/auth/reset-password", (req, res) => authCtrl.resetPasswordByEmail(req, res));
+    app.post("/auth/reset_password", (req, res) => authCtrl.resetPasswordByEmail(req, res));
+    app.post("/auth/resetPassword", (req, res) => authCtrl.resetPasswordByEmail(req, res));
+    app.post("/auth/password/reset", (req, res) => authCtrl.resetPasswordByEmail(req, res));
+  }
+} catch (e) {
+  // ignore
+}
 // Serve public files (uploads/branding assets)
 app.use("/", express.static(require("path").join(process.cwd(), "public")));
 app.use("/branding", brandingRoutes);
@@ -110,6 +235,39 @@ app.use("/plans", plansRoutes);
 app.use("/invoices", invoicesRoutes);
 app.use("/whatsappsession", whatsappSessionRoutes);
 app.use("/payments/mercadopago", mercadoPagoRoutes);
+
+// Admin password reset helper (requires admin bearer)
+app.post("/admin/reset-password", async (req, res) => {
+  try {
+    const auth = req.headers.authorization || "";
+    const parts = auth.split(" ");
+    const bearer = parts.length === 2 && parts[0] === "Bearer" ? parts[1] : undefined;
+    if (!bearer) return res.status(401).json({ error: true, message: "missing bearer token" });
+    const payload = jwt.verify(bearer, env.JWT_SECRET) as { userId: number; tenantId: number };
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const UserModel = require("./models/User");
+    const User = UserModel.default || UserModel;
+    const admin = await User.findByPk(payload.userId);
+    const plain = admin?.get ? admin.get({ plain: true }) : admin;
+    if (!plain || (!plain.admin && String(plain.profile || "") !== "admin")) {
+      return res.status(403).json({ error: true, message: "forbidden" });
+    }
+    const { email, password } = req.body || {};
+    if (!email || !password) return res.status(400).json({ error: true, message: "email and password are required" });
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const bcrypt = require("bcryptjs");
+    const hash = bcrypt.hashSync(String(password), 10);
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const db = (require("./database").default || require("./database"));
+    const [rows] = await db.query('SELECT id FROM "Users" WHERE lower(email)=lower(:email) LIMIT 1', { replacements: { email } });
+    const row: any = Array.isArray(rows) && (rows as any[])[0];
+    if (!row) return res.status(404).json({ error: true, message: "user not found" });
+    await db.query('UPDATE "Users" SET "passwordHash" = :hash, "updatedAt" = NOW() WHERE id = :id', { replacements: { id: row.id, hash } });
+    return res.json({ ok: true });
+  } catch (e: any) {
+    return res.status(400).json({ error: true, message: e?.message || "reset error" });
+  }
+});
 
 // Companies safe list without ORM hooks (raw SQL)
 app.get("/companies-safe", async (_req, res) => {

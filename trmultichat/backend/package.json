@@ -14,6 +14,9 @@
     "pretest": "NODE_ENV=test sequelize db:migrate && NODE_ENV=test sequelize db:seed:all",
     "test": "NODE_ENV=test jest",
     "test:api": "NODE_ENV=test jest src/__tests__/api --runInBand",
+    "test:forgot": "npm run build && node dist/scripts/testForgot.js",
+    "test:reset": "npm run build && node dist/scripts/testReset.js",
+    "test:auth-flow": "npm run test:forgot && npm run test:reset",
     "posttest": "NODE_ENV=test sequelize db:migrate:undo:all",
     "lint": "eslint src/**/*.ts",
     "admin:ensure": "node dist/scripts/ensureAdmin.js"

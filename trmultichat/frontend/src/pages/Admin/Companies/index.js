@@ -81,6 +81,12 @@ export default function CompaniesAdmin() {
     try {
       const { data } = await api.get(`/companies/${id}/profile`);
       const p = (data && data.profile) || {};
+      const toDateInputValue = (val) => {
+        if (!val) return "";
+        const d = new Date(val);
+        if (isNaN(d.getTime())) return "";
+        return d.toISOString().slice(0, 10);
+      };
       setProfile({
         personType: p.personType || "PJ",
         legalName: p.legalName || "",
@@ -88,8 +94,8 @@ export default function CompaniesAdmin() {
         document: p.document || "",
         stateRegistration: p.stateRegistration || "",
         municipalRegistration: p.municipalRegistration || "",
-        birthDate: p.birthDate || "",
-        foundationDate: p.foundationDate || "",
+        birthDate: toDateInputValue(p.birthDate),
+        foundationDate: toDateInputValue(p.foundationDate),
         email: p.email || "",
         phone: p.phone || "",
         website: p.website || "",
@@ -358,17 +364,17 @@ export default function CompaniesAdmin() {
                   </>
                 ) : (
                   <Grid item xs={12} md={6}>
-                    <TextField label="Data de nascimento" type="date" value={profile.birthDate} onChange={(e) => setProfile({ ...profile, birthDate: e.target.value })} fullWidth InputLabelProps={{ shrink: true }} variant="outlined" />
+                    <TextField label="Data de nascimento" type="date" value={profile.birthDate || ""} onChange={(e) => setProfile({ ...profile, birthDate: e.target.value })} fullWidth InputLabelProps={{ shrink: true }} variant="outlined" />
                   </Grid>
                 )}
                 <Grid item xs={12} md={6}>
-                  <TextField label="E-mail" value={profile.email} onChange={(e) => setProfile({ ...profile, email: e.target.value })} fullWidth variant="outlined" />
+                  <TextField label="E-mail" value={profile.email || ""} onChange={(e) => setProfile({ ...profile, email: e.target.value })} fullWidth variant="outlined" />
                 </Grid>
                 <Grid item xs={12} md={6}>
-                  <TextField label="Telefone/WhatsApp" value={profile.phone} onChange={(e) => setProfile({ ...profile, phone: formatPhoneBr(e.target.value) })} fullWidth variant="outlined" />
+                  <TextField label="Telefone/WhatsApp" value={profile.phone || ""} onChange={(e) => setProfile({ ...profile, phone: formatPhoneBr(e.target.value) })} fullWidth variant="outlined" />
                 </Grid>
                 <Grid item xs={12} md={6}>
-                  <TextField label="Site" value={profile.website} onChange={(e) => setProfile({ ...profile, website: e.target.value })} fullWidth variant="outlined" />
+                  <TextField label="Site" value={profile.website || ""} onChange={(e) => setProfile({ ...profile, website: e.target.value })} fullWidth variant="outlined" />
                 </Grid>
 
                 <Grid item xs={12}>
@@ -413,13 +419,13 @@ export default function CompaniesAdmin() {
                   <div className={classes.sectionTitle}>Cobrança</div>
                 </Grid>
                 <Grid item xs={12} md={6}>
-                  <TextField label="E-mail de cobrança" value={profile.billingEmail} onChange={(e) => setProfile({ ...profile, billingEmail: e.target.value })} fullWidth variant="outlined" />
+                  <TextField label="E-mail de cobrança" value={profile.billingEmail || ""} onChange={(e) => setProfile({ ...profile, billingEmail: e.target.value })} fullWidth variant="outlined" />
                 </Grid>
                 <Grid item xs={12} md={6}>
-                  <TextField label="Chave Pix" value={profile.pixKey} onChange={(e) => setProfile({ ...profile, pixKey: e.target.value })} fullWidth variant="outlined" />
+                  <TextField label="Chave Pix" value={profile.pixKey || ""} onChange={(e) => setProfile({ ...profile, pixKey: e.target.value })} fullWidth variant="outlined" />
                 </Grid>
                 <Grid item xs={12}>
-                  <TextField label="Observações" value={profile.notes} onChange={(e) => setProfile({ ...profile, notes: e.target.value })} fullWidth multiline rows={3} variant="outlined" />
+                  <TextField label="Observações" value={profile.notes || ""} onChange={(e) => setProfile({ ...profile, notes: e.target.value })} fullWidth multiline rows={3} variant="outlined" />
                 </Grid>
               </Grid>
             </CardContent>

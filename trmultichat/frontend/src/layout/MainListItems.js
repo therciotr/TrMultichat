@@ -535,6 +535,13 @@ const MainListItems = (props) => {
                 icon={<ListIcon />}
               />
             )}
+            {(String(user?.profile || "").toLowerCase() === "admin" || user?.admin || user?.super) && (
+              <ListItemLink
+                to="/admin/companies"
+                primary="Empresas"
+                icon={<StoreIcon />}
+              />
+            )}
             <ListItemLink
               to="/financeiro"
               primary={i18n.t("mainDrawer.listItems.financeiro")}

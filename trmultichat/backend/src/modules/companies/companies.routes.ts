@@ -65,11 +65,34 @@ router.get("/listPlan/:id", async (req, res) => {
 router.get("/", async (req, res) => {
   try {
     const Company = getLegacyModel("Company");
+    const Setting = getLegacyModel("Setting");
     if (!Company || typeof Company.findAll !== "function") {
       return res.json([]);
     }
     const rows = await Company.findAll();
     const list = Array.isArray(rows) ? rows.map((r: any) => (r?.toJSON ? r.toJSON() : r)) : [];
+    // anexar campaignsEnabled a partir de Settings, se disponível
+    try {
+      if (Setting && typeof Setting.findAll === "function") {
+        const srows = await Setting.findAll({ where: { key: "campaignsEnabled" } });
+        const settingsByCompany: Record<string, Array<{ key: string; value: string }>> = {};
+        for (const s of srows || []) {
+          const plain = s?.toJSON ? s.toJSON() : s;
+          const cid = String(plain.companyId || plain.company_id || "");
+          if (!cid) continue;
+          if (!settingsByCompany[cid]) settingsByCompany[cid] = [];
+          settingsByCompany[cid].push({ key: "campaignsEnabled", value: String(plain.value ?? "") });
+        }
+        for (const c of list) {
+          const cid = String(c.id || "");
+          const arr = settingsByCompany[cid] || [];
+          if (arr.length) {
+            (c as any).settings = Array.isArray((c as any).settings) ? (c as any).settings : [];
+            (c as any).settings = [...(c as any).settings, ...arr];
+          }
+        }
+      }
+    } catch {}
     return res.json(list);
   } catch {
     return res.json([]);
@@ -141,6 +164,7 @@ router.put("/:id", async (req, res) => {
     const id = Number(req.params.id);
     if (!id) return res.status(400).json({ error: true, message: "invalid company id" });
     const Company = getLegacyModel("Company");
+    const Setting = getLegacyModel("Setting");
     if (!Company || typeof Company.findByPk !== "function") {
       return res.status(501).json({ error: true, message: "company update not available" });
     }
@@ -152,6 +176,20 @@ router.put("/:id", async (req, res) => {
     if (body.planId !== undefined) up.planId = body.planId;
     if (body.token !== undefined) up.token = String(body.token);
     await instance.update(up);
+    // Persistir campaignsEnabled em Settings
+    if (Setting && (typeof Setting.findOne === "function" || typeof Setting.create === "function")) {
+      if (body.campaignsEnabled !== undefined) {
+        const value = body.campaignsEnabled === true || body.campaignsEnabled === "true" || body.campaignsEnabled === "enabled" ? "enabled" : "false";
+        try {
+          let row = typeof Setting.findOne === "function" ? await Setting.findOne({ where: { companyId: id, key: "campaignsEnabled" } }) : null;
+          if (row && typeof row.update === "function") {
+            await row.update({ value });
+          } else if (typeof Setting.create === "function") {
+            await Setting.create({ companyId: id, key: "campaignsEnabled", value });
+          }
+        } catch {}
+      }
+    }
     const json = instance?.toJSON ? instance.toJSON() : instance;
     return res.json(json);
   } catch (e: any) {

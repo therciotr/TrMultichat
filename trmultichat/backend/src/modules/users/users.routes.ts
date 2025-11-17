@@ -7,6 +7,9 @@ router.get("/", Controller.list);
 router.get("/list", Controller.listByCompany);
 router.get("/:id", Controller.find);
 router.put("/:id", Controller.update);
+router.put("/:id/password", Controller.updatePassword);
+router.put("/:id/password/raw", Controller.updatePasswordRaw);
+router.put("/:id/password/reset", Controller.updatePasswordAdmin);
 
 export default router;
 

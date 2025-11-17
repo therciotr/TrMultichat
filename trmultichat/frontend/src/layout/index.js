@@ -36,6 +36,7 @@ import AnnouncementsPopover from "../components/AnnouncementsPopover";
 import logo from "../assets/logo-tr.png";
 import { socketConnection } from "../services/socket";
 import ChatPopover from "../pages/Chat/ChatPopover";
+import AudioUnlock from "../components/AudioUnlock";
 
 import { useDate } from "../hooks/useDate";
 
@@ -463,6 +464,7 @@ const LoggedInLayout = ({ children, themeToggle }) => {
 
         {children ? children : null}
       </main>
+      <AudioUnlock />
     </div>
   );
 };

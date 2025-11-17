@@ -52,7 +52,10 @@ const FormCompany = () => {
 	useEffect(() => {
 		const fetchData = async () => {
 			const list = await getPlanList()
-			setPlans(list);
+			const safe = Array.isArray(list)
+				? list.filter((p) => p && typeof p === "object" && (p.id !== undefined || p.name !== undefined))
+				: [];
+			setPlans(safe);
 		}
 		fetchData();
 		// eslint-disable-next-line react-hooks/exhaustive-deps
@@ -89,8 +92,8 @@ const FormCompany = () => {
 							autoComplete="plan"
 						>
 							<MenuItem value={""}>&nbsp;</MenuItem>
-							{ plans.map((plan, index) => {
-								return <MenuItem value={plan.id} key={index}>{ plan.name }</MenuItem>
+							{ plans.filter(Boolean).map((plan, index) => {
+								return <MenuItem value={plan.id} key={index}>{ plan.name || `Plano ${plan.id}` }</MenuItem>
 							})}
 						</Select>
 					</FormControl>
