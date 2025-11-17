@@ -17,9 +17,10 @@
     "context": "^4.0.0",
     "date-fns": "^2.16.1",
     "emoji-mart": "^3.0.0",
-	"file-type": "^17.1.1",
+    "file-type": "^17.1.1",
     "formik": "^2.2.0",
     "formik-material-ui": "^3.0.1",
+    "framer-motion": "^4.1.17",
     "gn-api-sdk-node": "^3.0.2",
     "i18next": "^19.8.2",
     "i18next-browser-languagedetector": "^6.0.1",
@@ -45,8 +46,8 @@
     "react-router-dom": "^5.2.0",
     "react-scripts": "3.4.3",
     "react-text-mask": "^5.5.0",
-	"react-trello": "^2.2.11",
     "react-toastify": "9.0.0",
+    "react-trello": "^2.2.11",
     "recharts": "^2.0.2",
     "socket.io-client": "^3.0.5",
     "styled-components": "^5.3.5",
@@ -78,8 +79,7 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
-  }
-  ,
+  },
   "devDependencies": {
     "@types/react": "^18.2.64",
     "@types/react-dom": "^18.2.21",

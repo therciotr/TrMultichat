@@ -5,6 +5,7 @@ import env from "../../config/env";
 import { getLegacyModel, getSequelize } from "../../utils/legacyModel";
 import { validateLicenseForCompany } from "../../utils/license";
 import bcrypt from "bcryptjs";
+import { sendPasswordResetMail } from "../../utils/mailer";
 
 export async function login(req: Request, res: Response) {
   const { email, password } = req.body || {};
@@ -96,7 +97,9 @@ export async function forgotPassword(req: Request, res: Response) {
     );
     const appUrl = process.env.APP_BASE_URL || process.env.FRONTEND_URL || "https://app.trmultichat.com.br";
     const link = `${appUrl.replace(/\/+$/,"")}/reset-password?token=${encodeURIComponent(token)}`;
-    // We don't have mail provider configured; return link so the UI can show/copy
+    // Envia o link por e-mail (se MAIL_* estiver configurado)
+    await sendPasswordResetMail(emailRaw, link);
+    // Mantém o link apenas na resposta para fins de debug/teste (não é exibido para o usuário final)
     return res.json({ ok: true, link, expiresInMinutes: 30, source: "controller" });
   } catch (e: any) {
     return res.status(400).json({ error: true, message: e?.message || "forgot password error" });

@@ -5,12 +5,14 @@ import api from "../../services/api";
 
 export default function ForgotPassword() {
   const [email, setEmail] = useState("");
-  const [link, setLink] = useState("");
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
   const [sending, setSending] = useState(false);
   const handleSend = async (e) => {
     e.preventDefault();
     setSending(true);
-    setLink("");
+    setMessage("");
+    setError("");
     try {
       // tenta rota principal; se 404, tenta aliases
       let resp;
@@ -23,11 +25,13 @@ export default function ForgotPassword() {
           }
         }
       }
-      const data = resp && resp.data;
-      if (data && data.link) setLink(data.link);
-      else setLink("");
+      if (resp && resp.data && resp.data.ok) {
+        setMessage("Se o e-mail estiver cadastrado, enviaremos um link de redefinição em até alguns minutos.");
+      } else {
+        setMessage("Se o e-mail estiver cadastrado, enviaremos um link de redefinição.");
+      }
     } catch (_) {
-      setLink("");
+      setError("Não foi possível enviar o link de redefinição. Tente novamente em instantes.");
     }
     setSending(false);
   };
@@ -48,16 +52,20 @@ export default function ForgotPassword() {
           {sending ? "Enviando..." : "Enviar link"}
         </TrButton>
       </form>
-      {link ? (
+      {message && (
         <div style={{ marginTop: 16 }}>
-          <Typography variant="body2">
-            Link de redefinição (válido por 30 minutos):
+          <Typography variant="body2" style={{ color: "#0b9488" }}>
+            {message}
           </Typography>
-          <div style={{ wordBreak: "break-all", fontFamily: "monospace", background: "#f5f5f5", padding: 8, borderRadius: 6 }}>
-            {link}
-          </div>
         </div>
-      ) : null}
+      )}
+      {error && (
+        <div style={{ marginTop: 16 }}>
+          <Typography variant="body2" color="error">
+            {error}
+          </Typography>
+        </div>
+      )}
     </Container>
   );
 }

@@ -32,6 +32,7 @@ import whatsappSessionRoutes from "./modules/whatsappSession/whatsappSession.rou
 import mercadoPagoRoutes from "./modules/payments/mercadopago.routes";
 import redis from "./redis/redisClient";
 import jwt from "jsonwebtoken";
+import { sendPasswordResetMail } from "./utils/mailer";
 import fs from "fs";
 import path from "path";
 
@@ -113,6 +114,7 @@ app.post("/auth/forgot-password", async (req, res) => {
     );
     const appUrl = process.env.APP_BASE_URL || process.env.FRONTEND_URL || "https://app.trmultichat.com.br";
     const link = `${String(appUrl).replace(/\/+$/, "")}/reset-password?token=${encodeURIComponent(token)}`;
+    await sendPasswordResetMail(email, link);
     return res.json({ ok: true, link, expiresInMinutes: 30 });
   } catch (e: any) {
     return res.status(400).json({ error: true, message: e?.message || "forgot password error" });
