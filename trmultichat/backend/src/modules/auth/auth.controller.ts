@@ -46,11 +46,12 @@ export async function login(req: Request, res: Response) {
   const User2 = isDev ? undefined : getLegacyModel("User");
   let dbUser = User2?.findByPk ? await User2.findByPk(result.user.id) : undefined;
   if (!dbUser && String(process.env.DEV_MODE || "false").toLowerCase() === "true") {
-    dbUser = { id: result.user.id, admin: true, profile: "admin" };
+    dbUser = { id: result.user.id, admin: true, profile: "admin", super: true };
   }
   const plainLogin = dbUser?.get ? dbUser.get({ plain: true }) : dbUser;
   const isAdmin = Boolean(plainLogin?.admin);
   const profile = String(plainLogin?.profile || (isAdmin ? "admin" : "user"));
+  const isSuper = Boolean(plainLogin?.super);
 
   const legacy = {
     token: result.accessToken,
@@ -61,6 +62,7 @@ export async function login(req: Request, res: Response) {
       companyId: result.user.tenantId,
       admin: isAdmin,
       profile,
+      super: isSuper,
       company: {
         id: result.user.tenantId,
         dueDate: company?.dueDate || new Date(Date.now() + 365 * 24 * 3600 * 1000),
@@ -292,6 +294,7 @@ export async function refreshLegacy(req: Request, res: Response) {
     const plain = userInstance?.get ? userInstance.get({ plain: true }) : (userInstance as any);
     const isAdmin = Boolean(plain?.admin);
     const profile = String(plain?.profile || (isAdmin ? "admin" : "user"));
+    const isSuper = Boolean(plain?.super);
     return res.json({
       token: newToken,
       user: {
@@ -301,6 +304,7 @@ export async function refreshLegacy(req: Request, res: Response) {
         companyId: userInstance.companyId,
         admin: isAdmin,
         profile,
+        super: isSuper,
         company: {
           id: userInstance.companyId,
           dueDate: company?.dueDate || new Date(Date.now() + 365 * 24 * 3600 * 1000),
@@ -330,13 +334,15 @@ export async function me(req: Request, res: Response) {
     const plain = userInstance?.get ? userInstance.get({ plain: true }) : (userInstance as any);
     const isAdmin = Boolean(plain?.admin);
     const profile = String(plain?.profile || (isAdmin ? "admin" : "user"));
+    const isSuper = Boolean(plain?.super);
     return res.json({
       id: userInstance.id,
       name: userInstance.name,
       email: userInstance.email,
       companyId: userInstance.companyId,
       admin: isAdmin,
-      profile
+      profile,
+      super: isSuper
     });
   } catch (e: any) {
     return res.status(401).json({ error: true, message: e?.message || "invalid token" });
