@@ -538,7 +538,7 @@ const MainListItems = (props) => {
                 icon={<ListIcon />}
               />
             )}
-            {(String(user?.profile || "").toLowerCase() === "admin" || user?.admin || user?.super) && (
+            {isSuper && (
               <ListItemLink
                 to="/admin/companies"
                 primary="Empresas"
