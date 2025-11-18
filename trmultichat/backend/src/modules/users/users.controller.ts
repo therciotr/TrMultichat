@@ -1,16 +1,18 @@
 import { Request, Response } from "express";
-import { findAllSafe, findByPkSafe } from "../../utils/legacyModel";
+import { findAllSafe, findByPkSafe, getSequelize, getLegacyModel } from "../../utils/legacyModel";
 import env from "../../config/env";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import appEnv from "../../config/env";
-import { getSequelize } from "../../utils/legacyModel";
 
 export async function list(req: Request, res: Response) {
   const pageNumber = Number(req.query.pageNumber || 1);
   const limit = 50;
   const offset = (pageNumber - 1) * limit;
-  const users = await findAllSafe("User", { offset, limit, order: [["updatedAt", "DESC"]] });
+  const tenantId = extractTenantIdFromAuth(req.headers.authorization as string);
+  const isSuper = await isSuperFromAuth(req);
+  const where = !isSuper && tenantId ? { companyId: tenantId } : undefined;
+  const users = await findAllSafe("User", { where, offset, limit, order: [["updatedAt", "DESC"]] });
   return res.json({ users, hasMore: users.length === limit });
 }
 
@@ -30,11 +32,22 @@ export async function find(req: Request, res: Response) {
     }
     return res.status(404).json({ error: true, message: "not found" });
   }
+  const tenantId = extractTenantIdFromAuth(req.headers.authorization as string);
+  const isSuper = await isSuperFromAuth(req);
+  const userCompanyId = Number((user as any).companyId || 0);
+  if (!isSuper && tenantId && userCompanyId && userCompanyId !== tenantId) {
+    return res.status(403).json({ error: true, message: "forbidden" });
+  }
   return res.json(user);
 }
 
 export async function listByCompany(req: Request, res: Response) {
-  const companyId = Number(req.query.companyId || 0);
+  const tenantId = extractTenantIdFromAuth(req.headers.authorization as string);
+  const isSuper = await isSuperFromAuth(req);
+  let companyId = Number(req.query.companyId || 0);
+  if (!isSuper || !companyId) {
+    companyId = tenantId;
+  }
   const users = await findAllSafe("User", {
     where: companyId ? { companyId } : undefined,
     attributes: ["id", "name", "email", "companyId"],
@@ -52,6 +65,25 @@ function extractTenantIdFromAuth(authorization?: string): number {
     return Number(payload?.tenantId || 0);
   } catch {
     return 0;
+  }
+}
+
+async function isSuperFromAuth(req: Request): Promise<boolean> {
+  try {
+    const auth = req.headers.authorization || "";
+    const parts = auth.split(" ");
+    const bearer = parts.length === 2 && parts[0] === "Bearer" ? parts[1] : undefined;
+    if (!bearer) return false;
+    const payload = jwt.verify(bearer, appEnv.JWT_SECRET) as { userId?: number };
+    const User = getLegacyModel("User");
+    if (!User || typeof User.findByPk !== "function" || !payload?.userId) {
+      return false;
+    }
+    const instance = await User.findByPk(payload.userId);
+    const plain = instance?.get ? instance.get({ plain: true }) : (instance as any);
+    return Boolean(plain?.super);
+  } catch {
+    return false;
   }
 }
 
