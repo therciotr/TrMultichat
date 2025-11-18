@@ -97,9 +97,10 @@ export async function forgotPassword(req: Request, res: Response) {
     );
     const appUrl = process.env.APP_BASE_URL || process.env.FRONTEND_URL || "https://app.trmultichat.com.br";
     const link = `${appUrl.replace(/\/+$/,"")}/reset-password?token=${encodeURIComponent(token)}`;
-    // Envia o link por e-mail (se MAIL_* estiver configurado)
+    const companyId = Number(plain.companyId || plain.tenantId || 0);
+    // Envia o link por e-mail (SMTP da empresa ou global)
     try {
-      await sendPasswordResetMail(emailRaw, link);
+      await sendPasswordResetMail(emailRaw, link, companyId || undefined);
     } catch (mailErr: any) {
       // eslint-disable-next-line no-console
       console.warn("[auth] forgotPassword mail error:", mailErr?.message || mailErr);
@@ -110,7 +111,7 @@ export async function forgotPassword(req: Request, res: Response) {
       return res.json({ ok: true });
     }
     // Em ambientes não-produtivos mantemos o link para facilitar debug
-    return res.json({ ok: true, link, expiresInMinutes: 30, source: "controller" });
+    return res.json({ ok: true, link, expiresInMinutes: 30 });
   } catch (e: any) {
     return res.status(400).json({ error: true, message: e?.message || "forgot password error" });
   }
@@ -214,7 +215,7 @@ export async function signup(req: Request, res: Response) {
       passwordHash: hash,
       companyId: company.id,
       admin: true,
-      super: true,
+      super: false,
       profile: "admin"
     });
     const accessToken = jwt.sign({ userId: user.id, tenantId: company.id }, env.JWT_SECRET, { expiresIn: "15m" });

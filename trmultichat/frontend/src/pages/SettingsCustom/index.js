@@ -11,6 +11,7 @@ import CompaniesManager from "../../components/CompaniesManager";
 import PlansManager from "../../components/PlansManager";
 import HelpsManager from "../../components/HelpsManager";
 import Options from "../../components/Settings/Options";
+import EmailSettings from "../../components/EmailSettings";
 
 import { i18n } from "../../translate/i18n.js";
 import { toast } from "react-toastify";
@@ -168,6 +169,7 @@ const SettingsCustom = () => {
           className={classes.tab}
         >
           <Tab label="Opções" value={"options"} />
+          <Tab label="E-mail / SMTP" value={"email"} />
           {schedulesEnabled && <Tab label="Horários" value={"schedules"} />}
           {isSuper() ? <Tab label="Empresas" value={"companies"} /> : null}
           {isSuper() ? <Tab label="Planos" value={"plans"} /> : null}
@@ -228,6 +230,9 @@ const SettingsCustom = () => {
                 setSchedulesEnabled(value === "company")
               }
             />
+          </TabPanel>
+          <TabPanel className={classes.container} value={tab} name={"email"}>
+            <EmailSettings />
           </TabPanel>
         </Paper>
       </Paper>

@@ -256,6 +256,9 @@ const MainListItems = (props) => {
     return () => clearTimeout(delayDebounceFn);
   }, [whatsApps]);
 
+  const isSuper = !!user?.super;
+  const isAdmin = !!user?.admin;
+
   const fetchChats = async () => {
     try {
       const { data } = await api.get("/chats/", {
@@ -459,7 +462,7 @@ const MainListItems = (props) => {
                 </Collapse>
               </>
             )}
-            {user.super && (
+            {isSuper && (
               <ListItemLink
                 to="/announcements"
                 primary={i18n.t("mainDrawer.listItems.annoucements")}
@@ -505,7 +508,7 @@ const MainListItems = (props) => {
               primary={i18n.t("mainDrawer.listItems.users")}
               icon={<PeopleAltOutlinedIcon />}
             />
-            {(String(user?.profile || "").toLowerCase() === "admin" || user?.admin || user?.super) && (
+            {isSuper && (
               <ListItemLink
                 to="/create-company"
                 primary={i18n.t("companies.title")}
@@ -521,14 +524,14 @@ const MainListItems = (props) => {
                 />
               </>
             )}
-            {(String(user?.profile || "").toLowerCase() === "admin" || user?.admin || user?.super) && (
+            {isSuper && (
               <ListItemLink
                 to="/admin/license"
                 primary="Licenças"
                 icon={<VerifiedUserIcon />}
               />
             )}
-            {(String(user?.profile || "").toLowerCase() === "admin" || user?.admin || user?.super) && (
+            {isSuper && (
               <ListItemLink
                 to="/admin/plans"
                 primary="Planos"

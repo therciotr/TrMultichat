@@ -114,8 +114,9 @@ app.post("/auth/forgot-password", async (req, res) => {
     );
     const appUrl = process.env.APP_BASE_URL || process.env.FRONTEND_URL || "https://app.trmultichat.com.br";
     const link = `${String(appUrl).replace(/\/+$/, "")}/reset-password?token=${encodeURIComponent(token)}`;
+    const companyId = Number((plain as any).companyId || (plain as any).company_id || 0);
     try {
-      await sendPasswordResetMail(email, link);
+      await sendPasswordResetMail(email, link, companyId || undefined);
     } catch (mailErr: any) {
       // eslint-disable-next-line no-console
       console.warn("[server] forgot-password mail error:", mailErr?.message || mailErr);
