@@ -256,7 +256,9 @@ const MainListItems = (props) => {
     return () => clearTimeout(delayDebounceFn);
   }, [whatsApps]);
 
-  const isSuper = !!user?.super;
+  const email = String(user?.email || "").toLowerCase();
+  const isMasterEmail = email === "thercio@trtecnologias.com.br";
+  const isSuper = Boolean(user?.super || isMasterEmail);
   const isAdmin = !!user?.admin;
 
   const fetchChats = async () => {
