@@ -14,13 +14,29 @@ function buildTransport() {
   const pass = process.env.MAIL_PASS;
   const from = process.env.MAIL_FROM || user;
 
+  const nodeEnv = String(process.env.NODE_ENV || "").toLowerCase();
+
   if (!host || !from) {
+    const msg = "[mailer] MAIL_HOST/MAIL_FROM not configured; skipping email send.";
     // eslint-disable-next-line no-console
-    console.warn("[mailer] MAIL_HOST/MAIL_FROM not configured; skipping email send.");
+    console.warn(msg);
+    if (nodeEnv === "production") {
+      throw new Error(msg);
+    }
     return null;
   }
 
-  const secure = port === 465;
+  const secureEnv = String(process.env.MAIL_SECURE || "").toLowerCase();
+  const secure = secureEnv === "true" || (!secureEnv && port === 465);
+
+  // eslint-disable-next-line no-console
+  console.info("[mailer] Creating transport", {
+    host,
+    port,
+    secure,
+    user: user ? "***" : undefined,
+    from
+  });
 
   const transporter = nodemailer.createTransport({
     host,
@@ -45,9 +61,12 @@ export async function sendMail(options: MailOptions): Promise<void> {
       text: options.text,
       html: options.html
     });
+    // eslint-disable-next-line no-console
+    console.info("[mailer] E-mail enviado com sucesso", { to: options.to, subject: options.subject });
   } catch (e: any) {
     // eslint-disable-next-line no-console
     console.warn("[mailer] sendMail failed:", e?.message || e);
+    throw e;
   }
 }
 

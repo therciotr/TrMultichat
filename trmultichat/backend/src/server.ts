@@ -114,7 +114,17 @@ app.post("/auth/forgot-password", async (req, res) => {
     );
     const appUrl = process.env.APP_BASE_URL || process.env.FRONTEND_URL || "https://app.trmultichat.com.br";
     const link = `${String(appUrl).replace(/\/+$/, "")}/reset-password?token=${encodeURIComponent(token)}`;
-    await sendPasswordResetMail(email, link);
+    try {
+      await sendPasswordResetMail(email, link);
+    } catch (mailErr: any) {
+      // eslint-disable-next-line no-console
+      console.warn("[server] forgot-password mail error:", mailErr?.message || mailErr);
+      return res.status(502).json({ error: true, message: "mail error" });
+    }
+    const isProd = String(process.env.NODE_ENV || "").toLowerCase() === "production";
+    if (isProd) {
+      return res.json({ ok: true });
+    }
     return res.json({ ok: true, link, expiresInMinutes: 30 });
   } catch (e: any) {
     return res.status(400).json({ error: true, message: e?.message || "forgot password error" });

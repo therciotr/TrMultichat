@@ -98,8 +98,18 @@ export async function forgotPassword(req: Request, res: Response) {
     const appUrl = process.env.APP_BASE_URL || process.env.FRONTEND_URL || "https://app.trmultichat.com.br";
     const link = `${appUrl.replace(/\/+$/,"")}/reset-password?token=${encodeURIComponent(token)}`;
     // Envia o link por e-mail (se MAIL_* estiver configurado)
-    await sendPasswordResetMail(emailRaw, link);
-    // Mantém o link apenas na resposta para fins de debug/teste (não é exibido para o usuário final)
+    try {
+      await sendPasswordResetMail(emailRaw, link);
+    } catch (mailErr: any) {
+      // eslint-disable-next-line no-console
+      console.warn("[auth] forgotPassword mail error:", mailErr?.message || mailErr);
+      return res.status(502).json({ error: true, message: "mail error" });
+    }
+    const isProd = String(process.env.NODE_ENV || "").toLowerCase() === "production";
+    if (isProd) {
+      return res.json({ ok: true });
+    }
+    // Em ambientes não-produtivos mantemos o link para facilitar debug
     return res.json({ ok: true, link, expiresInMinutes: 30, source: "controller" });
   } catch (e: any) {
     return res.status(400).json({ error: true, message: e?.message || "forgot password error" });
