@@ -1,22 +1,9 @@
 import { Router } from "express";
 import { getLegacyModel } from "../../utils/legacyModel";
 import request from "request";
+import { getCompanyAccessToken } from "../../services/mercadoPagoService";
 
 const router = Router();
-
-async function getCompanyAccessToken(companyId: number): Promise<string | undefined> {
-  try {
-    const Setting = getLegacyModel("Setting");
-    if (Setting && typeof Setting.findOne === "function") {
-      const row = await Setting.findOne({ where: { companyId, key: "mpAccessToken" } });
-      if (row) {
-        const plain = row?.toJSON ? row.toJSON() : row;
-        if (plain?.value) return String(plain.value);
-      }
-    }
-  } catch {}
-  return process.env.MP_ACCESS_TOKEN || process.env.MERCADOPAGO_ACCESS_TOKEN;
-}
 
 router.post("/preference", async (req, res) => {
   try {
@@ -29,7 +16,10 @@ router.post("/preference", async (req, res) => {
       items: Array.isArray(items) && items.length
         ? items
         : [{ title: `Fatura #${invoiceId}`, quantity: 1, currency_id: "BRL", unit_price: Number(body.value || 0) }],
-      notification_url: process.env.MP_WEBHOOK_URL || `${process.env.BACKEND_URL || ""}/payments/mercadopago/webhook`,
+      notification_url:
+        process.env.MERCADOPAGO_WEBHOOK_URL ||
+        process.env.MP_WEBHOOK_URL ||
+        `${process.env.BACKEND_URL || ""}/payments/mercadopago/webhook`,
       metadata: { invoiceId, companyId },
     };
     if (back_urls) payload.back_urls = back_urls;
@@ -59,7 +49,7 @@ router.post("/webhook", async (req, res) => {
       return res.status(200).json({ ok: true });
     }
     // We don't know companyId yet; try global token first (or store one global)
-    const token = process.env.MP_ACCESS_TOKEN || process.env.MERCADOPAGO_ACCESS_TOKEN;
+    const token = process.env.MERCADOPAGO_ACCESS_TOKEN || process.env.MP_ACCESS_TOKEN || process.env.MERCADOPAGO_ACCESS_TOKEN;
     if (!token) return res.status(200).json({ ok: true });
 
     request.get({
@@ -71,13 +61,52 @@ router.post("/webhook", async (req, res) => {
       const metadata = pay?.metadata || {};
       const status = String(pay?.status || "");
       const invoiceId = Number(metadata?.invoiceId || 0);
+      const companyId = Number(metadata?.companyId || 0);
       if (invoiceId && status === "approved") {
         try {
           const Invoices = getLegacyModel("Invoices");
+          const Company = getLegacyModel("Company");
           if (Invoices && typeof Invoices.update === "function") {
             await Invoices.update({ status: "paid" }, { where: { id: invoiceId } });
           }
-        } catch {}
+          if (Company && typeof Company.findByPk === "function" && companyId) {
+            const company = await Company.findByPk(companyId);
+            if (company) {
+              const plain = company?.toJSON ? company.toJSON() : company;
+              const currentDue = plain?.dueDate ? new Date(plain.dueDate) : new Date();
+              currentDue.setDate(currentDue.getDate() + 30);
+              const nextDue = currentDue.toISOString().split("T")[0];
+              if (typeof company.update === "function") {
+                await company.update({ dueDate: nextDue });
+              }
+            }
+          }
+          try {
+            // eslint-disable-next-line @typescript-eslint/no-var-requires
+            let socketLib: any;
+            try {
+              // Prefer TS libs, fallback to legacy dist
+              socketLib = require("../../libs/socket");
+            } catch {
+              // eslint-disable-next-line @typescript-eslint/no-var-requires
+              const path = require("path");
+              // eslint-disable-next-line @typescript-eslint/no-var-requires
+              socketLib = require(path.resolve(process.cwd(), "dist/libs/socket"));
+            }
+            const getIO = socketLib.getIO || socketLib.default || socketLib;
+            const io = getIO();
+            if (io && companyId) {
+              io.emit(`company-${companyId}-payment`, {
+                action: "CONCLUIDA",
+                company: { id: companyId }
+              });
+            }
+          } catch {
+            // ignore socket errors
+          }
+        } catch {
+          // swallow errors to avoid retry storms
+        }
       }
       return res.status(200).json({ ok: true });
     });
@@ -87,5 +116,6 @@ router.post("/webhook", async (req, res) => {
 });
 
 export default router;
+
 
 

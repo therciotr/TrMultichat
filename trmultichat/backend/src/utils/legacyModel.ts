@@ -73,6 +73,21 @@ export function getSequelize(): any | undefined {
     const sequelize = (mod && (mod.sequelize || (mod.default && mod.default.sequelize))) || undefined;
     if (sequelize) return sequelize;
   } catch {}
+  // Fallback: use obfuscated TypeScript Sequelize instance from database module
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const db = require("../database");
+    const sequelize = (db && (db.sequelize || db.default || (db.default && db.default.sequelize))) || undefined;
+    if (sequelize) return sequelize;
+  } catch {}
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const path = require("path");
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const db = require(path.resolve(process.cwd(), "dist", "database"));
+    const sequelize = (db && (db.sequelize || db.default || (db.default && db.default.sequelize))) || undefined;
+    if (sequelize) return sequelize;
+  } catch {}
   return undefined;
 }
 

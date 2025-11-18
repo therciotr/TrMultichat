@@ -35,6 +35,7 @@ import jwt from "jsonwebtoken";
 import { sendPasswordResetMail } from "./utils/mailer";
 import fs from "fs";
 import path from "path";
+import { createSubscriptionPreference } from "./services/mercadoPagoService";
 
 // Create a fresh app so we can register our routes first
 const app: express.Express = express();
@@ -223,6 +224,53 @@ try {
 } catch (e) {
   // ignore
 }
+
+// Assinatura / checkout - rota nova usando exclusivamente Mercado Pago
+app.post("/subscription", async (req, res) => {
+  try {
+    const auth = req.headers.authorization || "";
+    const parts = auth.split(" ");
+    const bearer = parts.length === 2 && parts[0] === "Bearer" ? parts[1] : undefined;
+    if (!bearer) {
+      return res.status(401).json({ error: true, message: "missing bearer token" });
+    }
+
+    let companyId = 0;
+    try {
+      const payload = jwt.verify(bearer, env.JWT_SECRET) as { tenantId?: number };
+      companyId = Number(payload?.tenantId || 0);
+    } catch {
+      return res.status(401).json({ error: true, message: "invalid token" });
+    }
+
+    const body = req.body || {};
+    const price = Number(body.price || 0);
+    const users = Number(body.users || 0);
+    const connections = Number(body.connections || 0);
+    const invoiceId = Number(body.invoiceId || 0);
+
+    // Mantém validação mínima compatível com o fluxo antigo (Gerencianet)
+    if (!price || !users || !connections) {
+      return res.status(400).json({ error: "Validation fails" });
+    }
+
+    const pixLike = await createSubscriptionPreference({
+      companyId,
+      invoiceId,
+      price,
+      users,
+      connections
+    });
+
+    return res.json(pixLike);
+  } catch (e: any) {
+    logger.error({ err: e, path: "/subscription" }, "subscription error");
+    if (e?.message === "Validation fails") {
+      return res.status(400).json({ error: "Validation fails" });
+    }
+    return res.status(400).json({ error: true, message: e?.message || "payment provider error" });
+  }
+});
 // Serve public files (uploads/branding assets)
 app.use("/", express.static(require("path").join(process.cwd(), "public")));
 app.use("/branding", brandingRoutes);
