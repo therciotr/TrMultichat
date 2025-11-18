@@ -11,7 +11,11 @@ export async function list(req: Request, res: Response) {
   const offset = (pageNumber - 1) * limit;
   const tenantId = extractTenantIdFromAuth(req.headers.authorization as string);
   const isSuper = await isSuperFromAuth(req);
-  const where = !isSuper && tenantId ? { companyId: tenantId } : undefined;
+  // Non-super users: only see users from their own company and never super users
+  const where =
+    !isSuper && tenantId
+      ? { companyId: tenantId, super: false }
+      : undefined;
   const users = await findAllSafe("User", { where, offset, limit, order: [["updatedAt", "DESC"]] });
   return res.json({ users, hasMore: users.length === limit });
 }
@@ -34,9 +38,17 @@ export async function find(req: Request, res: Response) {
   }
   const tenantId = extractTenantIdFromAuth(req.headers.authorization as string);
   const isSuper = await isSuperFromAuth(req);
-  const userCompanyId = Number((user as any).companyId || 0);
-  if (!isSuper && tenantId && userCompanyId && userCompanyId !== tenantId) {
-    return res.status(403).json({ error: true, message: "forbidden" });
+  const plain: any = user;
+  const userCompanyId = Number(plain.companyId || 0);
+  const targetIsSuper = Boolean(plain.super);
+  // Non-super users cannot see users from other companies or any super user
+  if (!isSuper) {
+    if (tenantId && userCompanyId && userCompanyId !== tenantId) {
+      return res.status(403).json({ error: true, message: "forbidden" });
+    }
+    if (targetIsSuper) {
+      return res.status(403).json({ error: true, message: "forbidden" });
+    }
   }
   return res.json(user);
 }
@@ -48,8 +60,13 @@ export async function listByCompany(req: Request, res: Response) {
   if (!isSuper || !companyId) {
     companyId = tenantId;
   }
+  // For non-super users we also hide any super users from the list
+  const where: any = companyId ? { companyId } : {};
+  if (!isSuper) {
+    where.super = false;
+  }
   const users = await findAllSafe("User", {
-    where: companyId ? { companyId } : undefined,
+    where: Object.keys(where).length ? where : undefined,
     attributes: ["id", "name", "email", "companyId"],
     order: [["id", "ASC"]]
   });
