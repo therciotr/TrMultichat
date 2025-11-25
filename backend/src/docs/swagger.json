@@ -1,0 +1,69 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "TR Multichat API",
+    "version": "1.0.0"
+  },
+  "servers": [
+    { "url": "http://localhost:4004" }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT" }
+    },
+    "schemas": {
+      "PagedRecords": {
+        "type": "object",
+        "properties": {
+          "records": { "type": "array", "items": { "type": "object" } },
+          "hasMore": { "type": "boolean" }
+        }
+      },
+      "ContactsResponse": {
+        "type": "object",
+        "properties": {
+          "contacts": { "type": "array", "items": { "type": "object" } },
+          "hasMore": { "type": "boolean" }
+        }
+      },
+      "UsersResponse": {
+        "type": "object",
+        "properties": {
+          "users": { "type": "array", "items": { "type": "object" } },
+          "hasMore": { "type": "boolean" }
+        }
+      }
+    }
+  },
+  "security": [ { "bearerAuth": [] } ],
+  "paths": {
+    "/auth/login": {
+      "post": {
+        "summary": "Login",
+        "requestBody": { "required": true },
+        "responses": { "200": { "description": "OK" } }
+      }
+    },
+    "/auth/me": { "get": { "summary": "Current user", "responses": { "200": { "description": "OK" } } } },
+    "/contacts/": { "get": { "summary": "List contacts", "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ContactsResponse" } } } } } } },
+    "/users/": { "get": { "summary": "List users", "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UsersResponse" } } } } } } },
+    "/queue": { "get": { "summary": "List queues", "responses": { "200": { "description": "OK" } } } },
+    "/queueIntegration/": { "get": { "summary": "List queue integrations", "responses": { "200": { "description": "OK" } } } },
+    "/files/": { "get": { "summary": "List files", "responses": { "200": { "description": "OK" } } } },
+    "/prompt": { "get": { "summary": "List prompts", "responses": { "200": { "description": "OK" } } } },
+    "/tags/": { "get": { "summary": "List tags", "responses": { "200": { "description": "OK" } } } },
+    "/schedules/": { "get": { "summary": "List schedules", "responses": { "200": { "description": "OK" } } } },
+    "/announcements/": { "get": { "summary": "List announcements", "responses": { "200": { "description": "OK" } } } },
+    "/campaigns/": { "get": { "summary": "List campaigns", "responses": { "200": { "description": "OK" } } } },
+    "/contact-lists/": { "get": { "summary": "List contact lists", "responses": { "200": { "description": "OK" } } } },
+    "/quick-messages": { "get": { "summary": "List quick messages", "responses": { "200": { "description": "OK" } } } },
+    "/chats": { "get": { "summary": "List chats", "responses": { "200": { "description": "OK" } } } },
+    "/messages/{ticketId}": { "get": { "summary": "List messages for ticket", "parameters": [{"in":"path","name":"ticketId","required":true,"schema":{"type":"integer"}}], "responses": { "200": { "description": "OK" } } } },
+    "/whatsapp": { "get": { "summary": "List whatsapp", "responses": { "200": { "description": "OK" } } } }
+  }
+}
+
+
+
+
+

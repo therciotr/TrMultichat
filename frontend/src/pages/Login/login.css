@@ -1,0 +1,33 @@
+/* Brand background for login */
+.loginRoot {
+  min-height: 100vh;
+  width: 100%;
+  background: radial-gradient(circle at top, var(--tr-secondary) 0%, var(--tr-primary) 55%, #071f1d 100%);
+  position: relative;
+}
+
+/* tech overlay */
+.loginRoot::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    repeating-linear-gradient( 90deg, rgba(255,255,255,0.06) 0px, rgba(255,255,255,0.06) 1px, transparent 1px, transparent 24px ),
+    repeating-linear-gradient( 0deg, rgba(255,255,255,0.04) 0px, rgba(255,255,255,0.04) 1px, transparent 1px, transparent 24px );
+  pointer-events: none;
+}
+
+/* ensure content sits over overlay */
+.loginContent {
+  position: relative;
+  z-index: 1;
+}
+
+.tr-login-button {
+  background: linear-gradient(135deg, var(--tr-primary) 0%, var(--tr-secondary) 100%);
+  color: #fff;
+}
+
+.tr-login-title-group h1 {
+  color: var(--tr-primary);
+}

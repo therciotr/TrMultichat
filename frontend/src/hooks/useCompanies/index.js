@@ -1,0 +1,91 @@
+import api from "../../services/api";
+
+const useCompanies = () => {
+
+    const save = async (data) => {
+        const { data: responseData } = await api.request({
+            url: '/companies',
+            method: 'POST',
+            data
+        });
+        return responseData;
+    }
+
+    const findAll = async (id) => {
+        const { data } = await api.request({
+            url: `/companies`,
+            method: 'GET'
+        });
+        return data;
+    }
+
+    const list = async (id) => {
+        // tenta em ordem: /companies/list -> /companies/all -> /companies/safe
+        const paths = ['/companies/list', '/companies/all', '/companies/safe', '/companies-safe', '/companies'];
+        for (const p of paths) {
+            try {
+                const { data } = await api.request({ url: p, method: 'GET' });
+                if (Array.isArray(data)) return data;
+            } catch (_) {
+                // tenta o próximo
+            }
+        }
+        return [];
+    }
+
+    const find = async (id) => {
+        const { data } = await api.request({
+            url: `/companies/${id}`,
+            method: 'GET'
+        });
+        return data;
+    }
+
+    const finding = async (id) => {
+        const { data } = await api.request({
+            url: `/companies/${id}`,
+            method: 'GET'
+        });
+        return data;
+    }
+
+
+    const update = async (data) => {
+        const { data: responseData } = await api.request({
+            url: `/companies/${data.id}`,
+            method: 'PUT',
+            data
+        });
+        return responseData;
+    }
+
+    const remove = async (id) => {
+        const { data } = await api.request({
+            url: `/companies/${id}`,
+            method: 'DELETE'
+        });
+        return data;
+    }
+
+    const updateSchedules = async (data) => {
+        const { data: responseData } = await api.request({
+            url: `/companies/${data.id}/schedules`,
+            method: 'PUT',
+            data
+        });
+        return responseData;
+    }
+
+    return {
+        save,
+        update,
+        remove,
+        list,
+        find,
+        finding,
+        findAll,
+        updateSchedules
+    }
+}
+
+export default useCompanies;
