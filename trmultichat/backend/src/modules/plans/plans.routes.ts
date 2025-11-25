@@ -1,7 +1,29 @@
 import { Router } from "express";
-import { findAllSafe, getLegacyModel } from "../../utils/legacyModel";
+import { findAllSafe, findByPkSafe, getLegacyModel } from "../../utils/legacyModel";
 
 const router = Router();
+
+// GET /plans/:id - obter detalhes de um plano específico
+router.get("/:id", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!id) {
+      return res.status(400).json({ error: true, message: "invalid plan id" });
+    }
+
+    const plan = await findByPkSafe("Plan", id);
+    if (!plan) {
+      return res.status(404).json({ error: true, message: "not found" });
+    }
+
+    // garantir que a resposta contenha sempre a chave price
+    (plan as any).price = (plan as any).price ?? (plan as any).value ?? 0;
+
+    return res.json(plan);
+  } catch (e: any) {
+    return res.status(400).json({ error: true, message: e?.message || "get error" });
+  }
+});
 
 // GET /plans/list - lista de planos disponíveis
 router.get("/list", async (_req, res) => {
