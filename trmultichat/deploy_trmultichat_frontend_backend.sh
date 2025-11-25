@@ -4,7 +4,8 @@ set -e
 
 echo "==== TrMultichat deploy: backend ===="
 
-cd /home/deploy/trmultichat/backend
+# Caminho canônico do backend dentro do repositório trmultichat
+cd /home/deploy/trmultichat/trmultichat/backend
 
 if [ -d .git ]; then
   echo ">> git pull (backend)"
@@ -23,7 +24,8 @@ pm2 restart trmultichat-backend || pm2 start dist/server.js --name trmultichat-b
 echo
 echo "==== TrMultichat deploy: frontend ===="
 
-cd /home/deploy/trmultichat/frontend
+# Caminho canônico do frontend dentro do repositório trmultichat
+cd /home/deploy/trmultichat/trmultichat/frontend
 
 if [ -d .git ]; then
   echo ">> git pull (frontend)"
