@@ -6,7 +6,3 @@ export function hasCompanyId(Model: any): boolean {
     return false;
   }
 }
-
-
-
-

@@ -1,4 +1,8 @@
-import { Request, Response, NextFunction } from "express";
+import type {
+  Request as ExpressRequest,
+  Response,
+  NextFunction
+} from "express";
 import jwt from "jsonwebtoken";
 import env from "../config/env";
 
@@ -16,9 +20,17 @@ declare module "express-serve-static-core" {
   }
 }
 
-export function authMiddleware(req: Request, res: Response, next: NextFunction) {
-  const authHeader = req.headers["authorization"] || req.headers["Authorization"];
-  if (!authHeader || typeof authHeader !== "string" || !authHeader.startsWith("Bearer ")) {
+export function authMiddleware(
+  req: ExpressRequest,
+  res: Response,
+  next: NextFunction
+) {
+  const authHeader = req.headers.authorization || req.headers.Authorization;
+  if (
+    !authHeader ||
+    typeof authHeader !== "string" ||
+    !authHeader.startsWith("Bearer ")
+  ) {
     return res.status(401).json({ error: true, message: "Unauthorized" });
   }
 
@@ -35,6 +47,3 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction) 
     return res.status(401).json({ error: true, message: "Invalid token" });
   }
 }
-
-
-

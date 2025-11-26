@@ -39,12 +39,16 @@ function loadPrivateKey(): string | undefined {
   return undefined;
 }
 
-async function loadCompanyLicenseToken(companyId: number): Promise<string | undefined> {
+async function loadCompanyLicenseToken(
+  companyId: number
+): Promise<string | undefined> {
   // Try Setting model key=licenseToken
   try {
     const Setting = getLegacyModel("Setting");
     if (Setting && typeof Setting.findOne === "function") {
-      const row = await Setting.findOne({ where: { companyId, key: "licenseToken" } });
+      const row = await Setting.findOne({
+        where: { companyId, key: "licenseToken" }
+      });
       if (row) {
         const plain = row?.toJSON ? row.toJSON() : row;
         if (plain?.value) return String(plain.value);
@@ -72,9 +76,14 @@ async function loadCompanyLicenseToken(companyId: number): Promise<string | unde
   return undefined;
 }
 
-export async function validateLicenseForCompany(companyId: number): Promise<{ ok: boolean; payload?: any; error?: string }> {
+export async function validateLicenseForCompany(
+  companyId: number
+): Promise<{ ok: boolean; payload?: any; error?: string }> {
   const isProd = (process.env.NODE_ENV || "development") === "production";
-  const required = String(process.env.LICENSE_REQUIRED || (isProd ? "true" : "false")).toLowerCase() === "true";
+  const required =
+    String(
+      process.env.LICENSE_REQUIRED || (isProd ? "true" : "false")
+    ).toLowerCase() === "true";
   if (!required) return { ok: true };
   const pub = loadPublicKey();
   const token = await loadCompanyLicenseToken(companyId);
@@ -92,11 +101,15 @@ export async function validateLicenseForCompany(companyId: number): Promise<{ ok
 }
 
 // Strict versions: NÃO usam fallback global; úteis para exibir status por empresa
-export async function loadCompanyLicenseTokenOnlySetting(companyId: number): Promise<string | undefined> {
+export async function loadCompanyLicenseTokenOnlySetting(
+  companyId: number
+): Promise<string | undefined> {
   try {
     const Setting = getLegacyModel("Setting");
     if (Setting && typeof Setting.findOne === "function") {
-      const row = await Setting.findOne({ where: { companyId, key: "licenseToken" } });
+      const row = await Setting.findOne({
+        where: { companyId, key: "licenseToken" }
+      });
       if (row) {
         const plain = row?.toJSON ? row.toJSON() : row;
         if (plain?.value) return String(plain.value);
@@ -106,7 +119,9 @@ export async function loadCompanyLicenseTokenOnlySetting(companyId: number): Pro
   return undefined;
 }
 
-export async function validateLicenseForCompanyStrict(companyId: number): Promise<{ has: boolean; valid: boolean; payload?: any; error?: string }> {
+export async function validateLicenseForCompanyStrict(
+  companyId: number
+): Promise<{ has: boolean; valid: boolean; payload?: any; error?: string }> {
   const pub = loadPublicKey();
   const token = await loadCompanyLicenseTokenOnlySetting(companyId);
   if (!token) return { has: false, valid: false, error: "LICENSE_MISSING" };
@@ -155,5 +170,3 @@ export function generateLicenseToken(input: {
   });
   return { ok: true, token };
 }
-
-

@@ -28,7 +28,8 @@ function buildFromEnv(): MailConfig | null {
   const nodeEnv = String(process.env.NODE_ENV || "").toLowerCase();
 
   if (!host || !from) {
-    const msg = "[mailer] MAIL_HOST/MAIL_FROM not configured; skipping email send.";
+    const msg =
+      "[mailer] MAIL_HOST/MAIL_FROM not configured; skipping email send.";
     // eslint-disable-next-line no-console
     console.warn(msg);
     if (nodeEnv === "production") {
@@ -49,10 +50,19 @@ function buildFromEnv(): MailConfig | null {
     from
   });
 
-  return { host, port, secure, user: user || undefined, pass: pass || undefined, from };
+  return {
+    host,
+    port,
+    secure,
+    user: user || undefined,
+    pass: pass || undefined,
+    from
+  };
 }
 
-export async function resolveMailConfig(companyId?: number): Promise<MailConfig> {
+export async function resolveMailConfig(
+  companyId?: number
+): Promise<MailConfig> {
   if (companyId) {
     const s = await getCompanyMailSettings(companyId);
     if (s.mail_host && s.mail_from) {
@@ -66,7 +76,9 @@ export async function resolveMailConfig(companyId?: number): Promise<MailConfig>
       const Setting = getLegacyModel("Setting");
       let pass: string | undefined;
       if (Setting && typeof Setting.findOne === "function") {
-        const found = await Setting.findOne({ where: { companyId, key: "mail_pass" } });
+        const found = await Setting.findOne({
+          where: { companyId, key: "mail_pass" }
+        });
         const plain = found?.get ? found.get({ plain: true }) : found;
         pass = plain?.value || undefined;
       }
@@ -98,7 +110,10 @@ export async function resolveMailConfig(companyId?: number): Promise<MailConfig>
   throw new Error("No valid SMTP configuration (company or global)");
 }
 
-export async function sendMail(options: MailOptions, companyId?: number): Promise<void> {
+export async function sendMail(
+  options: MailOptions,
+  companyId?: number
+): Promise<void> {
   const cfg = await resolveMailConfig(companyId);
   const transporter = nodemailer.createTransport({
     host: cfg.host,
@@ -157,4 +172,3 @@ export async function sendPasswordResetMail(
 
   await sendMail({ to, subject, text, html }, companyId);
 }
-

@@ -1,6 +1,7 @@
 /* Helper to load legacy (compiled) Sequelize models from the mounted legacy app.
  * We avoid hard dependencies so local DEV works even without full models.
  */
+/* eslint-disable import/extensions, import/no-unresolved */
 
 export function getLegacyModel(modelName: string): any | undefined {
   try {
@@ -20,7 +21,11 @@ export function getLegacyModel(modelName: string): any | undefined {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const path = require("path");
         // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const mod = require(path.resolve(process.cwd(), "dist/models", modelName));
+        const mod = require(path.resolve(
+          process.cwd(),
+          "dist/models",
+          modelName
+        ));
         return (mod && (mod.default || mod)) || undefined;
       } catch (_e2) {
         return undefined;
@@ -29,7 +34,10 @@ export function getLegacyModel(modelName: string): any | undefined {
   }
 }
 
-export async function findAllSafe(modelName: string, options: any = {}): Promise<any[]> {
+export async function findAllSafe(
+  modelName: string,
+  options: any = {}
+): Promise<any[]> {
   const Model = getLegacyModel(modelName);
   if (Model && typeof Model.findAll === "function") {
     try {
@@ -44,7 +52,10 @@ export async function findAllSafe(modelName: string, options: any = {}): Promise
   return [];
 }
 
-export async function findByPkSafe(modelName: string, id: number): Promise<any | null> {
+export async function findByPkSafe(
+  modelName: string,
+  id: number
+): Promise<any | null> {
   const Model = getLegacyModel(modelName);
   if (Model && typeof Model.findByPk === "function") {
     try {
@@ -62,7 +73,9 @@ export function getSequelize(): any | undefined {
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const mod = require("../models");
-    const sequelize = (mod && (mod.sequelize || (mod.default && mod.default.sequelize))) || undefined;
+    const sequelize =
+      (mod && (mod.sequelize || (mod.default && mod.default.sequelize))) ||
+      undefined;
     if (sequelize) return sequelize;
   } catch {}
   try {
@@ -70,14 +83,19 @@ export function getSequelize(): any | undefined {
     const path = require("path");
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const mod = require(path.resolve(process.cwd(), "dist", "models"));
-    const sequelize = (mod && (mod.sequelize || (mod.default && mod.default.sequelize))) || undefined;
+    const sequelize =
+      (mod && (mod.sequelize || (mod.default && mod.default.sequelize))) ||
+      undefined;
     if (sequelize) return sequelize;
   } catch {}
   // Fallback: use obfuscated TypeScript Sequelize instance from database module
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const db = require("../database");
-    const sequelize = (db && (db.sequelize || db.default || (db.default && db.default.sequelize))) || undefined;
+    const sequelize =
+      (db &&
+        (db.sequelize || db.default || (db.default && db.default.sequelize))) ||
+      undefined;
     if (sequelize) return sequelize;
   } catch {}
   try {
@@ -85,13 +103,11 @@ export function getSequelize(): any | undefined {
     const path = require("path");
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const db = require(path.resolve(process.cwd(), "dist", "database"));
-    const sequelize = (db && (db.sequelize || db.default || (db.default && db.default.sequelize))) || undefined;
+    const sequelize =
+      (db &&
+        (db.sequelize || db.default || (db.default && db.default.sequelize))) ||
+      undefined;
     if (sequelize) return sequelize;
   } catch {}
   return undefined;
 }
-
-
-
-
-

@@ -24,13 +24,16 @@ function getArg(name: string, fallback?: string): string | undefined {
 function parseExpiry(input?: string): number | undefined {
   if (!input) return undefined;
   const dt = new Date(input);
-  if (isNaN(dt.getTime())) throw new Error(`Invalid --expires date: ${input}`);
+  if (Number.isNaN(dt.getTime())) {
+    throw new Error(`Invalid --expires date: ${input}`);
+  }
   return Math.floor(dt.getTime() / 1000);
 }
 
 function main() {
   const privateKeyPath = getArg("privateKeyPath");
-  if (!privateKeyPath) throw new Error("--privateKeyPath is required (PEM RSA private key)");
+  if (!privateKeyPath)
+    throw new Error("--privateKeyPath is required (PEM RSA private key)");
   const privateKey = fs.readFileSync(path.resolve(privateKeyPath), "utf8");
 
   const company = getArg("company", "Unknown");
@@ -69,5 +72,3 @@ try {
   console.error(e?.message || e);
   process.exit(1);
 }
-
-

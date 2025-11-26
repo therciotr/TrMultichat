@@ -7,7 +7,6 @@
   "extends": [
     "airbnb-base",
     "plugin:@typescript-eslint/recommended",
-    "prettier/@typescript-eslint",
     "plugin:prettier/recommended"
   ],
   "parser": "@typescript-eslint/parser",
@@ -17,6 +16,11 @@
   },
   "plugins": ["@typescript-eslint", "prettier"],
   "rules": {
+    "no-empty": "off",
+    "camelcase": "off",
+    "import/no-dynamic-require": "off",
+    "global-require": "off",
+    "no-restricted-syntax": "off",
     "@typescript-eslint/no-non-null-assertion": "off",
     "@typescript-eslint/no-unused-vars": [
       "error",

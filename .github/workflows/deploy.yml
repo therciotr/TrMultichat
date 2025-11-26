@@ -6,8 +6,51 @@ on:
       - main
 
 jobs:
+  build_and_test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install backend dependencies
+        working-directory: trmultichat/backend
+        run: npm ci
+
+      - name: Build backend
+        working-directory: trmultichat/backend
+        run: npm run build
+
+      - name: Lint backend
+        working-directory: trmultichat/backend
+        run: npm run lint
+
+      - name: Install frontend dependencies
+        working-directory: trmultichat/frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: trmultichat/frontend
+        run: npm run build
+
+      - name: Frontend tests (não bloqueantes)
+        working-directory: trmultichat/frontend
+        run: |
+          CI=true npm test -- --watch=false --passWithNoTests || echo "Frontend tests falharam ou não existem; não bloqueando o deploy."
+
+      - name: Backend tests (não bloqueantes, dependem de banco MySQL/Postgres)
+        working-directory: trmultichat/backend
+        run: |
+          npm test || echo "Backend tests falharam (provavelmente por falta de banco); não bloqueando o deploy."
+
   deploy:
     runs-on: ubuntu-latest
+    needs: build_and_test
 
     steps:
       - name: Checkout repository

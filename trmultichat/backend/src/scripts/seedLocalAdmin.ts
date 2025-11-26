@@ -1,10 +1,13 @@
 import dotenv from "dotenv";
 import bcrypt from "bcryptjs";
+
+/* eslint-disable import/extensions, import/no-unresolved */
+
 dotenv.config();
 
 async function run() {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const sequelize = (require("../database").default || require("../database"));
+  const sequelize = require("../database").default || require("../database");
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const CompanyModel = require("../models/Company");
   // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -40,7 +43,11 @@ async function run() {
   });
 
   if (user) {
-    await user.update({ companyId: company.id, admin: true, passwordHash: hash });
+    await user.update({
+      companyId: company.id,
+      admin: true,
+      passwordHash: hash
+    });
   }
 
   // eslint-disable-next-line no-console
@@ -51,10 +58,10 @@ async function run() {
   console.log("User:", user.email);
 }
 
-run().then(() => process.exit(0)).catch(err => {
-  // eslint-disable-next-line no-console
-  console.error(err);
-  process.exit(1);
-});
-
-
+run()
+  .then(() => process.exit(0))
+  .catch(err => {
+    // eslint-disable-next-line no-console
+    console.error(err);
+    process.exit(1);
+  });

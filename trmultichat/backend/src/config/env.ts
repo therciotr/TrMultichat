@@ -44,7 +44,10 @@ const env: Env = {
   PORT: toNumber(process.env.PORT, 4004),
   DEV_MODE: process.env.DEV_MODE,
   JWT_SECRET: required("JWT_SECRET", process.env.JWT_SECRET),
-  JWT_REFRESH_SECRET: required("JWT_REFRESH_SECRET", process.env.JWT_REFRESH_SECRET),
+  JWT_REFRESH_SECRET: required(
+    "JWT_REFRESH_SECRET",
+    process.env.JWT_REFRESH_SECRET
+  ),
   POSTGRES_HOST: process.env.POSTGRES_HOST || "localhost",
   POSTGRES_PORT: toNumber(process.env.POSTGRES_PORT, 5432),
   POSTGRES_DB: process.env.POSTGRES_DB || "trmultichat",
@@ -53,9 +56,14 @@ const env: Env = {
   REDIS_HOST: process.env.REDIS_HOST || "localhost",
   REDIS_PORT: toNumber(process.env.REDIS_PORT, 6379),
   REDIS_PASSWORD: process.env.REDIS_PASSWORD,
-  MULTI_TENANT: String(process.env.MULTI_TENANT || "true").toLowerCase() === "true",
-  DEFAULT_PLAN_MAX_USERS: process.env.DEFAULT_PLAN_MAX_USERS ? Number(process.env.DEFAULT_PLAN_MAX_USERS) : undefined,
-  DEFAULT_PLAN_MAX_WHATS: process.env.DEFAULT_PLAN_MAX_WHATS ? Number(process.env.DEFAULT_PLAN_MAX_WHATS) : undefined,
+  MULTI_TENANT:
+    String(process.env.MULTI_TENANT || "true").toLowerCase() === "true",
+  DEFAULT_PLAN_MAX_USERS: process.env.DEFAULT_PLAN_MAX_USERS
+    ? Number(process.env.DEFAULT_PLAN_MAX_USERS)
+    : undefined,
+  DEFAULT_PLAN_MAX_WHATS: process.env.DEFAULT_PLAN_MAX_WHATS
+    ? Number(process.env.DEFAULT_PLAN_MAX_WHATS)
+    : undefined,
   API_BASE_URL: process.env.API_BASE_URL,
   APP_BASE_URL: process.env.APP_BASE_URL,
   ALLOW_ORIGIN: process.env.ALLOW_ORIGIN,
@@ -63,6 +71,3 @@ const env: Env = {
 };
 
 export default env;
-
-
-

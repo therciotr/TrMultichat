@@ -1,15 +1,22 @@
 /* Minimal e2e-like check for reset-password endpoint using a real token */
 import http from "http";
 
-function postJson(url: string, data: unknown): Promise<{ status: number; body: string }> {
+function postJson(
+  url: string,
+  data: unknown
+): Promise<{ status: number; body: string }> {
   return new Promise((resolve, reject) => {
     try {
       const u = new URL(url);
       const payload = Buffer.from(JSON.stringify(data), "utf8");
+      let port = u.port ? Number(u.port) : 0;
+      if (!port) {
+        port = u.protocol === "https:" ? 443 : 80;
+      }
       const req = http.request(
         {
           hostname: u.hostname,
-          port: u.port ? Number(u.port) : (u.protocol === "https:" ? 443 : 80),
+          port,
           path: u.pathname + (u.search || ""),
           method: "POST",
           headers: {
@@ -17,11 +24,16 @@ function postJson(url: string, data: unknown): Promise<{ status: number; body: s
             "Content-Length": String(payload.length)
           }
         },
-        (res) => {
+        res => {
           const chunks: Buffer[] = [];
-          res.on("data", (c) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
+          res.on("data", c =>
+            chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c))
+          );
           res.on("end", () => {
-            resolve({ status: res.statusCode || 0, body: Buffer.concat(chunks).toString("utf8") });
+            resolve({
+              status: res.statusCode || 0,
+              body: Buffer.concat(chunks).toString("utf8")
+            });
           });
         }
       );
@@ -84,7 +96,10 @@ async function main() {
   }
 
   // 3) Invalid token should NOT succeed with ok=true
-  const invalidRes = await postJson(resetUrl, { token: "token-invalido", password: newPassword });
+  const invalidRes = await postJson(resetUrl, {
+    token: "token-invalido",
+    password: newPassword
+  });
   let invalidIsOk = false;
   try {
     const json = JSON.parse(invalidRes.body);
@@ -93,17 +108,21 @@ async function main() {
     invalidIsOk = false;
   }
   if (invalidIsOk || invalidRes.status < 400) {
-    console.error("FAIL_INVALID_TOKEN", { status: invalidRes.status, body: invalidRes.body });
+    console.error("FAIL_INVALID_TOKEN", {
+      status: invalidRes.status,
+      body: invalidRes.body
+    });
     process.exit(1);
   }
 
-  console.log("OK_RESET_FLOW", { statusFirst: okRes.status, statusInvalid: invalidRes.status });
+  console.log("OK_RESET_FLOW", {
+    statusFirst: okRes.status,
+    statusInvalid: invalidRes.status
+  });
   process.exit(0);
 }
 
-main().catch((e) => {
+main().catch(e => {
   console.error("FAIL_EX", e?.message || e);
   process.exit(1);
 });
-
-

@@ -10,9 +10,12 @@ async function main() {
 
   const masterCompanyId = Number(process.env.MASTER_COMPANY_ID || 1);
 
-  await sequelize.query('UPDATE "Users" SET "super" = false WHERE "companyId" <> :cid', {
-    replacements: { cid: masterCompanyId }
-  });
+  await sequelize.query(
+    'UPDATE "Users" SET "super" = false WHERE "companyId" <> :cid',
+    {
+      replacements: { cid: masterCompanyId }
+    }
+  );
 
   const masterEmail = process.env.MASTER_EMAIL;
   if (masterEmail) {
@@ -27,12 +30,8 @@ async function main() {
   process.exit(0);
 }
 
-main().catch((e) => {
+main().catch(e => {
   // eslint-disable-next-line no-console
   console.error(e);
   process.exit(1);
 });
-
-
-
-

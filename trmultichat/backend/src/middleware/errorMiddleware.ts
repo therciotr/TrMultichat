@@ -1,7 +1,12 @@
 import { Request, Response, NextFunction } from "express";
 import env from "../config/env";
 
-export function errorMiddleware(err: any, _req: Request, res: Response, _next: NextFunction) {
+export function errorMiddleware(
+  err: any,
+  _req: Request,
+  res: Response,
+  _next: NextFunction
+) {
   const status = err?.status || err?.statusCode || 500;
   const message = err?.message || "Internal server error";
   const body: any = { error: true, message };
@@ -10,5 +15,3 @@ export function errorMiddleware(err: any, _req: Request, res: Response, _next: N
   }
   return res.status(status).json(body);
 }
-
-

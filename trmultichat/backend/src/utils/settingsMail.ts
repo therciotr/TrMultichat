@@ -18,7 +18,9 @@ export type MailSettingsDto = {
   mail_secure?: boolean;
 };
 
-export async function getCompanyMailSettings(companyId: number): Promise<CompanyMailSettings> {
+export async function getCompanyMailSettings(
+  companyId: number
+): Promise<CompanyMailSettings> {
   const Setting = getLegacyModel("Setting");
   if (!Setting || typeof Setting.findAll !== "function") {
     return {
@@ -42,8 +44,9 @@ export async function getCompanyMailSettings(companyId: number): Promise<Company
   const mail_port = map.get("mail_port") ? Number(map.get("mail_port")) : null;
   const mail_user = map.get("mail_user") || null;
   const mail_from = map.get("mail_from") || null;
-  const mail_secure =
-    map.has("mail_secure") ? String(map.get("mail_secure")).toLowerCase() === "true" : null;
+  const mail_secure = map.has("mail_secure")
+    ? String(map.get("mail_secure")).toLowerCase() === "true"
+    : null;
   const hasPassword = map.has("mail_pass") && !!map.get("mail_pass");
 
   return {
@@ -72,11 +75,17 @@ export async function saveCompanyMailSettings(
     }
   }
 
-  if (dto.mail_host !== undefined) await upsert("mail_host", dto.mail_host || "");
+  if (dto.mail_host !== undefined)
+    await upsert("mail_host", dto.mail_host || "");
   if (dto.mail_port !== undefined)
-    await upsert("mail_port", dto.mail_port != null ? String(dto.mail_port) : "");
-  if (dto.mail_user !== undefined) await upsert("mail_user", dto.mail_user || "");
-  if (dto.mail_from !== undefined) await upsert("mail_from", dto.mail_from || "");
+    await upsert(
+      "mail_port",
+      dto.mail_port != null ? String(dto.mail_port) : ""
+    );
+  if (dto.mail_user !== undefined)
+    await upsert("mail_user", dto.mail_user || "");
+  if (dto.mail_from !== undefined)
+    await upsert("mail_from", dto.mail_from || "");
   if (dto.mail_secure !== undefined)
     await upsert("mail_secure", dto.mail_secure ? "true" : "false");
 
@@ -84,7 +93,3 @@ export async function saveCompanyMailSettings(
     await upsert("mail_pass", dto.mail_pass);
   }
 }
-
-
-
-

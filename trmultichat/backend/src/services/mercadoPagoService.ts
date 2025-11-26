@@ -1,5 +1,5 @@
-import { getLegacyModel } from "../utils/legacyModel";
 import request from "request";
+import { getLegacyModel } from "../utils/legacyModel";
 
 export type MpPixLikeResponse = {
   valor: { original: string };
@@ -8,11 +8,15 @@ export type MpPixLikeResponse = {
   raw?: any;
 };
 
-export async function getCompanyAccessToken(companyId: number): Promise<string | undefined> {
+export async function getCompanyAccessToken(
+  companyId: number
+): Promise<string | undefined> {
   try {
     const Setting = getLegacyModel("Setting");
     if (Setting && typeof Setting.findOne === "function") {
-      const row = await Setting.findOne({ where: { companyId, key: "mpAccessToken" } });
+      const row = await Setting.findOne({
+        where: { companyId, key: "mpAccessToken" }
+      });
       if (row) {
         const plain = row?.toJSON ? row.toJSON() : row;
         if (plain?.value) return String(plain.value);
@@ -21,7 +25,11 @@ export async function getCompanyAccessToken(companyId: number): Promise<string |
   } catch {
     // ignore and fallback to env
   }
-  return process.env.MERCADOPAGO_ACCESS_TOKEN || process.env.MP_ACCESS_TOKEN || process.env.MERCADOPAGO_ACCESS_TOKEN;
+  return (
+    process.env.MERCADOPAGO_ACCESS_TOKEN ||
+    process.env.MP_ACCESS_TOKEN ||
+    process.env.MERCADOPAGO_ACCESS_TOKEN
+  );
 }
 
 type CreateSubscriptionInput = {
@@ -32,7 +40,9 @@ type CreateSubscriptionInput = {
   connections: number;
 };
 
-export async function createSubscriptionPreference(input: CreateSubscriptionInput): Promise<MpPixLikeResponse> {
+export async function createSubscriptionPreference(
+  input: CreateSubscriptionInput
+): Promise<MpPixLikeResponse> {
   const { companyId, invoiceId, price } = input;
 
   const token = await getCompanyAccessToken(companyId);
@@ -78,16 +88,25 @@ export async function createSubscriptionPreference(input: CreateSubscriptionInpu
         if (err) return reject(err);
         try {
           const initPoint: string =
-            (data && (data.init_point || data.sandbox_init_point || data.external_resource_url)) || "";
+            (data &&
+              (data.init_point ||
+                data.sandbox_init_point ||
+                data.external_resource_url)) ||
+            "";
           if (!initPoint) {
-            return reject(new Error("invalid Mercado Pago response (missing init_point)"));
+            return reject(
+              new Error("invalid Mercado Pago response (missing init_point)")
+            );
           }
           const priceStr =
             typeof normalizedPrice === "number"
-              ? normalizedPrice.toLocaleString("pt-br", {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2
-                }).replace(/\./g, "").replace(",", ".")
+              ? normalizedPrice
+                  .toLocaleString("pt-br", {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2
+                  })
+                  .replace(/\./g, "")
+                  .replace(",", ".")
               : String(normalizedPrice);
 
           const response: MpPixLikeResponse = {
@@ -103,6 +122,3 @@ export async function createSubscriptionPreference(input: CreateSubscriptionInpu
     );
   });
 }
-
-
-

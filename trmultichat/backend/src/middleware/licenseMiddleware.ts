@@ -9,12 +9,16 @@ function loadPublicKey(): string | undefined {
 
   const b64 = process.env.LICENSE_PUBLIC_KEY_BASE64;
   if (b64) {
-    try { return Buffer.from(b64, "base64").toString("utf8"); } catch (_) {}
+    try {
+      return Buffer.from(b64, "base64").toString("utf8");
+    } catch (_) {}
   }
 
   const p = process.env.LICENSE_PUBLIC_KEY_PATH;
   if (p) {
-    try { return fs.readFileSync(path.resolve(p), "utf8"); } catch (_) {}
+    try {
+      return fs.readFileSync(path.resolve(p), "utf8");
+    } catch (_) {}
   }
   return undefined;
 }
@@ -43,10 +47,18 @@ function loadLicenseToken(): string | undefined {
   return undefined;
 }
 
-export function licenseMiddleware(req: Request, res: Response, next: NextFunction) {
+export function licenseMiddleware(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
   const isProd = (process.env.NODE_ENV || "development") === "production";
-  const devMode = String(process.env.DEV_MODE || "false").toLowerCase() === "true";
-  const required = String(process.env.LICENSE_REQUIRED || (isProd ? "true" : "false")).toLowerCase() === "true";
+  const devMode =
+    String(process.env.DEV_MODE || "false").toLowerCase() === "true";
+  const required =
+    String(
+      process.env.LICENSE_REQUIRED || (isProd ? "true" : "false")
+    ).toLowerCase() === "true";
 
   if (!isProd && devMode) {
     return next();
@@ -59,7 +71,9 @@ export function licenseMiddleware(req: Request, res: Response, next: NextFunctio
   const pub = loadPublicKey();
   const token = loadLicenseToken();
   if (!pub || !token) {
-    return res.status(401).json({ error: "LICENSE_MISSING", message: "License not configured" });
+    return res
+      .status(401)
+      .json({ error: "LICENSE_MISSING", message: "License not configured" });
   }
 
   try {
@@ -73,8 +87,9 @@ export function licenseMiddleware(req: Request, res: Response, next: NextFunctio
     (req as any).license = payload;
     return next();
   } catch (e: any) {
-    return res.status(401).json({ error: "LICENSE_INVALID", message: e?.message || "invalid license" });
+    return res.status(401).json({
+      error: "LICENSE_INVALID",
+      message: e?.message || "invalid license"
+    });
   }
 }
-
-
