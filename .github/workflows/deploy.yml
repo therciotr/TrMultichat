@@ -36,23 +36,7 @@ jobs:
           if [ ! -f public/index.html ]; then
             echo "Creating fallback public/index.html for CRA build..."
             mkdir -p public
-            cat > public/index.html << 'HTML'
-            <!DOCTYPE html>
-            <html lang="en">
-              <head>
-                <script type="text/javascript">
-                  document.title = "%REACT_APP_TITLE%"
-                </script>
-                <title></title>
-                <meta charset="utf-8" />
-                <meta name="viewport" content="minimum-scale=1, initial-scale=1, width=device-width" />
-              </head>
-              <body>
-                <noscript>You need to enable JavaScript to run this app.</noscript>
-                <div id="root"></div>
-              </body>
-            </html>
-            HTML
+            echo '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8" /><meta name="viewport" content="minimum-scale=1, initial-scale=1, width=device-width" /><script type="text/javascript">document.title="%REACT_APP_TITLE%"</script><title></title></head><body><noscript>You need to enable JavaScript to run this app.</noscript><div id="root"></div></body></html>' > public/index.html
           fi
 
       - name: Install frontend dependencies
