@@ -1,7 +1,7 @@
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import env from "../../config/env";
-import { getLegacyModel } from "../../utils/legacyModel";
+import { getLegacyModel, getSequelize } from "../../utils/legacyModel";
 
 type LoginInput = { email: string; password: string };
 
@@ -47,6 +47,8 @@ export async function login({ email, password }: LoginInput): Promise<{ user: Au
     }
   }
   try {
+    // Ensure legacy Sequelize models are initialized (bootstrap Sequelize + addModels)
+    getSequelize();
     // Load legacy Sequelize User model (works in dist or ts-node-dev)
     const User = getLegacyModel("User");
     if (!User) throw Object.assign(new Error("User model unavailable"), { status: 500 });
