@@ -80,8 +80,15 @@ jobs:
             echo "[DEPLOY] Pulling latest code from main..."
             git pull origin main
 
-            echo "[DEPLOY] Running existing deploy script: trmultichat/deploy_trmultichat_frontend_backend.sh"
-            bash trmultichat/deploy_trmultichat_frontend_backend.sh
+            echo "[DEPLOY] Running existing deploy script..."
+            if [ -f trmultichat/deploy_trmultichat_frontend_backend.sh ]; then
+              bash trmultichat/deploy_trmultichat_frontend_backend.sh
+            elif [ -f deploy_trmultichat_frontend_backend.sh ]; then
+              bash deploy_trmultichat_frontend_backend.sh
+            else
+              echo "[DEPLOY] ERRO: Script deploy_trmultichat_frontend_backend.sh não encontrado nem na raiz nem em trmultichat/."
+              exit 1
+            fi
 
             echo "[DEPLOY] Done."
           EOF
