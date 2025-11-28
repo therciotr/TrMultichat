@@ -20,7 +20,7 @@ jobs:
 
       - name: Install backend dependencies
         working-directory: trmultichat/backend
-        run: npm ci
+        run: npm install --legacy-peer-deps
 
       - name: Build backend
         working-directory: trmultichat/backend
