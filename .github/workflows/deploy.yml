@@ -52,7 +52,7 @@ jobs:
                 <div id="root"></div>
               </body>
             </html>
-HTML
+            HTML
           fi
 
       - name: Install frontend dependencies
