@@ -46,6 +46,7 @@ jobs:
       - name: Build frontend
         working-directory: trmultichat/frontend
         env:
+          CI: ""
           NODE_OPTIONS: --openssl-legacy-provider
         run: |
           NODE_OPTIONS=--openssl-legacy-provider npm run build
