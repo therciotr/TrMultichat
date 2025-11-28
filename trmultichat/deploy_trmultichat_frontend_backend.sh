@@ -2,10 +2,14 @@
 
 set -e
 
+# Descobre diretório do script e raiz do repo
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
 echo "==== TrMultichat deploy: backend ===="
 
 # Caminho canônico do backend dentro do repositório trmultichat
-cd /home/deploy/trmultichat/trmultichat/backend
+cd "$REPO_ROOT/trmultichat/backend"
 
 if [ -d .git ]; then
   echo ">> git pull (backend)"
@@ -25,7 +29,7 @@ echo
 echo "==== TrMultichat deploy: frontend ===="
 
 # Caminho do frontend em producao (estrutura atual na VPS)
-cd /home/deploy/trmultichat/trmultichat/frontend
+cd "$REPO_ROOT/trmultichat/frontend"
 
 if [ -d .git ]; then
   echo ">> git pull (frontend)"
