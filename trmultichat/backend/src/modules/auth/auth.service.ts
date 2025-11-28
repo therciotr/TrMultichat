@@ -50,7 +50,7 @@ export async function login({ email, password }: LoginInput): Promise<{ user: Au
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const db = require("../../database").default || require("../../database");
     const [rows] = await db.query(
-      'SELECT id, name, email, "companyId", admin, profile, "passwordHash" FROM "Users" WHERE lower(email)=lower(:email) LIMIT 1',
+      'SELECT id, name, email, "companyId", profile, "passwordHash", "super" FROM "Users" WHERE lower(email)=lower(:email) LIMIT 1',
       { replacements: { email: email.toLowerCase() } }
     );
     const row: any = Array.isArray(rows) && (rows as any[])[0];
@@ -68,13 +68,14 @@ export async function login({ email, password }: LoginInput): Promise<{ user: Au
       throw Object.assign(new Error("Invalid credentials"), { status: 401 });
     }
 
+    const isAdmin = Boolean((row as any).super) || String((row as any).profile || "").toLowerCase() === "admin";
     const user: AuthUser = {
       id: Number(row.id),
       name: String(row.name || ""),
       email: String(row.email || ""),
       tenantId: Number(row.companyId || 0),
-      admin: Boolean((row as any).admin),
-      profile: String((row as any).profile || (Boolean((row as any).admin) ? "admin" : "user"))
+      admin: isAdmin,
+      profile: String((row as any).profile || (isAdmin ? "admin" : "user"))
     };
   
     const accessToken = jwt.sign(
