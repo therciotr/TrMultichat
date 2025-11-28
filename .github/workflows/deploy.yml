@@ -32,11 +32,14 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: trmultichat/frontend
-        run: npm ci
+        run: npm install --legacy-peer-deps
 
       - name: Build frontend
         working-directory: trmultichat/frontend
-        run: npm run build
+        env:
+          NODE_OPTIONS: --openssl-legacy-provider
+        run: |
+          NODE_OPTIONS=--openssl-legacy-provider npm run build
 
       - name: Frontend tests (não bloqueantes)
         working-directory: trmultichat/frontend
