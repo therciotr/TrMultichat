@@ -42,16 +42,11 @@ export async function login(req: Request, res: Response) {
     ? settings.map((s: any) => ({ key: s.key, value: String(s.value) }))
     : [];
 
-  // load admin/profile from DB to expose to frontend
-  const User2 = isDev ? undefined : getLegacyModel("User");
-  let dbUser = User2?.findByPk ? await User2.findByPk(result.user.id) : undefined;
-  if (!dbUser && String(process.env.DEV_MODE || "false").toLowerCase() === "true") {
-    dbUser = { id: result.user.id, admin: true, profile: "admin", super: true };
-  }
-  const plainLogin = dbUser?.get ? dbUser.get({ plain: true }) : dbUser;
-  const isAdmin = Boolean(plainLogin?.admin);
-  const profile = String(plainLogin?.profile || (isAdmin ? "admin" : "user"));
-  const isSuper = Boolean(plainLogin?.super);
+  // admin/profile information já vem calculada de forma correta no result.user (via AuthService.login)
+  const isAdmin = Boolean(result.user.admin);
+  const profile = String(result.user.profile || (isAdmin ? "admin" : "user"));
+  // Em bancos antigos o campo "super" não existia; aqui consideramos super se for admin do tenant 1
+  const isSuper = Boolean(isAdmin && result.user.tenantId === 1);
 
   const legacy = {
     token: result.accessToken,
