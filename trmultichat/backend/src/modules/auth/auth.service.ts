@@ -1,7 +1,6 @@
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import env from "../../config/env";
-import { getLegacyModel, getSequelize } from "../../utils/legacyModel";
 
 type LoginInput = { email: string; password: string };
 
@@ -47,33 +46,35 @@ export async function login({ email, password }: LoginInput): Promise<{ user: Au
     }
   }
   try {
-    // Ensure legacy Sequelize models are initialized (bootstrap Sequelize + addModels)
-    getSequelize();
-    // Load legacy Sequelize User model (works in dist or ts-node-dev)
-    const User = getLegacyModel("User");
-    if (!User) throw Object.assign(new Error("User model unavailable"), { status: 500 });
-    const userInstance = await User.findOne({ where: { email } });
-    if (!userInstance) {
+    // Use legacy Sequelize connection directly via raw SQL to avoid model init issues
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const db = require("../../database").default || require("../../database");
+    const [rows] = await db.query(
+      'SELECT id, name, email, "companyId", admin, profile, "passwordHash" FROM "Users" WHERE lower(email)=lower(:email) LIMIT 1',
+      { replacements: { email: email.toLowerCase() } }
+    );
+    const row: any = Array.isArray(rows) && (rows as any[])[0];
+    if (!row) {
       throw Object.assign(new Error("Invalid credentials"), { status: 401 });
     }
-  
-    const passwordHash: string | undefined = userInstance.passwordHash;
+
+    const passwordHash: string | undefined = row.passwordHash;
     if (!passwordHash) {
       throw Object.assign(new Error("Invalid credentials"), { status: 401 });
     }
-  
+
     const ok = await bcrypt.compare(password, passwordHash);
     if (!ok) {
       throw Object.assign(new Error("Invalid credentials"), { status: 401 });
     }
-  
+
     const user: AuthUser = {
-      id: userInstance.id,
-      name: userInstance.name,
-      email: userInstance.email,
-      tenantId: userInstance.companyId,
-      admin: Boolean((userInstance as any).admin),
-      profile: String((userInstance as any).profile || (Boolean((userInstance as any).admin) ? "admin" : "user"))
+      id: Number(row.id),
+      name: String(row.name || ""),
+      email: String(row.email || ""),
+      tenantId: Number(row.companyId || 0),
+      admin: Boolean((row as any).admin),
+      profile: String((row as any).profile || (Boolean((row as any).admin) ? "admin" : "user"))
     };
   
     const accessToken = jwt.sign(
