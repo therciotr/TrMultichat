@@ -84,7 +84,7 @@ export async function createSubscriptionPreference(
         json: true,
         body: payload
       },
-      (err, _resp, data) => {
+      (err, resp, data) => {
         if (err) return reject(err);
         try {
           const initPoint: string =
@@ -94,9 +94,12 @@ export async function createSubscriptionPreference(
                 data.external_resource_url)) ||
             "";
           if (!initPoint) {
-            return reject(
-              new Error("invalid Mercado Pago response (missing init_point)")
-            );
+            // Expor motivo real do erro para facilitar diagnóstico
+            const mpMsg =
+              (data && (data.message || data.error || data.description)) ||
+              (resp && resp.statusCode && `status ${resp.statusCode}`) ||
+              "invalid Mercado Pago response (missing init_point)";
+            return reject(new Error(`Mercado Pago error: ${mpMsg}`));
           }
           const priceStr =
             typeof normalizedPrice === "number"
