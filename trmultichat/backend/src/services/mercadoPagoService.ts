@@ -63,7 +63,7 @@ export async function createSubscriptionPreference(
     payerLastName,
     payerDocType,
     payerDocNumber,
-    payerZipCode,
+    payerZipCode, // mantido para uso futuro, se necessário
     payerStreet,
     payerStreetNumber
   } = input;
@@ -91,27 +91,29 @@ export async function createSubscriptionPreference(
       : String(normalizedPrice);
 
   // Preferência de pagamento PIX via /v1/payments (payment_method_id: "pix")
+  // E-mail do pagador: usa, nesta ordem:
+  // 1) payerEmail informado
+  // 2) MERCADOPAGO_PAYER_EMAIL (se existir)
+  // 3) E-mail da conta Mercado Pago (fallback conhecido)
+  const fallbackAccountEmail =
+    process.env.MERCADOPAGO_PAYER_EMAIL || "compras@trgraf.com.br";
+  const finalPayerEmail = payerEmail || fallbackAccountEmail;
+
   const pixPayload: any = {
     transaction_amount: normalizedPrice,
     description: `Fatura #${invoiceId || ""}`,
     payment_method_id: "pix",
-    // Payer com dados reais sempre que possível
+    // Payer mínimo exigido pelo Mercado Pago PIX
     payer: {
-      email: payerEmail || "",
+      email: finalPayerEmail,
       first_name: payerFirstName || "",
       last_name: payerLastName || "",
-      identification: {
-        type: payerDocType || "",
-        number: payerDocNumber || ""
-      },
-      address: {
-        zip_code: payerZipCode || "",
-        street_name: payerStreet || "",
-        street_number:
-          payerStreetNumber !== undefined && payerStreetNumber !== null
-            ? String(payerStreetNumber)
-            : ""
-      }
+      identification: payerDocNumber
+        ? {
+            type: payerDocType || "",
+            number: payerDocNumber
+          }
+        : undefined
     },
     metadata: {
       invoiceId: invoiceId || null,
