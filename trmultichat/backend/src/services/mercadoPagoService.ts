@@ -125,10 +125,14 @@ export async function createSubscriptionPreference(
   };
 
   return new Promise<MpPixLikeResponse>((resolve, reject) => {
+    const idempotencyKey = `sub-${companyId || 0}-${invoiceId || 0}-${Date.now()}`;
     request.post(
       {
         url: "https://api.mercadopago.com/v1/payments",
-        headers: { Authorization: `Bearer ${token}` },
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "X-Idempotency-Key": idempotencyKey
+        },
         json: true,
         body: pixPayload
       },
