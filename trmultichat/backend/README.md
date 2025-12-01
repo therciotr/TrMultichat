@@ -1,5 +1,53 @@
 # Backend – TrMultichat
 
+## Ambiente local (Postgres)
+
+### 1. Configurar `.env` de desenvolvimento
+
+O backend usa variáveis `DB_*` para se conectar ao banco. Para ambiente local, já existe um modelo pronto em `.env-example` apontando para **Postgres** via forwarder (`127.0.0.1:65432 -> postgres:5432`).
+
+Na primeira vez, rode:
+
+```bash
+cd trmultichat/backend
+./scripts/setup-local-env.sh
+```
+
+Esse script cria um `.env` a partir de `.env-example` (o próprio `.env` fica fora do Git).
+
+### 2. Subir stack completo (Postgres + Redis + backend + frontend)
+
+Na raiz do projeto:
+
+```bash
+cd infrastructure
+./start-local.sh
+```
+
+Esse script:
+
+- Sobe Postgres e Redis em Docker
+- Cria um forwarder local `127.0.0.1:65432 -> postgres:5432`
+- Roda migrations e seed no banco Postgres
+- Faz build do backend e sobe a API em `http://localhost:4004`
+- Sobe o frontend em `http://localhost:9089`
+
+### 3. Rodar apenas o backend com o mesmo Postgres
+
+Se quiser rodar só o backend (por exemplo, para debugar com `ts-node-dev`):
+
+1. Garanta que o Postgres está rodando via `./infrastructure/start-local.sh` (ele já cria o forwarder 127.0.0.1:65432).
+2. No backend:
+
+```bash
+cd trmultichat/backend
+./scripts/setup-local-env.sh    # apenas na primeira vez
+npm install
+npm run dev:server
+```
+
+O backend usará as variáveis `DB_*` do `.env` para conectar em Postgres, sem cair em MySQL.
+
 ## E-mail de recuperação de senha
 
 O fluxo de **esqueci minha senha** usa o endpoint:

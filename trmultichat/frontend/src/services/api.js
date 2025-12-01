@@ -1,12 +1,31 @@
 import axios from "axios";
 
-const baseURL = process.env.REACT_APP_BACKEND_URL || process.env.REACT_APP_API_BASE_URL || "http://localhost:4004";
+// Detecta se está rodando em browser e em qual host
+const isBrowser = typeof window !== "undefined";
+const host = isBrowser ? window.location.host : "";
+const isProdHost = /app\.trmultichat\.com\.br$/i.test(host);
+
+// Ordem de prioridade para baseURL:
+// 1) Variáveis de ambiente (build-time)
+// 2) Host de produção conhecido (app.trmultichat.com.br -> api.trmultichat.com.br)
+// 3) Fallback de desenvolvimento (localhost:4004)
+const resolvedEnvBase =
+  process.env.REACT_APP_BACKEND_URL || process.env.REACT_APP_API_BASE_URL;
+
+const baseURL = resolvedEnvBase
+  ? resolvedEnvBase
+  : isProdHost
+  ? "https://api.trmultichat.com.br"
+  : "http://localhost:4004";
+
 axios.defaults.baseURL = baseURL;
 
 const api = axios.create({ baseURL, withCredentials: true });
 
 export const openApi = axios.create({
-	baseURL: process.env.REACT_APP_BACKEND_URL
+  baseURL:
+    resolvedEnvBase ||
+    (isProdHost ? "https://api.trmultichat.com.br" : "http://localhost:4004")
 });
 
 export default api;
