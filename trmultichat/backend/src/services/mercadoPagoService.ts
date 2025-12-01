@@ -2,7 +2,9 @@ import request from "request";
 import { getLegacyModel } from "../utils/legacyModel";
 
 export type MpPixLikeResponse = {
+  // valor total em string já normalizada (ex.: "250.00")
   valor: { original: string };
+  // qrcode.qrcode conterá o código PIX (copia e cola) ou, em fallback, o link de checkout
   qrcode: { qrcode: string };
   // Mantém a resposta original para debug/uso futuro
   raw?: any;
@@ -55,16 +57,38 @@ export async function createSubscriptionPreference(
     throw new Error("invalid price");
   }
 
-  const payload: any = {
-    items: [
-      {
-        title: `Fatura #${invoiceId || ""}`,
-        quantity: 1,
-        currency_id: "BRL",
-        unit_price: normalizedPrice
+  // Formata valor em string padrão BR "250.00"
+  const priceStr =
+    typeof normalizedPrice === "number"
+      ? normalizedPrice
+          .toLocaleString("pt-br", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+          })
+          .replace(/\./g, "")
+          .replace(",", ".")
+      : String(normalizedPrice);
+
+  // Preferência de pagamento PIX via /v1/payments (payment_method_id: "pix")
+  const pixPayload: any = {
+    transaction_amount: normalizedPrice,
+    description: `Fatura #${invoiceId || ""}`,
+    payment_method_id: "pix",
+    // payer mínimo — campos podem ser preenchidos depois com dados reais
+    payer: {
+      email: "",
+      first_name: "",
+      last_name: "",
+      identification: {
+        type: "",
+        number: ""
+      },
+      address: {
+        zip_code: "",
+        street_name: "",
+        street_number: null
       }
-    ],
-    // metadata será usada no webhook para localizar fatura/empresa
+    },
     metadata: {
       invoiceId: invoiceId || null,
       companyId: companyId || null,
@@ -79,42 +103,40 @@ export async function createSubscriptionPreference(
   return new Promise<MpPixLikeResponse>((resolve, reject) => {
     request.post(
       {
-        url: "https://api.mercadopago.com/checkout/preferences",
+        url: "https://api.mercadopago.com/v1/payments",
         headers: { Authorization: `Bearer ${token}` },
         json: true,
-        body: payload
+        body: pixPayload
       },
       (err, resp, data) => {
         if (err) return reject(err);
         try {
-          const initPoint: string =
-            (data &&
-              (data.init_point ||
-                data.sandbox_init_point ||
-                data.external_resource_url)) ||
+          const txData =
+            data &&
+            data.point_of_interaction &&
+            data.point_of_interaction.transaction_data;
+
+          const qrCodePix: string =
+            (txData && (txData.qr_code || txData.qr_code_base64)) || "";
+
+          // Fallback: se por algum motivo não vier qr_code, tenta usar ticket_url / init_point
+          const fallbackUrl: string =
+            (txData && (txData.ticket_url || txData.external_resource_url)) ||
+            data?.init_point ||
+            data?.sandbox_init_point ||
             "";
-          if (!initPoint) {
-            // Expor motivo real do erro para facilitar diagnóstico
+
+          if (!qrCodePix && !fallbackUrl) {
             const mpMsg =
               (data && (data.message || data.error || data.description)) ||
               (resp && resp.statusCode && `status ${resp.statusCode}`) ||
-              "invalid Mercado Pago response (missing init_point)";
-            return reject(new Error(`Mercado Pago error: ${mpMsg}`));
+              "invalid PIX response (missing qr_code)";
+            return reject(new Error(`Mercado Pago PIX error: ${mpMsg}`));
           }
-          const priceStr =
-            typeof normalizedPrice === "number"
-              ? normalizedPrice
-                  .toLocaleString("pt-br", {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2
-                  })
-                  .replace(/\./g, "")
-                  .replace(",", ".")
-              : String(normalizedPrice);
 
           const response: MpPixLikeResponse = {
             valor: { original: priceStr },
-            qrcode: { qrcode: String(initPoint) },
+            qrcode: { qrcode: String(qrCodePix || fallbackUrl) },
             raw: data
           };
           return resolve(response);

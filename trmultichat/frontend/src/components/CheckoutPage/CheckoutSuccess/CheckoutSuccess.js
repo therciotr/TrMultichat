@@ -10,7 +10,7 @@ import { toast } from "react-toastify";
 
 function CheckoutSuccess(props) {
   const { pix } = props;
-  // Em vez de tratar como código PIX, tratamos como link de pagamento (init_point do Mercado Pago)
+  // Agora qrcode.qrcode é um código PIX (copia e cola) vindo da API de PIX do Mercado Pago
   const [pixString] = useState(pix?.qrcode?.qrcode || "");
   const [copied, setCopied] = useState(false);
   const history = useHistory();
@@ -45,37 +45,26 @@ function CheckoutSuccess(props) {
         <strong>R${pix.valor.original.toLocaleString('pt-br', { minimumFractionDigits: 2 })}</strong>
       </Total>
       <SuccessContent>
-        {/* QRCode com o link de checkout do Mercado Pago */}
+        {/* QRCode PIX: bancos reconhecem como pagamento via PIX ao escanear */}
         {pixString && <QRCode value={pixString} />}
         <CopyToClipboard text={pixString} onCopy={handleCopyQR}>
           <button className="copy-button" type="button">
             {copied ? (
               <>
-                <span>Link copiado</span>
+                <span>PIX copiado</span>
                 <FaCheckCircle size={18} />
               </>
             ) : (
               <>
-                <span>Copiar link de pagamento</span>
+                <span>Copiar código PIX (copia e cola)</span>
                 <FaCopy size={18} />
               </>
             )}
           </button>
         </CopyToClipboard>
-        {pixString && (
-          <a
-            href={pixString}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{ marginTop: 12, fontWeight: 500 }}
-          >
-            Abrir página de pagamento (Mercado Pago)
-          </a>
-        )}
         <span>
-          Para finalizar, basta abrir o link de pagamento acima (ou escanear o QRCode)
-          e concluir o pagamento pelo Mercado Pago. Não é um código PIX direto, é um
-          checkout seguro do Mercado Pago.
+          Você pode escanear o QR Code acima no app do seu banco ou colar o código PIX
+          copiado na opção &quot;PIX copia e cola&quot; para concluir o pagamento.
         </span>
       </SuccessContent>
     </React.Fragment>
