@@ -9,9 +9,9 @@ import { useDate } from "../../../hooks/useDate";
 import { toast } from "react-toastify";
 
 function CheckoutSuccess(props) {
-
   const { pix } = props;
-  const [pixString,] = useState(pix.qrcode.qrcode);
+  // Em vez de tratar como código PIX, tratamos como link de pagamento (init_point do Mercado Pago)
+  const [pixString] = useState(pix?.qrcode?.qrcode || "");
   const [copied, setCopied] = useState(false);
   const history = useHistory();
 
@@ -45,25 +45,37 @@ function CheckoutSuccess(props) {
         <strong>R${pix.valor.original.toLocaleString('pt-br', { minimumFractionDigits: 2 })}</strong>
       </Total>
       <SuccessContent>
-        <QRCode value={pixString} />
+        {/* QRCode com o link de checkout do Mercado Pago */}
+        {pixString && <QRCode value={pixString} />}
         <CopyToClipboard text={pixString} onCopy={handleCopyQR}>
           <button className="copy-button" type="button">
             {copied ? (
               <>
-                <span>Copiado</span>
+                <span>Link copiado</span>
                 <FaCheckCircle size={18} />
               </>
             ) : (
               <>
-                <span>Copiar código QR</span>
+                <span>Copiar link de pagamento</span>
                 <FaCopy size={18} />
               </>
             )}
           </button>
         </CopyToClipboard>
+        {pixString && (
+          <a
+            href={pixString}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ marginTop: 12, fontWeight: 500 }}
+          >
+            Abrir página de pagamento (Mercado Pago)
+          </a>
+        )}
         <span>
-          Para finalizar, basta realizar o pagamento escaneando ou colando o
-          código Pix acima :)
+          Para finalizar, basta abrir o link de pagamento acima (ou escanear o QRCode)
+          e concluir o pagamento pelo Mercado Pago. Não é um código PIX direto, é um
+          checkout seguro do Mercado Pago.
         </span>
       </SuccessContent>
     </React.Fragment>
