@@ -36,6 +36,7 @@ import { sendPasswordResetMail } from "./utils/mailer";
 import fs from "fs";
 import path from "path";
 import { createSubscriptionPreference } from "./services/mercadoPagoService";
+import { getSequelize } from "./utils/legacyModel";
 
 // Create a fresh app so we can register our routes first
 const app: express.Express = express();
@@ -236,9 +237,16 @@ app.post("/subscription", async (req, res) => {
     }
 
     let companyId = 0;
+    let userId = 0;
+    let userEmail: string | undefined;
+    let userName: string | undefined;
     try {
-      const payload = jwt.verify(bearer, env.JWT_SECRET) as { tenantId?: number };
+      const payload = jwt.verify(bearer, env.JWT_SECRET) as {
+        tenantId?: number;
+        userId?: number;
+      };
       companyId = Number(payload?.tenantId || 0);
+      userId = Number(payload?.userId || 0);
     } catch {
       return res.status(401).json({ error: true, message: "invalid token" });
     }
@@ -254,12 +262,54 @@ app.post("/subscription", async (req, res) => {
       return res.status(400).json({ error: "Validation fails" });
     }
 
+    // Tentar obter nome/e-mail do usuário logado para preencher payer do PIX
+    try {
+      if (userId) {
+        const sequelize = getSequelize();
+        if (sequelize && typeof (sequelize as any).query === "function") {
+          const [rows]: any = await (sequelize as any).query(
+            'SELECT name, email FROM "Users" WHERE id = :id LIMIT 1',
+            { replacements: { id: userId } }
+          );
+          const row: any = Array.isArray(rows) && (rows as any[])[0];
+          if (row) {
+            userEmail = row.email ? String(row.email) : undefined;
+            userName = row.name ? String(row.name) : undefined;
+          }
+        }
+      }
+    } catch {
+      // se falhar, seguimos com os dados enviados no body
+    }
+
+    const bodyFirstName = String(body.firstName || "").trim();
+    const bodyLastName = String(body.lastName || "").trim();
+
+    // Quebrar nome completo do usuário em primeiro/restante, se necessário
+    let nameFirstFromUser: string | undefined;
+    let nameLastFromUser: string | undefined;
+    if (userName) {
+      const parts = userName.trim().split(/\s+/);
+      nameFirstFromUser = parts[0];
+      nameLastFromUser = parts.slice(1).join(" ") || undefined;
+    }
+
     const pixLike = await createSubscriptionPreference({
       companyId,
       invoiceId,
       price,
       users,
-      connections
+      connections,
+      payerEmail: userEmail || (body.email ? String(body.email) : undefined),
+      payerFirstName: bodyFirstName || nameFirstFromUser,
+      payerLastName: bodyLastName || nameLastFromUser,
+      payerDocType: body.documentType ? String(body.documentType) : undefined,
+      payerDocNumber: body.documentNumber
+        ? String(body.documentNumber)
+        : undefined,
+      payerZipCode: body.zipcode ? String(body.zipcode) : undefined,
+      payerStreet: body.address2 ? String(body.address2) : undefined,
+      payerStreetNumber: body.addressNumber
     });
 
     return res.json(pixLike);

@@ -40,12 +40,33 @@ type CreateSubscriptionInput = {
   price: number;
   users: number;
   connections: number;
+  // Dados do pagador (quando disponíveis)
+  payerEmail?: string;
+  payerFirstName?: string;
+  payerLastName?: string;
+  payerDocType?: string;
+  payerDocNumber?: string;
+  payerZipCode?: string;
+  payerStreet?: string;
+  payerStreetNumber?: string | number;
 };
 
 export async function createSubscriptionPreference(
   input: CreateSubscriptionInput
 ): Promise<MpPixLikeResponse> {
-  const { companyId, invoiceId, price } = input;
+  const {
+    companyId,
+    invoiceId,
+    price,
+    payerEmail,
+    payerFirstName,
+    payerLastName,
+    payerDocType,
+    payerDocNumber,
+    payerZipCode,
+    payerStreet,
+    payerStreetNumber
+  } = input;
 
   const token = await getCompanyAccessToken(companyId);
   if (!token) {
@@ -74,19 +95,22 @@ export async function createSubscriptionPreference(
     transaction_amount: normalizedPrice,
     description: `Fatura #${invoiceId || ""}`,
     payment_method_id: "pix",
-    // payer mínimo — campos podem ser preenchidos depois com dados reais
+    // Payer com dados reais sempre que possível
     payer: {
-      email: "",
-      first_name: "",
-      last_name: "",
+      email: payerEmail || "",
+      first_name: payerFirstName || "",
+      last_name: payerLastName || "",
       identification: {
-        type: "",
-        number: ""
+        type: payerDocType || "",
+        number: payerDocNumber || ""
       },
       address: {
-        zip_code: "",
-        street_name: "",
-        street_number: null
+        zip_code: payerZipCode || "",
+        street_name: payerStreet || "",
+        street_number:
+          payerStreetNumber !== undefined && payerStreetNumber !== null
+            ? String(payerStreetNumber)
+            : ""
       }
     },
     metadata: {
