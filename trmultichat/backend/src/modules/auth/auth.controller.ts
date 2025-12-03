@@ -2,7 +2,12 @@ import { Request, Response } from "express";
 import * as AuthService from "./auth.service";
 import jwt from "jsonwebtoken";
 import env from "../../config/env";
-import { getLegacyModel, getSequelize } from "../../utils/legacyModel";
+import {
+  getLegacyModel,
+  getSequelize,
+  findByPkSafe,
+  findAllSafe
+} from "../../utils/legacyModel";
 import { validateLicenseForCompany } from "../../utils/license";
 import bcrypt from "bcryptjs";
 import { sendPasswordResetMail } from "../../utils/mailer";
@@ -16,8 +21,6 @@ export async function login(req: Request, res: Response) {
 
   // Legacy-compatible shape for existing frontend
   const isDev = String(process.env.DEV_MODE || "false").toLowerCase() === "true";
-  const Company = isDev ? undefined : getLegacyModel("Company");
-  const Setting = isDev ? undefined : getLegacyModel("Setting");
 
   // Validate license per company (prod)
   if (!isDev) {
@@ -32,12 +35,23 @@ export async function login(req: Request, res: Response) {
     }
   }
 
-  let company = Company?.findByPk ? await Company.findByPk(result.user.tenantId) : undefined;
-  let settings = Setting?.findAll ? await Setting.findAll({ where: { companyId: result.user.tenantId } }) : [];
-  if (!company && String(process.env.DEV_MODE || "false").toLowerCase() === "true") {
-    company = { id: result.user.tenantId, dueDate: new Date(Date.now() + 365 * 24 * 3600 * 1000) };
+  let company: any = null;
+  let settings: any[] = [];
+
+  if (isDev) {
+    company = {
+      id: result.user.tenantId,
+      dueDate: new Date(Date.now() + 365 * 24 * 3600 * 1000)
+    };
     settings = [];
+  } else {
+    // Usa helpers seguros que tratam modelos não inicializados
+    company = await findByPkSafe("Company", result.user.tenantId);
+    settings = await findAllSafe("Setting", {
+      where: { companyId: result.user.tenantId }
+    });
   }
+
   const settingsArr = Array.isArray(settings)
     ? settings.map((s: any) => ({ key: s.key, value: String(s.value) }))
     : [];
