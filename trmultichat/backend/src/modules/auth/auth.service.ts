@@ -1,7 +1,7 @@
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import env from "../../config/env";
-import { getSequelize } from "../../utils/legacyModel";
+import { pgQuery } from "../../utils/pgClient";
 
 type LoginInput = { email: string; password: string };
 
@@ -47,16 +47,20 @@ export async function login({ email, password }: LoginInput): Promise<{ user: Au
     }
   }
   try {
-    // Use legacy Sequelize connection diretamente (raw SQL)
-    const db = getSequelize();
-    if (!db || typeof (db as any).query !== "function") {
-      throw new Error("database connection not available");
-    }
-    const [rows] = await (db as any).query(
-      'SELECT id, name, email, "companyId", profile, "passwordHash", "super" FROM "Users" WHERE lower(email)=lower(:email) LIMIT 1',
-      { replacements: { email: email.toLowerCase() } }
+    // Usa conexão direta com Postgres via pg (independente de Sequelize)
+    const rows = await pgQuery<{
+      id: number;
+      name: string;
+      email: string;
+      companyId: number;
+      profile?: string;
+      passwordHash?: string;
+      super?: boolean;
+    }>(
+      'SELECT id, name, email, "companyId", profile, "passwordHash", "super" FROM "Users" WHERE lower(email)=lower($1) LIMIT 1',
+      [email.toLowerCase()]
     );
-    const row: any = Array.isArray(rows) && (rows as any[])[0];
+    const row: any = Array.isArray(rows) && rows[0];
     if (!row) {
       throw Object.assign(new Error("Invalid credentials"), { status: 401 });
     }
