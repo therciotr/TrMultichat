@@ -1,6 +1,7 @@
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import env from "../../config/env";
+import { getSequelize } from "../../utils/legacyModel";
 
 type LoginInput = { email: string; password: string };
 
@@ -46,10 +47,12 @@ export async function login({ email, password }: LoginInput): Promise<{ user: Au
     }
   }
   try {
-    // Use legacy Sequelize connection directly via raw SQL to avoid model init issues
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const db = require("../../database").default || require("../../database");
-    const [rows] = await db.query(
+    // Use legacy Sequelize connection diretamente (raw SQL)
+    const db = getSequelize();
+    if (!db || typeof (db as any).query !== "function") {
+      throw new Error("database connection not available");
+    }
+    const [rows] = await (db as any).query(
       'SELECT id, name, email, "companyId", profile, "passwordHash", "super" FROM "Users" WHERE lower(email)=lower(:email) LIMIT 1',
       { replacements: { email: email.toLowerCase() } }
     );

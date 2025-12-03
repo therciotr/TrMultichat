@@ -154,12 +154,15 @@ app.post("/auth/reset-password", async (req, res) => {
     if (!payload || payload.purpose !== "pwdReset") {
       return res.status(400).json({ error: true, message: "invalid token" });
     }
-    // Use raw SQL via sequelize to avoid ORM quirks
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const db = require("./database").default || require("./database");
-    const [rows] = await db.query('SELECT "passwordHash","updatedAt" FROM "Users" WHERE id = :id LIMIT 1', {
-      replacements: { id: payload.userId }
-    });
+    // Use raw SQL via Sequelize para evitar problemas de modelos
+    const db = getSequelize();
+    if (!db || typeof (db as any).query !== "function") {
+      return res.status(501).json({ error: true, message: "not available" });
+    }
+    const [rows] = await (db as any).query(
+      'SELECT "passwordHash","updatedAt" FROM "Users" WHERE id = :id LIMIT 1',
+      { replacements: { id: payload.userId } }
+    );
     const row: any = Array.isArray(rows) && (rows as any[])[0];
     if (!row) return res.status(404).json({ error: true, message: "user not found" });
 
