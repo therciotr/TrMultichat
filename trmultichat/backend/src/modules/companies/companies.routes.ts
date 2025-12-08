@@ -1,8 +1,17 @@
 import { Router } from "express";
 import jwt from "jsonwebtoken";
 import env from "../../config/env";
-import { findAllSafe, getLegacyModel, getSequelize } from "../../utils/legacyModel";
-import { validateLicenseForCompany, generateLicenseToken, validateLicenseForCompanyStrict } from "../../utils/license";
+import {
+  findAllSafe,
+  getLegacyModel,
+  getSequelize
+} from "../../utils/legacyModel";
+import {
+  validateLicenseForCompany,
+  generateLicenseToken,
+  validateLicenseForCompanyStrict
+} from "../../utils/license";
+import { pgQuery } from "../../utils/pgClient";
 
 const router = Router();
 
@@ -141,20 +150,35 @@ router.get("/safe", async (_req, res) => {
   }
 });
 
-// GET /companies/:id - detalhes
+// GET /companies/:id - detalhes (usa Postgres direto para evitar problemas de ORM legado)
 router.get("/:id", async (req, res) => {
   try {
     const id = Number(req.params.id);
-    const Company = getLegacyModel("Company");
-    if (!Company || typeof Company.findByPk !== "function") {
-      return res.status(501).json({ error: true, message: "company get not available" });
+    if (!id) {
+      return res
+        .status(400)
+        .json({ error: true, message: "invalid company id" });
     }
-    const instance = await Company.findByPk(id);
-    if (!instance) return res.status(404).json({ error: true, message: "not found" });
-    const json = instance?.toJSON ? instance.toJSON() : instance;
-    return res.json(json);
+
+    const rows = await pgQuery<{
+      id: number;
+      name: string;
+      planId?: number;
+      token?: string;
+      dueDate?: string;
+    }>(
+      'SELECT id, name, "planId", token, "dueDate" FROM "Companies" WHERE id = $1 LIMIT 1',
+      [id]
+    );
+    const company = Array.isArray(rows) && rows[0];
+    if (!company) {
+      return res.status(404).json({ error: true, message: "not found" });
+    }
+    return res.json(company);
   } catch (e: any) {
-    return res.status(400).json({ error: true, message: e?.message || "get error" });
+    return res
+      .status(400)
+      .json({ error: true, message: e?.message || "get error" });
   }
 });
 
