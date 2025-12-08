@@ -164,12 +164,12 @@ router.get("/:id", async (req, res) => {
       id: number;
       name: string;
       planId?: number;
-      token?: string;
+      phone?: string;
+      email?: string;
+      status?: boolean;
       dueDate?: string;
-    }>(
-      'SELECT id, name, "planId", token, "dueDate" FROM "Companies" WHERE id = $1 LIMIT 1',
-      [id]
-    );
+      recurrence?: string;
+    }>('SELECT * FROM "Companies" WHERE id = $1 LIMIT 1', [id]);
     const company = Array.isArray(rows) && rows[0];
     if (!company) {
       return res.status(404).json({ error: true, message: "not found" });
