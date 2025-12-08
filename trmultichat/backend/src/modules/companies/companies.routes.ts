@@ -70,39 +70,25 @@ router.get("/listPlan/:id", async (req, res) => {
   }
 });
 
-// GET /companies - lista empresas do tenant (mínimo)
-router.get("/", async (req, res) => {
+// GET /companies - lista empresas diretamente do Postgres
+router.get("/", async (_req, res) => {
   try {
-    const Company = getLegacyModel("Company");
-    const Setting = getLegacyModel("Setting");
-    if (!Company || typeof Company.findAll !== "function") {
-      return res.json([]);
-    }
-    const rows = await Company.findAll();
-    const list = Array.isArray(rows) ? rows.map((r: any) => (r?.toJSON ? r.toJSON() : r)) : [];
-    // anexar campaignsEnabled a partir de Settings, se disponível
-    try {
-      if (Setting && typeof Setting.findAll === "function") {
-        const srows = await Setting.findAll({ where: { key: "campaignsEnabled" } });
-        const settingsByCompany: Record<string, Array<{ key: string; value: string }>> = {};
-        for (const s of srows || []) {
-          const plain = s?.toJSON ? s.toJSON() : s;
-          const cid = String(plain.companyId || plain.company_id || "");
-          if (!cid) continue;
-          if (!settingsByCompany[cid]) settingsByCompany[cid] = [];
-          settingsByCompany[cid].push({ key: "campaignsEnabled", value: String(plain.value ?? "") });
-        }
-        for (const c of list) {
-          const cid = String(c.id || "");
-          const arr = settingsByCompany[cid] || [];
-          if (arr.length) {
-            (c as any).settings = Array.isArray((c as any).settings) ? (c as any).settings : [];
-            (c as any).settings = [...(c as any).settings, ...arr];
-          }
-        }
-      }
-    } catch {}
-    return res.json(list);
+    const rows = await pgQuery<{
+      id: number;
+      name: string;
+      phone?: string;
+      email?: string;
+      createdAt: string;
+      updatedAt: string;
+      planId?: number;
+      status?: boolean;
+      schedules?: any;
+      dueDate?: string;
+      recurrence?: string;
+    }>(
+      'SELECT id, name, phone, email, "createdAt", "updatedAt", "planId", status, schedules, "dueDate", recurrence FROM "Companies" ORDER BY id ASC'
+    );
+    return res.json(Array.isArray(rows) ? rows : []);
   } catch {
     return res.json([]);
   }
@@ -118,13 +104,26 @@ router.get("/all", async (_req, res) => {
   }
 });
 
-// GET /companies/list - lista enriquecida (plan e settings)
+// GET /companies/list - lista empresas (igual a /companies, mas nome estável para o frontend)
 router.get("/list", async (_req, res) => {
   try {
-    // caminho simples e seguro para evitar erros de base legada
-    const list = await findAllSafe("Company", { offset: 0, limit: 10000, order: [["id", "ASC"]] });
-    return res.json(Array.isArray(list) ? list : []);
-  } catch (e: any) {
+    const rows = await pgQuery<{
+      id: number;
+      name: string;
+      phone?: string;
+      email?: string;
+      createdAt: string;
+      updatedAt: string;
+      planId?: number;
+      status?: boolean;
+      schedules?: any;
+      dueDate?: string;
+      recurrence?: string;
+    }>(
+      'SELECT id, name, phone, email, "createdAt", "updatedAt", "planId", status, schedules, "dueDate", recurrence FROM "Companies" ORDER BY id ASC'
+    );
+    return res.json(Array.isArray(rows) ? rows : []);
+  } catch {
     return res.json([]);
   }
 });
