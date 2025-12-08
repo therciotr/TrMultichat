@@ -11,6 +11,7 @@ import {
 import { validateLicenseForCompany } from "../../utils/license";
 import bcrypt from "bcryptjs";
 import { sendPasswordResetMail } from "../../utils/mailer";
+import { pgQuery } from "../../utils/pgClient";
 
 export async function login(req: Request, res: Response) {
   const { email, password } = req.body || {};
@@ -265,20 +266,45 @@ export async function refreshLegacy(req: Request, res: Response) {
     const bearer = parts.length === 2 && parts[0] === "Bearer" ? parts[1] : undefined;
     if (!bearer) return res.status(401).json({ error: true, message: "missing bearer token" });
 
-    const payload = jwt.verify(bearer, env.JWT_SECRET) as { userId: number; tenantId: number };
+    const payload = jwt.verify(bearer, env.JWT_SECRET) as {
+      userId: number;
+      tenantId: number;
+    };
     const isDev = String(process.env.DEV_MODE || "false").toLowerCase() === "true";
-    const User = isDev ? undefined : getLegacyModel("User");
-    const Company = isDev ? undefined : getLegacyModel("Company");
-    const Setting = isDev ? undefined : getLegacyModel("Setting");
 
-    let userInstance = User?.findByPk ? await User.findByPk(payload.userId) : undefined;
-    if (!userInstance && String(process.env.DEV_MODE || "false").toLowerCase() === "true") {
-      userInstance = { id: payload.userId, name: "TR Admin", email: process.env.ADMIN_EMAIL || "thercio@trtecnologias.com.br", companyId: payload.tenantId, admin: true, profile: "admin" };
+    let user: any = null;
+    if (isDev) {
+      user = {
+        id: payload.userId,
+        name: "TR Admin",
+        email: process.env.ADMIN_EMAIL || "thercio@trtecnologias.com.br",
+        companyId: payload.tenantId,
+        admin: true,
+        profile: "admin",
+        super: true
+      };
+    } else {
+      const rows = await pgQuery<{
+        id: number;
+        name: string;
+        email: string;
+        companyId: number;
+        profile?: string;
+        super?: boolean;
+        admin?: boolean;
+      }>(
+        'SELECT id, name, email, \"companyId\", profile, \"super\" FROM \"Users\" WHERE id = $1 LIMIT 1',
+        [payload.userId]
+      );
+      user = Array.isArray(rows) && rows[0];
     }
-    if (!userInstance) return res.status(401).json({ error: true, message: "user not found" });
+
+    if (!user) {
+      return res.status(401).json({ error: true, message: "user not found" });
+    }
 
     if (!isDev) {
-      const licenseCheck = await validateLicenseForCompany(userInstance.companyId);
+      const licenseCheck = await validateLicenseForCompany(user.companyId);
       if (!licenseCheck.ok) {
         if (String(licenseCheck.error || "").toUpperCase().includes("MISSING")) {
           // proceed
@@ -288,34 +314,47 @@ export async function refreshLegacy(req: Request, res: Response) {
       }
     }
 
-    let company = Company?.findByPk ? await Company.findByPk(userInstance.companyId) : undefined;
-    let settings = Setting?.findAll ? await Setting.findAll({ where: { companyId: userInstance.companyId } }) : [];
-    if (!company && String(process.env.DEV_MODE || "false").toLowerCase() === "true") {
-      company = { id: userInstance.companyId, dueDate: new Date(Date.now() + 365 * 24 * 3600 * 1000) };
+    let company: any = null;
+    let settings: any[] = [];
+    if (isDev) {
+      company = {
+        id: user.companyId,
+        dueDate: new Date(Date.now() + 365 * 24 * 3600 * 1000)
+      };
       settings = [];
+    } else {
+      company = await findByPkSafe("Company", user.companyId);
+      settings = await findAllSafe("Setting", {
+        where: { companyId: user.companyId }
+      });
     }
     const settingsArr = Array.isArray(settings)
       ? settings.map((s: any) => ({ key: s.key, value: String(s.value) }))
       : [];
 
-    const newToken = jwt.sign({ userId: userInstance.id, tenantId: userInstance.companyId }, env.JWT_SECRET, { expiresIn: "15m" });
+    const newToken = jwt.sign(
+      { userId: user.id, tenantId: user.companyId },
+      env.JWT_SECRET,
+      { expiresIn: "15m" }
+    );
 
-    const plain = userInstance?.get ? userInstance.get({ plain: true }) : (userInstance as any);
-    const isAdmin = Boolean(plain?.admin);
-    const profile = String(plain?.profile || (isAdmin ? "admin" : "user"));
-    const isSuper = Boolean(plain?.super);
+    const isAdmin = Boolean((user as any).admin);
+    const profile = String(
+      (user as any).profile || (isAdmin ? "admin" : "user")
+    );
+    const isSuper = Boolean((user as any).super);
     return res.json({
       token: newToken,
       user: {
-        id: userInstance.id,
-        name: userInstance.name,
-        email: userInstance.email,
-        companyId: userInstance.companyId,
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        companyId: user.companyId,
         admin: isAdmin,
         profile,
         super: isSuper,
         company: {
-          id: userInstance.companyId,
+          id: user.companyId,
           dueDate: company?.dueDate || new Date(Date.now() + 365 * 24 * 3600 * 1000),
           settings: settingsArr
         }
