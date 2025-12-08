@@ -1,9 +1,14 @@
 import { Request, Response } from "express";
-import { findAllSafe, findByPkSafe, getSequelize, getLegacyModel } from "../../utils/legacyModel";
+import {
+  findAllSafe,
+  getSequelize,
+  getLegacyModel
+} from "../../utils/legacyModel";
 import env from "../../config/env";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import appEnv from "../../config/env";
+import { pgQuery } from "../../utils/pgClient";
 
 export async function list(req: Request, res: Response) {
   const pageNumber = Number(req.query.pageNumber || 1);
@@ -22,7 +27,16 @@ export async function list(req: Request, res: Response) {
 
 export async function find(req: Request, res: Response) {
   const id = Number(req.params.id);
-  const user = await findByPkSafe("User", id);
+  // Lê usuário diretamente do Postgres para evitar problemas com modelos legacy não inicializados
+  const rows = await pgQuery<{
+    id: number;
+    name: string;
+    email: string;
+    companyId: number;
+    profile?: string;
+    super?: boolean;
+  }>('SELECT id, name, email, "companyId", profile, "super" FROM "Users" WHERE id = $1 LIMIT 1', [id]);
+  const user = Array.isArray(rows) && rows[0];
   if (!user) {
     if (String(process.env.DEV_MODE || env.DEV_MODE || "false").toLowerCase() === "true") {
       return res.json({
