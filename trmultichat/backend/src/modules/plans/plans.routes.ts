@@ -1,16 +1,23 @@
 import { Router } from "express";
-import { findAllSafe, findByPkSafe, getLegacyModel } from "../../utils/legacyModel";
+import { findByPkSafe, getLegacyModel } from "../../utils/legacyModel";
+import { pgQuery } from "../../utils/pgClient";
 
 const router = Router();
 
-// GET /plans/list - lista de planos disponíveis
+// GET /plans/list - lista de planos disponíveis (via Postgres)
 // (registrada ANTES de /:id para não conflitar com /plans/all /plans/list)
 router.get("/list", async (_req, res) => {
   try {
-    const plans = await findAllSafe("Plan", { order: [["id", "ASC"]] });
-    const normalized = plans.map((p: any) => ({
+    const rows = await pgQuery<{
+      id: number;
+      name: string;
+      users: number;
+      connections: number;
+      value: number;
+    }>('SELECT id, name, users, connections, value FROM "Plans" ORDER BY id ASC');
+
+    const normalized = (rows || []).map((p: any) => ({
       ...p,
-      // expõe sempre price, mesmo que o model use "value"
       price: p?.price ?? p?.value ?? 0
     }));
     return res.json(normalized);
@@ -19,11 +26,18 @@ router.get("/list", async (_req, res) => {
   }
 });
 
-// Opcional: GET /plans/all (algumas UIs consultam)
+// Opcional: GET /plans/all (algumas UIs consultam) - também via Postgres
 router.get("/all", async (_req, res) => {
   try {
-    const plans = await findAllSafe("Plan", { order: [["id", "ASC"]] });
-    const normalized = plans.map((p: any) => ({
+    const rows = await pgQuery<{
+      id: number;
+      name: string;
+      users: number;
+      connections: number;
+      value: number;
+    }>('SELECT id, name, users, connections, value FROM "Plans" ORDER BY id ASC');
+
+    const normalized = (rows || []).map((p: any) => ({
       ...p,
       price: p?.price ?? p?.value ?? 0
     }));
