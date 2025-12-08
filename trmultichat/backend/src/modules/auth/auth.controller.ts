@@ -372,22 +372,57 @@ export async function me(req: Request, res: Response) {
     const bearer = parts.length === 2 && parts[0] === "Bearer" ? parts[1] : undefined;
     if (!bearer) return res.status(401).json({ error: true, message: "missing bearer token" });
 
-    const payload = jwt.verify(bearer, env.JWT_SECRET) as { userId: number; tenantId: number };
-    const User = String(process.env.DEV_MODE || "false").toLowerCase() === "true" ? undefined : getLegacyModel("User");
-    let userInstance = User?.findByPk ? await User.findByPk(payload.userId) : undefined;
-    if (!userInstance && String(process.env.DEV_MODE || "false").toLowerCase() === "true") {
-      userInstance = { id: payload.userId, name: "TR Admin", email: process.env.ADMIN_EMAIL || "thercio@trtecnologias.com.br", companyId: payload.tenantId, admin: true, profile: "admin" };
+    const payload = jwt.verify(bearer, env.JWT_SECRET) as {
+      userId: number;
+      tenantId: number;
+    };
+    const isDev =
+      String(process.env.DEV_MODE || "false").toLowerCase() === "true";
+
+    let user: any = null;
+    if (isDev) {
+      user = {
+        id: payload.userId,
+        name: "TR Admin",
+        email:
+          process.env.ADMIN_EMAIL || "thercio@trtecnologias.com.br",
+        companyId: payload.tenantId,
+        admin: true,
+        profile: "admin",
+        super: true
+      };
+    } else {
+      const rows = await pgQuery<{
+        id: number;
+        name: string;
+        email: string;
+        companyId: number;
+        profile?: string;
+        super?: boolean;
+        admin?: boolean;
+      }>(
+        'SELECT id, name, email, "companyId", profile, "super" FROM "Users" WHERE id = $1 LIMIT 1',
+        [payload.userId]
+      );
+      user = Array.isArray(rows) && rows[0];
     }
-    if (!userInstance) return res.status(404).json({ error: true, message: "user not found" });
-    const plain = userInstance?.get ? userInstance.get({ plain: true }) : (userInstance as any);
-    const isAdmin = Boolean(plain?.admin);
-    const profile = String(plain?.profile || (isAdmin ? "admin" : "user"));
-    const isSuper = Boolean(plain?.super);
+
+    if (!user) {
+      return res
+        .status(404)
+        .json({ error: true, message: "user not found" });
+    }
+
+    const isAdmin = Boolean((user as any).admin);
+    const profile = String(
+      (user as any).profile || (isAdmin ? "admin" : "user")
+    );
+    const isSuper = Boolean((user as any).super);
     return res.json({
-      id: userInstance.id,
-      name: userInstance.name,
-      email: userInstance.email,
-      companyId: userInstance.companyId,
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      companyId: user.companyId,
       admin: isAdmin,
       profile,
       super: isSuper
