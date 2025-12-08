@@ -50,17 +50,24 @@ export async function find(req: Request, res: Response) {
     }
     return res.status(404).json({ error: true, message: "not found" });
   }
-  const tenantId = extractTenantIdFromAuth(req.headers.authorization as string);
+  const tenantId = extractTenantIdFromAuth(
+    req.headers.authorization as string
+  );
   const isSuper = await isSuperFromAuth(req);
+  const currentUserId = extractUserIdFromAuth(
+    req.headers.authorization as string
+  );
+  const isSelf = Number(currentUserId || 0) === Number(id || 0);
   const plain: any = user;
   const userCompanyId = Number(plain.companyId || 0);
   const targetIsSuper = Boolean(plain.super);
-  // Non-super users cannot see users from other companies or any super user
+  // Non-super users cannot see users from other companies or any super user,
+  // exceto eles mesmos (para permitir que o próprio admin-super veja seu perfil)
   if (!isSuper) {
     if (tenantId && userCompanyId && userCompanyId !== tenantId) {
       return res.status(403).json({ error: true, message: "forbidden" });
     }
-    if (targetIsSuper) {
+    if (targetIsSuper && !isSelf) {
       return res.status(403).json({ error: true, message: "forbidden" });
     }
   }
@@ -115,6 +122,21 @@ async function isSuperFromAuth(req: Request): Promise<boolean> {
     return Boolean(plain?.super);
   } catch {
     return false;
+  }
+}
+
+function extractUserIdFromAuth(authorization?: string): number {
+  try {
+    const parts = (authorization || "").split(" ");
+    const bearer =
+      parts.length === 2 && parts[0] === "Bearer" ? parts[1] : undefined;
+    if (!bearer) return 0;
+    const payload = jwt.verify(bearer, appEnv.JWT_SECRET) as {
+      userId?: number;
+    };
+    return Number(payload?.userId || 0);
+  } catch {
+    return 0;
   }
 }
 
