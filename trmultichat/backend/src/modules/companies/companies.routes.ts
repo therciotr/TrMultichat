@@ -185,38 +185,85 @@ router.get("/:id", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     const id = Number(req.params.id);
-    if (!id) return res.status(400).json({ error: true, message: "invalid company id" });
-    const Company = getLegacyModel("Company");
-    const Setting = getLegacyModel("Setting");
-    if (!Company || typeof Company.findByPk !== "function") {
-      return res.status(501).json({ error: true, message: "company update not available" });
+    if (!id) {
+      return res
+        .status(400)
+        .json({ error: true, message: "invalid company id" });
     }
-    const instance = await Company.findByPk(id);
-    if (!instance) return res.status(404).json({ error: true, message: "not found" });
+
     const body = req.body || {};
-    const up: any = {};
-    if (body.name !== undefined) up.name = String(body.name);
-    if (body.planId !== undefined) up.planId = body.planId;
-    if (body.token !== undefined) up.token = String(body.token);
-    await instance.update(up);
-    // Persistir campaignsEnabled em Settings
-    if (Setting && (typeof Setting.findOne === "function" || typeof Setting.create === "function")) {
-      if (body.campaignsEnabled !== undefined) {
-        const value = body.campaignsEnabled === true || body.campaignsEnabled === "true" || body.campaignsEnabled === "enabled" ? "enabled" : "false";
-        try {
-          let row = typeof Setting.findOne === "function" ? await Setting.findOne({ where: { companyId: id, key: "campaignsEnabled" } }) : null;
-          if (row && typeof row.update === "function") {
-            await row.update({ value });
-          } else if (typeof Setting.create === "function") {
-            await Setting.create({ companyId: id, key: "campaignsEnabled", value });
-          }
-        } catch {}
-      }
+
+    const updates: string[] = [];
+    const params: any[] = [];
+
+    if (body.name !== undefined) {
+      updates.push(`name = $${updates.length + 1}`);
+      params.push(String(body.name));
     }
-    const json = instance?.toJSON ? instance.toJSON() : instance;
-    return res.json(json);
+    if (body.planId !== undefined) {
+      updates.push(`"planId" = $${updates.length + 1}`);
+      params.push(Number(body.planId));
+    }
+    if (body.token !== undefined) {
+      updates.push(`token = $${updates.length + 1}`);
+      params.push(String(body.token));
+    }
+
+    if (!updates.length) {
+      // nada para atualizar
+      const current = await pgQuery<{
+        id: number;
+        name: string;
+        phone?: string;
+        email?: string;
+        createdAt: string;
+        updatedAt: string;
+        planId?: number;
+        status?: boolean;
+        schedules?: any;
+        dueDate?: string;
+        recurrence?: string;
+      }>('SELECT id, name, phone, email, "createdAt", "updatedAt", "planId", status, schedules, "dueDate", recurrence FROM "Companies" WHERE id = $1 LIMIT 1', [
+        id
+      ]);
+      const company = Array.isArray(current) && current[0];
+      if (!company) {
+        return res.status(404).json({ error: true, message: "not found" });
+      }
+      return res.json(company);
+    }
+
+    const setClause = updates.join(", ");
+    params.push(id);
+
+    const updated = await pgQuery<{
+      id: number;
+      name: string;
+      phone?: string;
+      email?: string;
+      createdAt: string;
+      updatedAt: string;
+      planId?: number;
+      status?: boolean;
+      schedules?: any;
+      dueDate?: string;
+      recurrence?: string;
+    }>(
+      `UPDATE "Companies" SET ${setClause} WHERE id = $${
+        updates.length + 1
+      } RETURNING id, name, phone, email, "createdAt", "updatedAt", "planId", status, schedules, "dueDate", recurrence`,
+      params
+    );
+
+    const company = Array.isArray(updated) && updated[0];
+    if (!company) {
+      return res.status(404).json({ error: true, message: "not found" });
+    }
+    return res.json(company);
   } catch (e: any) {
-    return res.status(400).json({ error: true, message: e?.message || "update error" });
+    return res
+      .status(400)
+      .json({ error: true, message: e?.message || "update error" });
   }
 });
 
