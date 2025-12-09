@@ -7,7 +7,6 @@ import { makeStyles, Paper, Tabs, Tab } from "@material-ui/core";
 import TabPanel from "../../components/TabPanel";
 
 import SchedulesForm from "../../components/SchedulesForm";
-import CompaniesManager from "../../components/CompaniesManager";
 import PlansManager from "../../components/PlansManager";
 import HelpsManager from "../../components/HelpsManager";
 import Options from "../../components/Settings/Options";
@@ -59,7 +58,16 @@ const useStyles = makeStyles((theme) => ({
 
 const SettingsCustom = () => {
   const classes = useStyles();
-  const [tab, setTab] = useState("options");
+  const getInitialTab = () => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const q = params.get("tab");
+      return q || "options";
+    } catch {
+      return "options";
+    }
+  };
+  const [tab, setTab] = useState(getInitialTab);
   const [schedules, setSchedules] = useState([]);
   const [company, setCompany] = useState({});
   const [loading, setLoading] = useState(false);
@@ -171,7 +179,6 @@ const SettingsCustom = () => {
           <Tab label="Opções" value={"options"} />
           <Tab label="E-mail / SMTP" value={"email"} />
           {schedulesEnabled && <Tab label="Horários" value={"schedules"} />}
-          {isSuper() ? <Tab label="Empresas" value={"companies"} /> : null}
           {isSuper() ? <Tab label="Planos" value={"plans"} /> : null}
           {isSuper() ? <Tab label="Ajuda" value={"helps"} /> : null}
         </Tabs>
@@ -187,18 +194,6 @@ const SettingsCustom = () => {
               initialValues={schedules}
             />
           </TabPanel>
-          <OnlyForSuperUser
-            user={currentUser}
-            yes={() => (
-              <TabPanel
-                className={classes.container}
-                value={tab}
-                name={"companies"}
-              >
-                <CompaniesManager />
-              </TabPanel>
-            )}
-          />
           <OnlyForSuperUser
             user={currentUser}
             yes={() => (
