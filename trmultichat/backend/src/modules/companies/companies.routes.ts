@@ -378,16 +378,28 @@ router.put("/:id", async (req, res) => {
 router.delete("/:id", async (req, res) => {
   try {
     const id = Number(req.params.id);
-    if (!id) return res.status(400).json({ error: true, message: "invalid company id" });
-    const Company = getLegacyModel("Company");
-    if (!Company || typeof Company.destroy !== "function") {
-      return res.status(501).json({ error: true, message: "company delete not available" });
+    if (!id) {
+      return res
+        .status(400)
+        .json({ error: true, message: "invalid company id" });
     }
-    const count = await Company.destroy({ where: { id } });
-    if (!count) return res.status(404).json({ error: true, message: "not found" });
+
+    // Em vez de usar o ORM legado (que não está inicializado em produção),
+    // fazemos um "soft delete" marcando status = false no Postgres.
+    const updated = await pgQuery<{
+      id: number;
+    }>('UPDATE "Companies" SET status = false WHERE id = $1 RETURNING id', [
+      id
+    ]);
+    const company = Array.isArray(updated) && updated[0];
+    if (!company) {
+      return res.status(404).json({ error: true, message: "not found" });
+    }
     return res.status(204).end();
   } catch (e: any) {
-    return res.status(400).json({ error: true, message: e?.message || "delete error" });
+    return res
+      .status(400)
+      .json({ error: true, message: e?.message || "delete error" });
   }
 });
 
