@@ -46,6 +46,67 @@ type CompanyProfile = {
   notes?: string;
 };
 
+async function ensureInitialInvoicesForCompany(
+  companyId: number,
+  planId?: number | null
+) {
+  if (!companyId) return;
+  try {
+    // já existem faturas para esta empresa? então não cria duplicadas
+    const existing = await pgQuery<{ count: string }>(
+      'SELECT COUNT(*)::text AS count FROM "Invoices" WHERE "companyId" = $1',
+      [companyId]
+    );
+    const count = existing && existing[0] ? Number(existing[0].count || 0) : 0;
+    if (Number.isFinite(count) && count > 0) return;
+
+    // valor base vem do plano, se houver
+    let value = 0;
+    let planName = "";
+    if (planId) {
+      try {
+        const planRows = await pgQuery<{
+          value: number;
+          name: string;
+        }>('SELECT value, name FROM "Plans" WHERE id = $1 LIMIT 1', [planId]);
+        const plan = Array.isArray(planRows) && planRows[0];
+        if (plan) {
+          value = Number((plan as any).value || 0);
+          planName = String((plan as any).name || "");
+        }
+      } catch {
+        // se falhar, continua com value 0
+      }
+    }
+
+    const today = new Date();
+
+    for (let i = 0; i < 12; i += 1) {
+      const d = new Date(today.getTime());
+      d.setMonth(d.getMonth() + i);
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, "0");
+      const dd = String(d.getDate()).padStart(2, "0");
+      const dueDate = `${yyyy}-${mm}-${dd}`;
+      const detail = planName
+        ? `Mensalidade - ${planName}`
+        : `Mensalidade empresa ${companyId}`;
+
+      // cria fatura "em aberto" para o painel financeiro
+      // campos obrigatórios: status, value, createdAt, updatedAt
+      // dueDate é texto (varchar)
+      // companyId vincula ao tenant
+      // eslint-disable-next-line no-await-in-loop
+      await pgQuery(
+        'INSERT INTO "Invoices" ("detail","status","value","createdAt","updatedAt","dueDate","companyId") VALUES ($1,$2,$3,now(),now(),$4,$5)',
+        [detail, "open", value, dueDate, companyId]
+      );
+    }
+  } catch {
+    // não bloquear criação de empresa se geração de faturas falhar
+  }
+}
+
 function extractTenantIdFromAuth(authorization?: string): number {
   try {
     const parts = (authorization || "").split(" ");
@@ -445,12 +506,22 @@ router.post("/", async (req, res) => {
       const existing = await Company.findOne({ where: { name: payload.name } });
       if (existing) {
         const json = existing?.toJSON ? existing.toJSON() : existing;
+        // garante que a empresa tenha faturas iniciais
+        await ensureInitialInvoicesForCompany(
+          Number((json as any).id || 0),
+          (json as any).planId ?? body.planId ?? null
+        );
         return res.status(200).json({ ...json, tenantId });
       }
     }
     // Algumas bases usam companyId nos vínculos, mas o model Company não exige companyId
     const created = await Company.create(payload);
     const json = created?.toJSON ? created.toJSON() : created;
+    // cria as faturas mensais iniciais para o painel financeiro
+    await ensureInitialInvoicesForCompany(
+      Number((json as any).id || 0),
+      (json as any).planId ?? body.planId ?? null
+    );
     return res.status(201).json({ ...json, tenantId });
   } catch (e: any) {
     try {
