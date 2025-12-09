@@ -204,6 +204,26 @@ router.put("/:id", async (req, res) => {
       updates.push(`"planId" = $${updates.length + 1}`);
       params.push(Number(body.planId));
     }
+    if (body.email !== undefined) {
+      updates.push(`email = $${updates.length + 1}`);
+      params.push(String(body.email));
+    }
+    if (body.phone !== undefined) {
+      updates.push(`phone = $${updates.length + 1}`);
+      params.push(String(body.phone));
+    }
+    if (body.status !== undefined) {
+      updates.push(`status = $${updates.length + 1}`);
+      params.push(Boolean(body.status));
+    }
+    if (body.dueDate !== undefined) {
+      updates.push(`"dueDate" = $${updates.length + 1}`);
+      params.push(body.dueDate);
+    }
+    if (body.recurrence !== undefined) {
+      updates.push(`recurrence = $${updates.length + 1}`);
+      params.push(String(body.recurrence));
+    }
     // coluna "token" nao existe na tabela Companies em Postgres; ignoramos para nao quebrar
 
     if (!updates.length) {
@@ -255,6 +275,35 @@ router.put("/:id", async (req, res) => {
     const company = Array.isArray(updated) && updated[0];
     if (!company) {
       return res.status(404).json({ error: true, message: "not found" });
+    }
+    // Persistir campaignsEnabled em Settings (mantendo comportamento legado)
+    const Setting = getLegacyModel("Setting");
+    if (
+      Setting &&
+      (typeof Setting.findOne === "function" ||
+        typeof Setting.create === "function")
+    ) {
+      if (body.campaignsEnabled !== undefined) {
+        const value =
+          body.campaignsEnabled === true ||
+          body.campaignsEnabled === "true" ||
+          body.campaignsEnabled === "enabled"
+            ? "enabled"
+            : "false";
+        try {
+          let row =
+            typeof Setting.findOne === "function"
+              ? await Setting.findOne({
+                  where: { companyId: id, key: "campaignsEnabled" }
+                })
+              : null;
+          if (row && typeof row.update === "function") {
+            await row.update({ value });
+          } else if (typeof Setting.create === "function") {
+            await Setting.create({ companyId: id, key: "campaignsEnabled", value });
+          }
+        } catch {}
+      }
     }
     return res.json(company);
   } catch (e: any) {
