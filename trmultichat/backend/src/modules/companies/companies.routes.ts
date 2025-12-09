@@ -592,8 +592,8 @@ router.post("/", async (req, res) => {
       dueDate?: string;
       recurrence?: string;
     }>(
-      'INSERT INTO "Companies" (name, phone, email, "createdAt", "updatedAt", "planId", status, schedules, "dueDate", recurrence) VALUES ($1,$2,$3,now(),now(),$4,$5,COALESCE(schedules, \'[]\'::jsonb),$6,$7) RETURNING id, name, phone, email, "createdAt", "updatedAt", "planId", status, schedules, "dueDate", recurrence',
-      [name, phone, email, planId, status, dueDate, recurrence]
+      'INSERT INTO "Companies" (name, phone, email, "createdAt", "updatedAt", "planId", status, schedules, "dueDate", recurrence) VALUES ($1,$2,$3,now(),now(),$4,$5,$6,$7,$8) RETURNING id, name, phone, email, "createdAt", "updatedAt", "planId", status, schedules, "dueDate", recurrence',
+      [name, phone, email, planId, status, JSON.stringify([]), dueDate, recurrence]
     );
     const company = Array.isArray(inserted) && inserted[0];
     if (!company) {
