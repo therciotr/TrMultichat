@@ -146,9 +146,7 @@ router.get("/", async (_req, res) => {
       schedules?: any;
       dueDate?: string;
       recurrence?: string;
-    }>(
-      'SELECT id, name, phone, email, "createdAt", "updatedAt", "planId", status, schedules, "dueDate", recurrence FROM "Companies" ORDER BY id ASC'
-    );
+    }>('SELECT id, name, phone, email, "createdAt", "updatedAt", "planId", status, schedules, "dueDate", recurrence FROM "Companies" WHERE status IS DISTINCT FROM false ORDER BY id ASC');
     return res.json(Array.isArray(rows) ? rows : []);
   } catch {
     return res.json([]);
@@ -180,9 +178,7 @@ router.get("/list", async (_req, res) => {
       schedules?: any;
       dueDate?: string;
       recurrence?: string;
-    }>(
-      'SELECT id, name, phone, email, "createdAt", "updatedAt", "planId", status, schedules, "dueDate", recurrence FROM "Companies" ORDER BY id ASC'
-    );
+    }>('SELECT id, name, phone, email, "createdAt", "updatedAt", "planId", status, schedules, "dueDate", recurrence FROM "Companies" WHERE status IS DISTINCT FROM false ORDER BY id ASC');
     return res.json(Array.isArray(rows) ? rows : []);
   } catch {
     return res.json([]);
