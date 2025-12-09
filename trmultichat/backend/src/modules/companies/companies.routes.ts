@@ -204,10 +204,7 @@ router.put("/:id", async (req, res) => {
       updates.push(`"planId" = $${updates.length + 1}`);
       params.push(Number(body.planId));
     }
-    if (body.token !== undefined) {
-      updates.push(`token = $${updates.length + 1}`);
-      params.push(String(body.token));
-    }
+    // coluna "token" nao existe na tabela Companies em Postgres; ignoramos para nao quebrar
 
     if (!updates.length) {
       // nada para atualizar
