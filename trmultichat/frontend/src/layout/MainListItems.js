@@ -510,13 +510,6 @@ const MainListItems = (props) => {
               primary={i18n.t("mainDrawer.listItems.users")}
               icon={<PeopleAltOutlinedIcon />}
             />
-            {isSuper && (
-              <ListItemLink
-                to="/create-company"
-                primary={i18n.t("companies.title")}
-                icon={<StoreIcon />}
-              />
-            )}
             {showExternalApi && (
               <>
                 <ListItemLink
@@ -533,13 +526,7 @@ const MainListItems = (props) => {
                 icon={<VerifiedUserIcon />}
               />
             )}
-            {isSuper && (
-              <ListItemLink
-                to="/admin/plans"
-                primary="Planos"
-                icon={<ListIcon />}
-              />
-            )}
+            {/* Rota de administração de planos removida do menu lateral por não ser mais utilizada */}
             {isSuper && (
               <ListItemLink
                 to="/admin/companies"

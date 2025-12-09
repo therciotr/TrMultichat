@@ -108,7 +108,8 @@ const Routes = () => {
                 <Route exact path="/files" component={Files} isPrivate />
                 <Route exact path="/prompts" component={Prompts} isPrivate />
                 <Route exact path="/queue-integration" component={QueueIntegration} isPrivate />
-                <Route exact path="/create-company" component={Companies} isPrivate />
+                {/* Rota de cadastro direto de empresa removida da UI por não ser mais utilizada */}
+                {/* <Route exact path="/create-company" component={Companies} isPrivate /> */}
 
                 <Route
                   exact
@@ -134,12 +135,13 @@ const Routes = () => {
                   component={LicenseManager}
                   isPrivate
                 />
-                <Route
+                {/* Rota de administração de planos removida da UI por não ser mais utilizada */}
+                {/* <Route
                   exact
                   path="/admin/plans"
                   component={PlansAdmin}
                   isPrivate
-                />
+                /> */}
                 <Route
                   exact
                   path="/admin/companies"
