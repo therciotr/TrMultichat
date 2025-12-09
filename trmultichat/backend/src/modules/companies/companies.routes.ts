@@ -494,60 +494,123 @@ router.get("/:id/license", async (req, res) => {
   }
 });
 
-// POST /companies - criação mínima
+// POST /companies - criação mínima (via Postgres, sem depender de Sequelize legado)
 router.post("/", async (req, res) => {
   try {
-    const Company = getLegacyModel("Company");
-    if (!Company || typeof Company.create !== "function") {
-      return res.status(501).json({ error: true, message: "company create not available" });
-    }
-    const tenantId = extractTenantIdFromAuth(req.headers.authorization as string) || 1;
+    const tenantId =
+      extractTenantIdFromAuth(req.headers.authorization as string) || 1;
     const body = req.body || {};
-    const payload = {
-      name: String(body.name || ""),
-      planId: body.planId ?? null,
-      token: String(body.token || ""),
-      id: undefined
-    } as any;
-    // Se já existir empresa com mesmo nome, retorna a existente (idempotente)
-    if (typeof Company.findOne === "function" && payload.name) {
-      const existing = await Company.findOne({ where: { name: payload.name } });
-      if (existing) {
-        const json = existing?.toJSON ? existing.toJSON() : existing;
-        // garante que a empresa tenha faturas iniciais
-        await ensureInitialInvoicesForCompany(
-          Number((json as any).id || 0),
-          (json as any).planId ?? body.planId ?? null
-        );
-        return res.status(200).json({ ...json, tenantId });
-      }
+    const name = String(body.name || "").trim();
+    if (!name) {
+      return res
+        .status(400)
+        .json({ error: true, message: "name is required" });
     }
-    // Algumas bases usam companyId nos vínculos, mas o model Company não exige companyId
-    const created = await Company.create(payload);
-    const json = created?.toJSON ? created.toJSON() : created;
-    // cria as faturas mensais iniciais para o painel financeiro
-    await ensureInitialInvoicesForCompany(
-      Number((json as any).id || 0),
-      (json as any).planId ?? body.planId ?? null
+
+    const planId =
+      body.planId !== undefined && body.planId !== null
+        ? Number(body.planId)
+        : null;
+    const email = body.email ? String(body.email) : null;
+    const phone = body.phone ? String(body.phone) : null;
+    const dueDate = body.dueDate ? String(body.dueDate) : null;
+    const recurrence = body.recurrence ? String(body.recurrence) : "";
+    const status =
+      body.status === undefined || body.status === null
+        ? true
+        : Boolean(body.status);
+
+    // Se já existir empresa com mesmo nome (case-insensitive)
+    const existingRows = await pgQuery<{
+      id: number;
+      name: string;
+      planId?: number;
+      status?: boolean;
+    }>(
+      'SELECT id, name, "planId", status FROM "Companies" WHERE lower(name) = lower($1) LIMIT 1',
+      [name]
     );
-    return res.status(201).json({ ...json, tenantId });
-  } catch (e: any) {
-    try {
-      // Em caso de violação de unicidade, retorna registro existente
-      const Company = getLegacyModel("Company");
-      if (Company && typeof Company.findOne === "function") {
-        const body = req.body || {};
-        const name = String(body.name || "");
-        if (name) {
-          const existing = await Company.findOne({ where: { name } });
+    const existing = Array.isArray(existingRows) && existingRows[0];
+
           if (existing) {
-            const json = existing?.toJSON ? existing.toJSON() : existing;
-            return res.status(200).json(json);
-          }
+      // Se estiver "soft-deleted" (status = false), reativa e atualiza dados básicos
+      const isDeleted =
+        typeof (existing as any).status === "boolean" &&
+        (existing as any).status === false;
+      if (isDeleted) {
+        const revived = await pgQuery<{
+          id: number;
+          name: string;
+          phone?: string;
+          email?: string;
+          createdAt: string;
+          updatedAt: string;
+          planId?: number;
+          status?: boolean;
+          schedules?: any;
+          dueDate?: string;
+          recurrence?: string;
+        }>(
+          'UPDATE "Companies" SET name = $1, phone = $2, email = $3, "planId" = $4, status = true, "dueDate" = $5, recurrence = $6, "updatedAt" = now() WHERE id = $7 RETURNING id, name, phone, email, "createdAt", "updatedAt", "planId", status, schedules, "dueDate", recurrence',
+          [
+            name,
+            phone,
+            email,
+            planId,
+            dueDate,
+            recurrence,
+            Number((existing as any).id || 0)
+          ]
+        );
+        const revivedCompany = Array.isArray(revived) && revived[0];
+        if (revivedCompany) {
+          await ensureInitialInvoicesForCompany(
+            Number(revivedCompany.id || 0),
+            revivedCompany.planId ?? planId
+          );
+          return res.status(200).json({ ...revivedCompany, tenantId });
         }
       }
-    } catch {}
-    return res.status(400).json({ error: true, message: e?.message || "create error" });
+      // Empresa ativa com mesmo nome: impede duplicidade
+      return res.status(400).json({
+        error: true,
+        message: "company with this name already exists"
+      });
+    }
+
+    // Cria nova empresa em Companies
+    const inserted = await pgQuery<{
+      id: number;
+      name: string;
+      phone?: string;
+      email?: string;
+      createdAt: string;
+      updatedAt: string;
+      planId?: number;
+      status?: boolean;
+      schedules?: any;
+      dueDate?: string;
+      recurrence?: string;
+    }>(
+      'INSERT INTO "Companies" (name, phone, email, "createdAt", "updatedAt", "planId", status, schedules, "dueDate", recurrence) VALUES ($1,$2,$3,now(),now(),$4,$5,COALESCE(schedules, \'[]\'::jsonb),$6,$7) RETURNING id, name, phone, email, "createdAt", "updatedAt", "planId", status, schedules, "dueDate", recurrence',
+      [name, phone, email, planId, status, dueDate, recurrence]
+    );
+    const company = Array.isArray(inserted) && inserted[0];
+    if (!company) {
+      return res
+        .status(400)
+        .json({ error: true, message: "company create failed" });
+    }
+
+    await ensureInitialInvoicesForCompany(
+      Number(company.id || 0),
+      company.planId ?? planId
+    );
+    return res.status(201).json({ ...company, tenantId });
+  } catch (e: any) {
+    return res
+      .status(400)
+      .json({ error: true, message: e?.message || "create error" });
   }
 });
 
