@@ -6,6 +6,8 @@ export type MpPixLikeResponse = {
   valor: { original: string };
   // qrcode.qrcode conterá o código PIX (copia e cola) ou, em fallback, o link de checkout
   qrcode: { qrcode: string };
+  // ID do pagamento no Mercado Pago (útil para consulta de status/polling)
+  paymentId?: number | string;
   // Mantém a resposta original para debug/uso futuro
   raw?: any;
 };
@@ -102,6 +104,7 @@ export async function createSubscriptionPreference(
   const pixPayload: any = {
     transaction_amount: normalizedPrice,
     description: `Fatura #${invoiceId || ""}`,
+    external_reference: invoiceId ? String(invoiceId) : undefined,
     payment_method_id: "pix",
     // Payer mínimo exigido pelo Mercado Pago PIX
     payer: {
@@ -123,7 +126,7 @@ export async function createSubscriptionPreference(
     notification_url:
       process.env.MERCADOPAGO_WEBHOOK_URL ||
       process.env.MP_WEBHOOK_URL ||
-      `${process.env.BACKEND_URL || ""}/payments/mercadopago/webhook`
+      `${(process.env.BACKEND_URL || "https://api.trmultichat.com.br").replace(/\/+$/, "")}/payments/mercadopago/webhook`
   };
 
   return new Promise<MpPixLikeResponse>((resolve, reject) => {
@@ -167,6 +170,7 @@ export async function createSubscriptionPreference(
           const response: MpPixLikeResponse = {
             valor: { original: priceStr },
             qrcode: { qrcode: String(qrCodePix || fallbackUrl) },
+            paymentId: data?.id ?? undefined,
             raw: data
           };
           return resolve(response);

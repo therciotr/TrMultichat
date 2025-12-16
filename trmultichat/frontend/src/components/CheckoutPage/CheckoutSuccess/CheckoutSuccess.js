@@ -7,6 +7,7 @@ import { FaCopy, FaCheckCircle } from 'react-icons/fa';
 import { socketConnection } from "../../../services/socket";
 import { useDate } from "../../../hooks/useDate";
 import { toast } from "react-toastify";
+import api from "../../../services/api";
 
 function CheckoutSuccess(props) {
   const { pix } = props;
@@ -14,6 +15,7 @@ function CheckoutSuccess(props) {
   const [pixString] = useState(pix?.qrcode?.qrcode || "");
   const [copied, setCopied] = useState(false);
   const history = useHistory();
+  const paymentId = pix?.paymentId || pix?.raw?.id || null;
 
   const { dateToClient } = useDate();
 
@@ -23,13 +25,57 @@ function CheckoutSuccess(props) {
     socket.on(`company-${companyId}-payment`, (data) => {
 
       if (data.action === "CONCLUIDA") {
-        toast.success(`Sua licença foi renovada até ${dateToClient(data.company.dueDate)}!`);
+        const due = data?.company?.dueDate;
+        if (due) {
+          toast.success(`Pagamento confirmado! Sua licença foi renovada até ${dateToClient(due)}.`);
+        } else {
+          toast.success("Pagamento confirmado!");
+        }
         setTimeout(() => {
-          history.push("/");
+          history.push("/financeiro");
         }, 4000);
       }
     });
   }, [history]);
+
+  // Fallback: polling de status (caso webhook/socket falhe)
+  useEffect(() => {
+    if (!paymentId) return;
+    let cancelled = false;
+    let tries = 0;
+    const maxTries = 60; // ~5 min (60 * 5s)
+
+    async function poll() {
+      tries += 1;
+      try {
+        const { data } = await api.get(`/payments/mercadopago/status/${paymentId}`);
+        if (cancelled) return;
+        if (data?.status === "approved") {
+          const due = data?.dueDate;
+          if (due) {
+            toast.success(`Pagamento confirmado! Sua licença foi renovada até ${dateToClient(due)}.`);
+          } else {
+            toast.success("Pagamento confirmado!");
+          }
+          setTimeout(() => history.push("/financeiro"), 1500);
+          cancelled = true;
+          return;
+        }
+      } catch (_) {
+        // ignore e tenta de novo
+      }
+      if (!cancelled && tries < maxTries) {
+        setTimeout(poll, 5000);
+      }
+    }
+
+    // inicia com um pequeno delay para dar tempo do banco processar
+    const t = setTimeout(poll, 4000);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [paymentId, history, dateToClient]);
 
   const handleCopyQR = () => {
     setTimeout(() => {

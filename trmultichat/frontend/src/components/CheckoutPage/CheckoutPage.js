@@ -76,6 +76,12 @@ function _renderStepContent(step, setFieldValue, setActiveStep, values, invoiceI
   async function _submitForm(values, actions) {
     try {
       const plan = JSON.parse(values.plan);
+      // Para pagamento de fatura (Financeiro), o valor correto vem da própria fatura.
+      // Mantém fallback para o preço do plano caso a fatura não tenha value.
+      const invoiceValue = Number(props?.Invoice?.value || 0);
+      const finalPrice = Number.isFinite(invoiceValue) && invoiceValue > 0
+        ? invoiceValue
+        : Number(plan.price || 0);
       const newValues = {
         firstName: values.firstName,
         lastName: values.lastName,
@@ -89,7 +95,7 @@ function _renderStepContent(step, setFieldValue, setActiveStep, values, invoiceI
         cardNumber: values.cardNumber,
         cvv: values.cvv,
         plan: values.plan,
-        price: plan.price,
+        price: finalPrice,
         users: plan.users,
         connections: plan.connections,
         invoiceId: invoiceId

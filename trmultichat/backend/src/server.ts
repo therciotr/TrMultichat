@@ -256,12 +256,29 @@ app.post("/subscription", async (req, res) => {
     }
 
     const body = req.body || {};
-    const price = Number(body.price || 0);
+    let price = Number(body.price || 0);
     const users = Number(body.users || 0);
     const connections = Number(body.connections || 0);
     const invoiceId = Number(body.invoiceId || 0);
 
-    // Mantém validação mínima compatível com o fluxo antigo (Gerencianet)
+    // Se veio invoiceId, prioriza o valor da fatura no banco (evita divergência de valores no frontend)
+    if (invoiceId) {
+      try {
+        const invRows = await pgQuery<{ value: number }>(
+          'SELECT value FROM "Invoices" WHERE id = $1 AND "companyId" = $2 LIMIT 1',
+          [invoiceId, companyId]
+        );
+        const inv = Array.isArray(invRows) && invRows[0];
+        const v = inv ? Number((inv as any).value || 0) : 0;
+        if (Number.isFinite(v) && v > 0) {
+          price = v;
+        }
+      } catch {
+        // ignore and keep body.price
+      }
+    }
+
+    // Mantém validação mínima compatível com o fluxo antigo
     if (!price || !users || !connections) {
       return res.status(400).json({ error: "Validation fails" });
     }
