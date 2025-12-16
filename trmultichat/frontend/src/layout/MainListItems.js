@@ -540,7 +540,7 @@ const MainListItems = (props) => {
               icon={<ListIcon />}
             />
             <ListItemLink
-              to="/helps"
+              to="/admin/helps"
               primary="Ajuda"
               icon={<HelpOutlineIcon />}
             />

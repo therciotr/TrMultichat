@@ -42,6 +42,7 @@ import AdminBranding from "../pages/Admin/Branding";
 import LicenseManager from "../pages/Admin/License";
 import PlansAdmin from "../pages/Admin/Plans";
 import CompaniesAdmin from "../pages/Admin/Companies";
+import HelpsAdmin from "../pages/Admin/Helps";
 import { ThemeProvider } from "../context/ThemeContext";
 import ForgotPassword from "../pages/ForgotPassword";
 import ResetPassword from "../pages/ResetPassword";
@@ -139,6 +140,12 @@ const Routes = () => {
                   exact
                   path="/admin/plans"
                   component={PlansAdmin}
+                  isPrivate
+                />
+                <Route
+                  exact
+                  path="/admin/helps"
+                  component={HelpsAdmin}
                   isPrivate
                 />
                 <Route

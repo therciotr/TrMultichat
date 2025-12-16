@@ -111,7 +111,7 @@ const SettingsCustom = () => {
         return;
       }
       if (q === "helps") {
-        history.replace("/helps");
+        history.replace("/admin/helps");
         return;
       }
       if (q === "options" || q === "email" || q === "schedules") {
