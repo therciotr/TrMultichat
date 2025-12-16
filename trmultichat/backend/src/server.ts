@@ -413,6 +413,11 @@ app.get("/public/companies", async (_req, res) => {
   }
 });
 
+// Compat: alias /helps/list -> /helps (alguns frontends antigos ainda chamam /helps/list)
+app.get("/helps/list", (_req, res) => {
+  return res.redirect(307, "/helps");
+});
+
 // Serve swagger.json at /api-docs
 app.get("/api-docs", (_req, res) => {
   // eslint-disable-next-line @typescript-eslint/no-var-requires

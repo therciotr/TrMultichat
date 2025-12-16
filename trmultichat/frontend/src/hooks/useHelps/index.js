@@ -13,7 +13,9 @@ const usePlans = () => {
 
     const list = async (params) => {
         const { data } = await api.request({
-            url: '/helps/list',
+            // Ajustado para usar o endpoint principal de helps,
+            // evitando 404 em /helps/list na API.
+            url: '/helps',
             method: 'GET',
             params
         });
