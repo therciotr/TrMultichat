@@ -534,11 +534,13 @@ const MainListItems = (props) => {
                 icon={<StoreIcon />}
               />
             )}
-            <ListItemLink
-              to="/admin/plans"
-              primary="Planos"
-              icon={<ListIcon />}
-            />
+            {isSuper && (
+              <ListItemLink
+                to="/admin/plans"
+                primary="Planos"
+                icon={<ListIcon />}
+              />
+            )}
             <ListItemLink
               to="/admin/helps"
               primary="Ajuda"
