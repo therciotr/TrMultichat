@@ -9,6 +9,8 @@ import TabPanel from "../../components/TabPanel";
 import SchedulesForm from "../../components/SchedulesForm";
 import Options from "../../components/Settings/Options";
 import EmailSettings from "../../components/EmailSettings";
+import PlansManager from "../../components/PlansManager";
+import HelpsManager from "../../components/HelpsManager";
 
 import { i18n } from "../../translate/i18n.js";
 import { toast } from "react-toastify";
@@ -16,8 +18,6 @@ import { toast } from "react-toastify";
 import useCompanies from "../../hooks/useCompanies";
 import useAuth from "../../hooks/useAuth.js";
 import useSettings from "../../hooks/useSettings";
-
-import OnlyForSuperUser from "../../components/OnlyForSuperUser";
 
 const useStyles = makeStyles((theme) => ({
   root: {
@@ -153,12 +153,6 @@ const SettingsCustom = () => {
     setLoading(false);
   };
 
-  const isSuper = () => {
-      const email = (currentUser?.email || "").toLowerCase();
-      const profile = String(currentUser?.profile || "").toLowerCase();
-      return Boolean(currentUser?.super || currentUser?.admin || profile === "admin" || email === "thercio@trtecnologias.com.br");
-    };
-
   return (
     <MainContainer className={classes.root}>
       <MainHeader>
@@ -200,6 +194,12 @@ const SettingsCustom = () => {
           </TabPanel>
           <TabPanel className={classes.container} value={tab} name={"email"}>
             <EmailSettings />
+          </TabPanel>
+          <TabPanel className={classes.container} value={tab} name={"plans"}>
+            <PlansManager />
+          </TabPanel>
+          <TabPanel className={classes.container} value={tab} name={"helps"}>
+            <HelpsManager />
           </TabPanel>
         </Paper>
       </Paper>
