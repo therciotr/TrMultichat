@@ -7,8 +7,6 @@ import { makeStyles, Paper, Tabs, Tab } from "@material-ui/core";
 import TabPanel from "../../components/TabPanel";
 
 import SchedulesForm from "../../components/SchedulesForm";
-import PlansManager from "../../components/PlansManager";
-import HelpsManager from "../../components/HelpsManager";
 import Options from "../../components/Settings/Options";
 import EmailSettings from "../../components/EmailSettings";
 
@@ -179,8 +177,6 @@ const SettingsCustom = () => {
           <Tab label="Opções" value={"options"} />
           <Tab label="E-mail / SMTP" value={"email"} />
           {schedulesEnabled && <Tab label="Horários" value={"schedules"} />}
-          {isSuper() ? <Tab label="Planos" value={"plans"} /> : null}
-          {isSuper() ? <Tab label="Ajuda" value={"helps"} /> : null}
         </Tabs>
         <Paper className={classes.paper} elevation={0}>
           <TabPanel
@@ -194,30 +190,6 @@ const SettingsCustom = () => {
               initialValues={schedules}
             />
           </TabPanel>
-          <OnlyForSuperUser
-            user={currentUser}
-            yes={() => (
-              <TabPanel
-                className={classes.container}
-                value={tab}
-                name={"plans"}
-              >
-                <PlansManager />
-              </TabPanel>
-            )}
-          />
-          <OnlyForSuperUser
-            user={currentUser}
-            yes={() => (
-              <TabPanel
-                className={classes.container}
-                value={tab}
-                name={"helps"}
-              >
-                <HelpsManager />
-              </TabPanel>
-            )}
-          />
           <TabPanel className={classes.container} value={tab} name={"options"}>
             <Options
               settings={settings}
