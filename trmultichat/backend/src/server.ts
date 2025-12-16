@@ -28,6 +28,7 @@ import queueListRoutes from "./modules/queueList/queueList.routes";
 import companiesRoutes from "./modules/companies/companies.routes";
 import plansRoutes from "./modules/plans/plans.routes";
 import invoicesRoutes from "./modules/invoices/invoices.routes";
+import helpsRoutes from "./modules/helps/helps.routes";
 import whatsappSessionRoutes from "./modules/whatsappSession/whatsappSession.routes";
 import mercadoPagoRoutes from "./modules/payments/mercadopago.routes";
 import redis from "./redis/redisClient";
@@ -346,6 +347,7 @@ app.use("/whatsapp", whatsappRoutes);
 app.use("/settings", settingsRoutes);
 app.use("/companies", companiesRoutes);
 app.use("/plans", plansRoutes);
+app.use("/helps", helpsRoutes);
 app.use("/invoices", invoicesRoutes);
 app.use("/whatsappsession", whatsappSessionRoutes);
 app.use("/payments/mercadopago", mercadoPagoRoutes);
@@ -411,11 +413,6 @@ app.get("/public/companies", async (_req, res) => {
   } catch (e) {
     return res.status(200).json([]);
   }
-});
-
-// Compat: alias /helps/list -> /helps (alguns frontends antigos ainda chamam /helps/list)
-app.get("/helps/list", (_req, res) => {
-  return res.redirect(307, "/helps");
 });
 
 // Serve swagger.json at /api-docs
