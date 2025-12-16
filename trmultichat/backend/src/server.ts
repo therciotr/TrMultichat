@@ -31,6 +31,7 @@ import invoicesRoutes from "./modules/invoices/invoices.routes";
 import helpsRoutes from "./modules/helps/helps.routes";
 import whatsappSessionRoutes from "./modules/whatsappSession/whatsappSession.routes";
 import mercadoPagoRoutes from "./modules/payments/mercadopago.routes";
+import { pgQuery } from "./utils/pgClient";
 import redis from "./redis/redisClient";
 import jwt from "jsonwebtoken";
 import { sendPasswordResetMail } from "./utils/mailer";
