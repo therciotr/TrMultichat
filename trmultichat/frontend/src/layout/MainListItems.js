@@ -535,12 +535,12 @@ const MainListItems = (props) => {
               />
             )}
             <ListItemLink
-              to="/settings?tab=plans"
+              to="/admin/plans"
               primary="Planos"
               icon={<ListIcon />}
             />
             <ListItemLink
-              to="/settings?tab=helps"
+              to="/helps"
               primary="Ajuda"
               icon={<HelpOutlineIcon />}
             />

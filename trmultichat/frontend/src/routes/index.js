@@ -135,13 +135,12 @@ const Routes = () => {
                   component={LicenseManager}
                   isPrivate
                 />
-                {/* Rota de administração de planos removida da UI por não ser mais utilizada */}
-                {/* <Route
+                <Route
                   exact
                   path="/admin/plans"
                   component={PlansAdmin}
                   isPrivate
-                /> */}
+                />
                 <Route
                   exact
                   path="/admin/companies"

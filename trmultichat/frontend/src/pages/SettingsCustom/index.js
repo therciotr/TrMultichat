@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useHistory, useLocation } from "react-router-dom";
 import MainContainer from "../../components/MainContainer";
 import MainHeader from "../../components/MainHeader";
 import Title from "../../components/Title";
@@ -9,8 +10,6 @@ import TabPanel from "../../components/TabPanel";
 import SchedulesForm from "../../components/SchedulesForm";
 import Options from "../../components/Settings/Options";
 import EmailSettings from "../../components/EmailSettings";
-import PlansManager from "../../components/PlansManager";
-import HelpsManager from "../../components/HelpsManager";
 
 import { i18n } from "../../translate/i18n.js";
 import { toast } from "react-toastify";
@@ -56,16 +55,9 @@ const useStyles = makeStyles((theme) => ({
 
 const SettingsCustom = () => {
   const classes = useStyles();
-  const getInitialTab = () => {
-    try {
-      const params = new URLSearchParams(window.location.search);
-      const q = params.get("tab");
-      return q || "options";
-    } catch {
-      return "options";
-    }
-  };
-  const [tab, setTab] = useState(getInitialTab);
+  const history = useHistory();
+  const location = useLocation();
+  const [tab, setTab] = useState("options");
   const [schedules, setSchedules] = useState([]);
   const [company, setCompany] = useState({});
   const [loading, setLoading] = useState(false);
@@ -107,6 +99,30 @@ const SettingsCustom = () => {
     findData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Se alguém acessar URLs antigas, redireciona para as páginas corretas.
+  // Evita mostrar o layout de "Configurações" dentro do menu "Planos/Ajuda".
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(location.search || "");
+      const q = params.get("tab");
+      if (q === "plans") {
+        history.replace("/admin/plans");
+        return;
+      }
+      if (q === "helps") {
+        history.replace("/helps");
+        return;
+      }
+      if (q === "options" || q === "email" || q === "schedules") {
+        setTab(q);
+      } else {
+        setTab("options");
+      }
+    } catch {
+      setTab("options");
+    }
+  }, [history, location.search]);
 
   const handleTabChange = (event, newValue) => {
       async function findData() {
@@ -194,12 +210,6 @@ const SettingsCustom = () => {
           </TabPanel>
           <TabPanel className={classes.container} value={tab} name={"email"}>
             <EmailSettings />
-          </TabPanel>
-          <TabPanel className={classes.container} value={tab} name={"plans"}>
-            <PlansManager />
-          </TabPanel>
-          <TabPanel className={classes.container} value={tab} name={"helps"}>
-            <HelpsManager />
           </TabPanel>
         </Paper>
       </Paper>
