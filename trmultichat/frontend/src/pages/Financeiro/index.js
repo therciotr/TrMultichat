@@ -112,6 +112,18 @@ const Financeiro = () => {
   const [payModalOpen, setPayModalOpen] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState(null);
 
+  const reloadInvoices = async () => {
+    setLoading(true);
+    try {
+      const { data } = await api.get("/invoices/all", { params: { pageNumber: 1 } });
+      setInvoices(Array.isArray(data) ? data : []);
+    } catch (e) {
+      toastError(e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     let mounted = true;
     const fetchInvoices = async () => {
@@ -213,6 +225,11 @@ const Financeiro = () => {
     setPayModalOpen(false);
   };
 
+  const handlePaid = async () => {
+    closePay();
+    await reloadInvoices();
+  };
+
   const statusChip = (inv) => {
     const s = classifyStatus(inv);
     if (s === "paid")
@@ -248,6 +265,7 @@ const Financeiro = () => {
       <SubscriptionModal
         open={payModalOpen}
         onClose={closePay}
+        onPaid={handlePaid}
         aria-labelledby="pay-dialog"
         Invoice={selectedInvoice}
         contactId={null}

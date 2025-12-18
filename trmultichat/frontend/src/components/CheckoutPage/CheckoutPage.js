@@ -139,7 +139,7 @@ function _renderStepContent(step, setFieldValue, setActiveStep, values, invoiceI
       </Stepper>
       <React.Fragment>
         {activeStep === steps.length ? (
-          <CheckoutSuccess pix={datePayment} />
+          <CheckoutSuccess pix={datePayment} invoiceId={invoiceId} onPaid={props?.onPaid} />
         ) : (
           <Formik
             initialValues={{

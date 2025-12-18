@@ -10,7 +10,7 @@ import { toast } from "react-toastify";
 import api from "../../../services/api";
 
 function CheckoutSuccess(props) {
-  const { pix } = props;
+  const { pix, invoiceId, onPaid } = props;
   // Agora qrcode.qrcode é um código PIX (copia e cola) vindo da API de PIX do Mercado Pago
   const [pixString] = useState(pix?.qrcode?.qrcode || "");
   const [copied, setCopied] = useState(false);
@@ -31,9 +31,11 @@ function CheckoutSuccess(props) {
         } else {
           toast.success("Pagamento confirmado!");
         }
-        setTimeout(() => {
-          history.push("/financeiro");
-        }, 4000);
+        if (typeof onPaid === "function") {
+          onPaid();
+          return;
+        }
+        setTimeout(() => history.push("/financeiro"), 1500);
       }
     });
   }, [history]);
@@ -48,7 +50,9 @@ function CheckoutSuccess(props) {
     async function poll() {
       tries += 1;
       try {
-        const { data } = await api.get(`/payments/mercadopago/status/${paymentId}`);
+        const { data } = await api.get(`/payments/mercadopago/status/${paymentId}`, {
+          params: invoiceId ? { invoiceId } : undefined
+        });
         if (cancelled) return;
         if (data?.status === "approved") {
           const due = data?.dueDate;
@@ -56,6 +60,11 @@ function CheckoutSuccess(props) {
             toast.success(`Pagamento confirmado! Sua licença foi renovada até ${dateToClient(due)}.`);
           } else {
             toast.success("Pagamento confirmado!");
+          }
+          if (typeof onPaid === "function") {
+            onPaid();
+            cancelled = true;
+            return;
           }
           setTimeout(() => history.push("/financeiro"), 1500);
           cancelled = true;
