@@ -36,6 +36,13 @@ import toastError from "../../errors/toastError";
 import { TrButton } from "../../components/ui";
 
 const useStyles = makeStyles((theme) => ({
+  scrollArea: {
+    flex: 1,
+    minHeight: 0,
+    overflowY: "auto",
+    paddingBottom: theme.spacing(2),
+    ...theme.scrollbarStyles,
+  },
   headerWrap: {
     borderRadius: 12,
     padding: theme.spacing(4),
@@ -271,6 +278,7 @@ const Financeiro = () => {
         contactId={null}
       />
 
+      <div className={classes.scrollArea}>
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
         <div className={classes.headerWrap}>
           <Grid container alignItems="center" spacing={2}>
@@ -459,6 +467,7 @@ const Financeiro = () => {
           </Table>
         </div>
       </Paper>
+      </div>
     </MainContainer>
   );
 };
