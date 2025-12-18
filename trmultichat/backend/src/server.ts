@@ -262,21 +262,26 @@ app.post("/subscription", async (req, res) => {
     const connections = Number(body.connections || 0);
     const invoiceId = Number(body.invoiceId || 0);
 
-    // Se veio invoiceId, prioriza o valor da fatura no banco (evita divergência de valores no frontend)
+    // Se veio invoiceId, SEMPRE cobra o valor da fatura (evita divergência de valores entre UI/PIX).
+    // Importante: se a fatura não existir para a empresa logada, não prossegue com cobrança.
     if (invoiceId) {
-      try {
-        const invRows = await pgQuery<{ value: number }>(
-          'SELECT value FROM "Invoices" WHERE id = $1 AND "companyId" = $2 LIMIT 1',
-          [invoiceId, companyId]
-        );
-        const inv = Array.isArray(invRows) && invRows[0];
-        const v = inv ? Number((inv as any).value || 0) : 0;
-        if (Number.isFinite(v) && v > 0) {
-          price = v;
-        }
-      } catch {
-        // ignore and keep body.price
+      const invRows = await pgQuery<{ value: number; status?: string }>(
+        'SELECT value, status FROM "Invoices" WHERE id = $1 AND "companyId" = $2 LIMIT 1',
+        [invoiceId, companyId]
+      );
+      const inv = Array.isArray(invRows) && invRows[0];
+      if (!inv) {
+        return res.status(404).json({ error: true, message: "invoice not found for this company" });
       }
+      const invStatus = String((inv as any).status || "").toLowerCase();
+      if (invStatus === "paid") {
+        return res.status(400).json({ error: true, message: "invoice already paid" });
+      }
+      const v = Number((inv as any).value || 0);
+      if (!Number.isFinite(v) || v <= 0) {
+        return res.status(400).json({ error: true, message: "invalid invoice value" });
+      }
+      price = v;
     }
 
     // Mantém validação mínima compatível com o fluxo antigo
