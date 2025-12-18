@@ -4,6 +4,20 @@ import { pgQuery } from "../../utils/pgClient";
 
 const router = Router();
 
+function parseMoneyBR(input: any): number {
+  if (input === null || input === undefined) return 0;
+  if (typeof input === "number") return Number.isFinite(input) ? input : 0;
+  // aceita "10,00", "10.00", "R$ 10,00", "1.234,56"
+  const s = String(input).trim();
+  if (!s) return 0;
+  const cleaned = s
+    .replace(/[^\d,.-]/g, "") // remove moeda e espaços
+    .replace(/\.(?=\d{3}(\D|$))/g, "") // remove separador de milhar
+    .replace(",", "."); // converte decimal
+  const n = Number(cleaned);
+  return Number.isFinite(n) ? n : 0;
+}
+
 // GET /plans/list - lista de planos disponíveis (via Postgres)
 // (registrada ANTES de /:id para não conflitar com /plans/all /plans/list)
 router.get("/list", async (_req, res) => {
@@ -86,7 +100,7 @@ router.post("/", async (req, res) => {
       return res.status(501).json({ error: true, message: "plans create not available" });
     }
     const body = req.body || {};
-    const numericPrice = Number((body.price ?? body.value) || 0);
+    const numericPrice = parseMoneyBR(body.price ?? body.value);
     const payload = {
       name: body.name || "",
       users: Number(body.users || 0),
@@ -127,7 +141,7 @@ router.put("/:id", async (req, res) => {
     };
     // aceitar tanto price quanto value no payload e persistir em "value"
     if (body.price !== undefined || body.value !== undefined) {
-      up.value = Number((body.price ?? body.value) || 0);
+      up.value = parseMoneyBR(body.price ?? body.value);
     }
     await instance.update(up);
     const json = instance?.toJSON ? instance.toJSON() : instance;
