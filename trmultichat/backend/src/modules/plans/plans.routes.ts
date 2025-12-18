@@ -18,6 +18,20 @@ function parseMoneyBR(input: any): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+async function getPlansColumns(): Promise<Set<string>> {
+  try {
+    const rows = await pgQuery<{ column_name: string }>(
+      `SELECT column_name
+       FROM information_schema.columns
+       WHERE table_schema = 'public' AND table_name = 'Plans'`
+    );
+    return new Set((rows || []).map((r: any) => String(r.column_name)));
+  } catch {
+    // fallback: pelo menos as colunas base
+    return new Set(["id", "name", "users", "connections", "queues", "value"]);
+  }
+}
+
 // GET /plans/list - lista de planos disponíveis (via Postgres)
 // (registrada ANTES de /:id para não conflitar com /plans/all /plans/list)
 router.get("/list", async (_req, res) => {
@@ -124,14 +138,84 @@ router.post("/", async (req, res) => {
 // PUT /plans/:id - atualizar plano
 router.put("/:id", async (req, res) => {
   try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) {
+      return res.status(400).json({ error: true, message: "invalid plan id" });
+    }
+    const body = req.body || {};
+
+    // Preferencial: atualizar direto no Postgres (evita validação errada de "nome duplicado" do ORM legado)
+    try {
+      const cols = await getPlansColumns();
+
+      const name = body.name !== undefined ? String(body.name || "").trim() : undefined;
+      if (name && cols.has("name")) {
+        // Checagem de duplicidade (case-insensitive) excluindo o próprio id
+        const dup = await pgQuery<{ id: number }>(
+          'SELECT id FROM "Plans" WHERE lower(name) = lower($1) AND id <> $2 LIMIT 1',
+          [name, id]
+        );
+        if (Array.isArray(dup) && dup[0]) {
+          return res.status(400).json({ error: true, message: "plan name already exists" });
+        }
+      }
+
+      const updates: string[] = [];
+      const params: any[] = [];
+
+      function setCol(col: string, val: any) {
+        if (!cols.has(col) || val === undefined) return;
+        updates.push(`"${col}" = $${updates.length + 1}`);
+        params.push(val);
+      }
+
+      // Campos comuns
+      setCol("name", name);
+      if (body.users !== undefined) setCol("users", Number(body.users || 0));
+      if (body.connections !== undefined) setCol("connections", Number(body.connections || 0));
+      if (body.queues !== undefined) setCol("queues", Number(body.queues || 0));
+
+      // Valor: persistir sempre em "value" (padrão do schema)
+      if (body.price !== undefined || body.value !== undefined) {
+        setCol("value", parseMoneyBR(body.price ?? body.value));
+      }
+
+      // Flags (apenas se existirem como colunas)
+      setCol("useCampaigns", body.useCampaigns);
+      setCol("useSchedules", body.useSchedules);
+      setCol("useInternalChat", body.useInternalChat);
+      setCol("useExternalApi", body.useExternalApi);
+      setCol("useKanban", body.useKanban);
+      setCol("useOpenAi", body.useOpenAi);
+      setCol("useIntegrations", body.useIntegrations);
+
+      if (!updates.length) {
+        const rows = await pgQuery<any>('SELECT * FROM "Plans" WHERE id = $1 LIMIT 1', [id]);
+        const row = Array.isArray(rows) && rows[0];
+        if (!row) return res.status(404).json({ error: true, message: "not found" });
+        row.price = row.price ?? row.value ?? 0;
+        return res.json(row);
+      }
+
+      params.push(id);
+      const rows = await pgQuery<any>(
+        `UPDATE "Plans" SET ${updates.join(", ")}, "updatedAt" = now() WHERE id = $${updates.length + 1} RETURNING *`,
+        params
+      );
+      const row = Array.isArray(rows) && rows[0];
+      if (!row) return res.status(404).json({ error: true, message: "not found" });
+      row.price = row.price ?? row.value ?? 0;
+      return res.json(row);
+    } catch {
+      // fallback legado abaixo
+    }
+
     const Plan = getLegacyModel("Plan");
     if (!Plan || typeof Plan.findByPk !== "function") {
       return res.status(501).json({ error: true, message: "plans update not available" });
     }
-    const id = Number(req.params.id);
     const instance = await Plan.findByPk(id);
     if (!instance) return res.status(404).json({ error: true, message: "not found" });
-    const body = req.body || {};
     const up: any = {
       name: body.name,
       users: body.users,
@@ -139,13 +223,11 @@ router.put("/:id", async (req, res) => {
       campaigns: body.campaigns,
       schedules: body.schedules
     };
-    // aceitar tanto price quanto value no payload e persistir em "value"
     if (body.price !== undefined || body.value !== undefined) {
       up.value = parseMoneyBR(body.price ?? body.value);
     }
     await instance.update(up);
     const json = instance?.toJSON ? instance.toJSON() : instance;
-    // garantir que a resposta contenha price atualizado
     (json as any).price = (json as any).price ?? (json as any).value ?? up.value ?? 0;
     return res.json(json);
   } catch (e: any) {
