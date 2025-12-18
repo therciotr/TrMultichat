@@ -194,9 +194,18 @@ const Financeiro = () => {
     ];
   }, [filtered]);
 
-  const onPay = (inv) => {
-    setSelectedInvoice(inv);
-    setPayModalOpen(true);
+  const onPay = async (inv) => {
+    try {
+      // Garante que o valor da fatura esteja sincronizado com o plano atual da empresa
+      // antes de gerar o PIX (evita mostrar 10 no plano e cobrar 30 no QR).
+      const { data } = await api.patch(`/invoices/${inv.id}/sync-plan-value`);
+      const updated = data && data.id ? data : inv;
+      setInvoices((prev) => prev.map((i) => (i.id === inv.id ? { ...i, ...updated } : i)));
+      setSelectedInvoice(updated);
+      setPayModalOpen(true);
+    } catch (e) {
+      toastError(e);
+    }
   };
 
   const closePay = () => {
