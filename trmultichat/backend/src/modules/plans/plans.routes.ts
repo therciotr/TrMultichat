@@ -36,13 +36,8 @@ async function getPlansColumns(): Promise<Set<string>> {
 // (registrada ANTES de /:id para não conflitar com /plans/all /plans/list)
 router.get("/list", async (_req, res) => {
   try {
-    const rows = await pgQuery<{
-      id: number;
-      name: string;
-      users: number;
-      connections: number;
-      value: number;
-    }>('SELECT id, name, users, connections, value FROM "Plans" ORDER BY id ASC');
+    // Retorna colunas completas para suportar o PlansManager (queues e flags)
+    const rows = await pgQuery<any>('SELECT * FROM "Plans" ORDER BY id ASC');
 
     const normalized = (rows || []).map((p: any) => ({
       ...p,
@@ -57,13 +52,8 @@ router.get("/list", async (_req, res) => {
 // Opcional: GET /plans/all (algumas UIs consultam) - também via Postgres
 router.get("/all", async (_req, res) => {
   try {
-    const rows = await pgQuery<{
-      id: number;
-      name: string;
-      users: number;
-      connections: number;
-      value: number;
-    }>('SELECT id, name, users, connections, value FROM "Plans" ORDER BY id ASC');
+    // Retorna colunas completas para suportar o PlansManager (queues e flags)
+    const rows = await pgQuery<any>('SELECT * FROM "Plans" ORDER BY id ASC');
 
     const normalized = (rows || []).map((p: any) => ({
       ...p,
@@ -109,25 +99,94 @@ router.get("/:id", async (req, res) => {
 // POST /plans - criar plano
 router.post("/", async (req, res) => {
   try {
+    const body = req.body || {};
+    const name = String(body.name || "").trim();
+    if (!name) return res.status(400).json({ error: true, message: "name is required" });
+
+    const numericPrice = parseMoneyBR(body.price ?? body.value);
+
+    // Preferencial: Postgres direto (suporta queues e flags usados no PlansManager)
+    try {
+      const cols = await getPlansColumns();
+
+      // Checagem de duplicidade (case-insensitive)
+      const dup = await pgQuery<{ id: number }>(
+        'SELECT id FROM "Plans" WHERE lower(name) = lower($1) LIMIT 1',
+        [name]
+      );
+      if (Array.isArray(dup) && dup[0]) {
+        return res.status(400).json({ error: true, message: "plan name already exists" });
+      }
+
+      const fields: string[] = [];
+      const placeholders: string[] = [];
+      const params: any[] = [];
+
+      function add(col: string, val: any) {
+        if (!cols.has(col) || val === undefined) return;
+        fields.push(`"${col}"`);
+        placeholders.push(`$${placeholders.length + 1}`);
+        params.push(val);
+      }
+
+      add("name", name);
+      add("users", Number(body.users || 0));
+      add("connections", Number(body.connections || 0));
+      if (body.queues !== undefined) add("queues", Number(body.queues || 0));
+      add("value", numericPrice);
+
+      // flags opcionais
+      add("useCampaigns", body.useCampaigns);
+      add("useSchedules", body.useSchedules);
+      add("useInternalChat", body.useInternalChat);
+      add("useExternalApi", body.useExternalApi);
+      add("useKanban", body.useKanban);
+      add("useOpenAi", body.useOpenAi);
+      add("useIntegrations", body.useIntegrations);
+
+      // timestamps se existirem
+      if (cols.has("createdAt")) {
+        fields.push(`"createdAt"`);
+        placeholders.push("now()");
+      }
+      if (cols.has("updatedAt")) {
+        fields.push(`"updatedAt"`);
+        placeholders.push("now()");
+      }
+
+      const rows = await pgQuery<any>(
+        `INSERT INTO "Plans" (${fields.join(", ")}) VALUES (${placeholders.join(", ")}) RETURNING *`
+        , params
+      );
+      const row = Array.isArray(rows) && rows[0];
+      if (!row) return res.status(400).json({ error: true, message: "create failed" });
+      row.price = row.price ?? row.value ?? numericPrice;
+      return res.status(201).json(row);
+    } catch {
+      // fallback legado abaixo
+    }
+
     const Plan = getLegacyModel("Plan");
     if (!Plan || typeof Plan.create !== "function") {
       return res.status(501).json({ error: true, message: "plans create not available" });
     }
-    const body = req.body || {};
-    const numericPrice = parseMoneyBR(body.price ?? body.value);
-    const payload = {
-      name: body.name || "",
+    const payload: any = {
+      name,
       users: Number(body.users || 0),
       connections: Number(body.connections || 0),
-      // alguns modelos legados usam "useCampaign"/"useSchedule"; mantemos as chaves antigas se existirem
-      campaigns: Boolean(body.campaigns),
-      schedules: Boolean(body.schedules),
+      queues: Number(body.queues || 0),
       // gravar sempre no campo esperado pelo model legado
-      value: numericPrice
+      value: numericPrice,
+      useCampaigns: body.useCampaigns,
+      useSchedules: body.useSchedules,
+      useInternalChat: body.useInternalChat,
+      useExternalApi: body.useExternalApi,
+      useKanban: body.useKanban,
+      useOpenAi: body.useOpenAi,
+      useIntegrations: body.useIntegrations
     };
     const created = await Plan.create(payload);
     const json = created?.toJSON ? created.toJSON() : created;
-    // garantir que a resposta contenha price
     (json as any).price = (json as any).price ?? (json as any).value ?? numericPrice;
     return res.status(201).json(json);
   } catch (e: any) {
