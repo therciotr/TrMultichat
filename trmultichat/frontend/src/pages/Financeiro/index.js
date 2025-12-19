@@ -19,6 +19,9 @@ import {
   Tooltip,
   Typography,
   Divider,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
 } from "@material-ui/core";
 import SearchIcon from "@material-ui/icons/Search";
 import MonetizationOnIcon from "@material-ui/icons/MonetizationOn";
@@ -28,6 +31,7 @@ import PaymentIcon from "@material-ui/icons/Payment";
 import CheckCircleIcon from "@material-ui/icons/CheckCircle";
 import AccessTimeIcon from "@material-ui/icons/AccessTime";
 import WarningIcon from "@material-ui/icons/Warning";
+import ExpandMoreIcon from "@material-ui/icons/ExpandMore";
 import { LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip as RTooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts";
 import moment from "moment";
 
@@ -89,6 +93,26 @@ const useStyles = makeStyles((theme) => ({
     borderRadius: 8,
     overflow: "hidden",
   },
+  companyCard: {
+    borderRadius: 14,
+    overflow: "hidden",
+  },
+  companyHeader: {
+    display: "flex",
+    alignItems: "center",
+    gap: theme.spacing(1.25),
+    flexWrap: "wrap",
+  },
+  companyTitle: {
+    fontWeight: 800,
+    marginRight: theme.spacing(1),
+  },
+  chip: {
+    fontWeight: 700,
+  },
+  chipOverdue: { backgroundColor: "#d32f2f", color: "#fff" },
+  chipOpen: { backgroundColor: "#0288d1", color: "#fff" },
+  chipPaid: { backgroundColor: "#2e7d32", color: "#fff" },
 }));
 
 function classifyStatus(inv) {
@@ -106,6 +130,13 @@ function currencyBRL(v) {
   } catch {
     return `R$ ${n.toFixed(2)}`;
   }
+}
+
+function sumBy(list, predicate) {
+  return list.reduce((acc, inv) => {
+    if (!predicate(inv)) return acc;
+    return acc + Number(inv.value || 0);
+  }, 0);
 }
 
 const COLORS = ["#2e7d32", "#0288d1", "#d32f2f"];
@@ -204,7 +235,13 @@ const Financeiro = () => {
       map.get(cid).invoices.push(inv);
     });
     const list = Array.from(map.values());
-    list.sort((a, b) => String(a.companyName).localeCompare(String(b.companyName)));
+    // Ordena por maior valor vencido (quem está devendo mais) e depois por nome
+    list.sort((a, b) => {
+      const aOver = sumBy(a.invoices, (x) => classifyStatus(x) === "overdue");
+      const bOver = sumBy(b.invoices, (x) => classifyStatus(x) === "overdue");
+      if (bOver !== aOver) return bOver - aOver;
+      return String(a.companyName).localeCompare(String(b.companyName));
+    });
     return list;
   }, [filtered, isSuper]);
 
@@ -493,46 +530,54 @@ const Financeiro = () => {
           {groupedByCompany.map((g) => {
             const counts = { paid: 0, open: 0, overdue: 0 };
             g.invoices.forEach((inv) => { counts[classifyStatus(inv)] += 1; });
+            const overdueAmount = sumBy(g.invoices, (x) => classifyStatus(x) === "overdue");
+            const openAmount = sumBy(g.invoices, (x) => classifyStatus(x) === "open");
+            const paidAmount = sumBy(g.invoices, (x) => classifyStatus(x) === "paid");
             return (
-              <Paper key={g.companyId} className={classes.tablePaper} elevation={3} style={{ marginBottom: 12 }}>
-                <Typography variant="h6" style={{ fontWeight: 700 }}>
-                  {g.companyName}
-                </Typography>
-                <Typography variant="caption" style={{ display: "block", opacity: 0.85 }}>
-                  {counts.overdue} vencida(s) • {counts.open} em aberto • {counts.paid} paga(s)
-                </Typography>
-                <Divider style={{ margin: "8px 0 12px" }} />
-                <div className={classes.roundedTable}>
-                  <Table size="small">
-                    <TableHead>
-                      <TableRow>
-                        <TableCell align="center">Id</TableCell>
-                        <TableCell>Detalhes</TableCell>
-                        <TableCell align="right">Valor</TableCell>
-                        <TableCell align="center">Vencimento</TableCell>
-                        <TableCell align="center">Status</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {g.invoices.map((inv) => (
-                        <TableRow key={inv.id} className={classes.zebraRow}>
-                          <TableCell align="center">{inv.id}</TableCell>
-                          <TableCell>
-                            <Tooltip title={`Emitido em: ${moment(inv.createdAt || inv.dueDate).format("DD/MM/YYYY")}`}>
-                              <span>{inv.detail || "-"}</span>
-                            </Tooltip>
-                          </TableCell>
-                          <TableCell align="right" style={{ fontWeight: 700 }}>
-                            {currencyBRL(inv.value)}
-                          </TableCell>
-                          <TableCell align="center">{moment(inv.dueDate).format("DD/MM/YYYY")}</TableCell>
-                          <TableCell align="center">{statusChip(inv)}</TableCell>
+              <Accordion key={g.companyId} defaultExpanded={counts.overdue > 0} className={classes.companyCard} elevation={3}>
+                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                  <div className={classes.companyHeader}>
+                    <Typography variant="h6" className={classes.companyTitle}>
+                      {g.companyName}
+                    </Typography>
+                    <Chip className={`${classes.chip} ${classes.chipOverdue}`} size="small" label={`Vencido: ${currencyBRL(overdueAmount)} (${counts.overdue})`} />
+                    <Chip className={`${classes.chip} ${classes.chipOpen}`} size="small" label={`Em aberto: ${currencyBRL(openAmount)} (${counts.open})`} />
+                    <Chip className={`${classes.chip} ${classes.chipPaid}`} size="small" label={`Pago: ${currencyBRL(paidAmount)} (${counts.paid})`} />
+                  </div>
+                </AccordionSummary>
+                <AccordionDetails style={{ display: "block" }}>
+                  <div className={classes.roundedTable}>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell align="center">Id</TableCell>
+                          <TableCell>Detalhes</TableCell>
+                          <TableCell align="right">Valor</TableCell>
+                          <TableCell align="center">Vencimento</TableCell>
+                          <TableCell align="center">Status</TableCell>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              </Paper>
+                      </TableHead>
+                      <TableBody>
+                        {g.invoices.map((inv) => (
+                          <TableRow key={inv.id} className={classes.zebraRow}>
+                            <TableCell align="center">{inv.id}</TableCell>
+                            <TableCell>
+                              <Tooltip title={`Emitido em: ${moment(inv.createdAt || inv.dueDate).format("DD/MM/YYYY")}`}>
+                                <span>{inv.detail || "-"}</span>
+                              </Tooltip>
+                            </TableCell>
+                            <TableCell align="right" style={{ fontWeight: 800 }}>
+                              {currencyBRL(inv.value)}
+                            </TableCell>
+                            <TableCell align="center">{moment(inv.dueDate).format("DD/MM/YYYY")}</TableCell>
+                            <TableCell align="center">{statusChip(inv)}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </AccordionDetails>
+              </Accordion>
             );
           })}
         </div>
