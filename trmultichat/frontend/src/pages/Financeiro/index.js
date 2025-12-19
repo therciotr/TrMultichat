@@ -32,6 +32,7 @@ import CheckCircleIcon from "@material-ui/icons/CheckCircle";
 import AccessTimeIcon from "@material-ui/icons/AccessTime";
 import WarningIcon from "@material-ui/icons/Warning";
 import ExpandMoreIcon from "@material-ui/icons/ExpandMore";
+import EditIcon from "@material-ui/icons/Edit";
 import { LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip as RTooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts";
 import moment from "moment";
 
@@ -41,6 +42,7 @@ import api from "../../services/api";
 import toastError from "../../errors/toastError";
 import { TrButton } from "../../components/ui";
 import { AuthContext } from "../../context/Auth/AuthContext";
+import { Dialog, DialogTitle, DialogContent, DialogActions, Button, FormControl, InputLabel, Select } from "@material-ui/core";
 
 const useStyles = makeStyles((theme) => ({
   scrollArea: {
@@ -158,6 +160,9 @@ const Financeiro = () => {
   });
   const [payModalOpen, setPayModalOpen] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState(null);
+  const [manualOpen, setManualOpen] = useState(false);
+  const [manualInv, setManualInv] = useState(null);
+  const [manualForm, setManualForm] = useState({ discountValue: "", markPaid: false, paidMethod: "dinheiro", paidNote: "" });
 
   const reloadInvoices = async () => {
     setLoading(true);
@@ -315,6 +320,39 @@ const Financeiro = () => {
     await reloadInvoices();
   };
 
+  const openManual = (inv) => {
+    setManualInv(inv);
+    setManualForm({
+      discountValue: "",
+      markPaid: true,
+      paidMethod: "dinheiro",
+      paidNote: ""
+    });
+    setManualOpen(true);
+  };
+
+  const closeManual = () => {
+    setManualOpen(false);
+    setManualInv(null);
+  };
+
+  const submitManual = async () => {
+    if (!manualInv) return;
+    try {
+      const payload = {
+        markPaid: Boolean(manualForm.markPaid),
+        paidMethod: manualForm.paidMethod,
+        paidNote: manualForm.paidNote,
+        discountValue: manualForm.discountValue === "" ? null : Number(manualForm.discountValue)
+      };
+      await api.patch(`/invoices/admin/${manualInv.id}/manual-settlement`, payload);
+      closeManual();
+      await reloadInvoices();
+    } catch (e) {
+      toastError(e);
+    }
+  };
+
   const statusChip = (inv) => {
     const s = classifyStatus(inv);
     if (s === "paid")
@@ -357,6 +395,55 @@ const Financeiro = () => {
       />
 
       <div className={classes.scrollArea}>
+      <Dialog open={manualOpen} onClose={closeManual} maxWidth="xs" fullWidth>
+        <DialogTitle>Baixa manual / desconto</DialogTitle>
+        <DialogContent dividers>
+          <Typography variant="caption" style={{ display: "block", opacity: 0.85, marginBottom: 8 }}>
+            {manualInv ? `${manualInv.companyName || ""} • Fatura #${manualInv.id}` : ""}
+          </Typography>
+          <TextField
+            fullWidth
+            variant="outlined"
+            size="small"
+            label="Desconto (R$)"
+            placeholder="Ex.: 10"
+            value={manualForm.discountValue}
+            onChange={(e) => setManualForm({ ...manualForm, discountValue: e.target.value })}
+            style={{ marginBottom: 12 }}
+          />
+          <FormControl fullWidth variant="outlined" size="small" style={{ marginBottom: 12 }}>
+            <InputLabel id="paid-method-label">Método</InputLabel>
+            <Select
+              labelId="paid-method-label"
+              value={manualForm.paidMethod}
+              onChange={(e) => setManualForm({ ...manualForm, paidMethod: e.target.value })}
+              label="Método"
+            >
+              <MenuItem value="dinheiro">Dinheiro</MenuItem>
+              <MenuItem value="pix">PIX</MenuItem>
+              <MenuItem value="transferencia">Transferência</MenuItem>
+              <MenuItem value="cartao">Cartão</MenuItem>
+              <MenuItem value="boleto">Boleto</MenuItem>
+              <MenuItem value="outro">Outro</MenuItem>
+            </Select>
+          </FormControl>
+          <TextField
+            fullWidth
+            variant="outlined"
+            size="small"
+            label="Observação"
+            placeholder="Ex.: Pagou em dinheiro no balcão"
+            value={manualForm.paidNote}
+            onChange={(e) => setManualForm({ ...manualForm, paidNote: e.target.value })}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closeManual}>Cancelar</Button>
+          <Button color="primary" variant="contained" onClick={submitManual}>
+            Salvar
+          </Button>
+        </DialogActions>
+      </Dialog>
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
         <div className={classes.headerWrap}>
           <Grid container alignItems="center" spacing={2}>
@@ -555,6 +642,7 @@ const Financeiro = () => {
                           <TableCell align="right">Valor</TableCell>
                           <TableCell align="center">Vencimento</TableCell>
                           <TableCell align="center">Status</TableCell>
+                      <TableCell align="center">Ações</TableCell>
                         </TableRow>
                       </TableHead>
                       <TableBody>
@@ -571,6 +659,16 @@ const Financeiro = () => {
                             </TableCell>
                             <TableCell align="center">{moment(inv.dueDate).format("DD/MM/YYYY")}</TableCell>
                             <TableCell align="center">{statusChip(inv)}</TableCell>
+                        <TableCell align="center">
+                          <TrButton
+                            size="small"
+                            variant="outlined"
+                            startIcon={<EditIcon />}
+                            onClick={() => openManual(inv)}
+                          >
+                            Baixar
+                          </TrButton>
+                        </TableCell>
                           </TableRow>
                         ))}
                       </TableBody>

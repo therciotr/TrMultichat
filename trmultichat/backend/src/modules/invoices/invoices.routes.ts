@@ -26,6 +26,19 @@ async function isMasterFromAuth(req: any): Promise<boolean> {
   }
 }
 
+async function ensureInvoicesAdminColumns() {
+  // Idempotente: adiciona colunas extras para controle administrativo
+  try {
+    await pgQuery('ALTER TABLE "Invoices" ADD COLUMN IF NOT EXISTS "originalValue" numeric');
+    await pgQuery('ALTER TABLE "Invoices" ADD COLUMN IF NOT EXISTS "discountValue" numeric');
+    await pgQuery('ALTER TABLE "Invoices" ADD COLUMN IF NOT EXISTS "paidAt" timestamptz');
+    await pgQuery('ALTER TABLE "Invoices" ADD COLUMN IF NOT EXISTS "paidMethod" text');
+    await pgQuery('ALTER TABLE "Invoices" ADD COLUMN IF NOT EXISTS "paidNote" text');
+  } catch {
+    // ignore
+  }
+}
+
 // GET /invoices/admin/companies - lista empresas (para filtros no painel master)
 router.get("/admin/companies", async (req, res) => {
   const ok = await isMasterFromAuth(req);
@@ -47,6 +60,7 @@ router.get("/admin/all", async (req, res) => {
   const ok = await isMasterFromAuth(req);
   if (!ok) return res.status(403).json({ error: true, message: "forbidden" });
   const masterCompanyId = Number(process.env.MASTER_COMPANY_ID || 1);
+  await ensureInvoicesAdminColumns();
 
   const pageNumber = Number(req.query.pageNumber || 1);
   const limitRaw = Number(req.query.limit || 5000);
@@ -108,6 +122,7 @@ router.get("/admin/all", async (req, res) => {
     const sql = `
       SELECT
         i.id, i.detail, i.status, i.value, i."createdAt", i."updatedAt", i."dueDate", i."companyId",
+        i."originalValue", i."discountValue", i."paidAt", i."paidMethod", i."paidNote",
         c.name AS "companyName", c.email AS "companyEmail", c.phone AS "companyPhone", c."dueDate" AS "companyDueDate"
       FROM "Invoices" i
       JOIN "Companies" c ON c.id = i."companyId"
@@ -122,6 +137,103 @@ router.get("/admin/all", async (req, res) => {
     return res.json(Array.isArray(rows) ? rows : []);
   } catch (e: any) {
     return res.status(200).json([]);
+  }
+});
+
+// PATCH /invoices/admin/:id/manual-settlement
+// Permite ao master: aplicar desconto (ajustar value) e/ou marcar como pago manualmente.
+router.patch("/admin/:id/manual-settlement", async (req, res) => {
+  const ok = await isMasterFromAuth(req);
+  if (!ok) return res.status(403).json({ error: true, message: "forbidden" });
+
+  const masterCompanyId = Number(process.env.MASTER_COMPANY_ID || 1);
+  await ensureInvoicesAdminColumns();
+
+  const id = Number(req.params.id || 0);
+  if (!id) return res.status(400).json({ error: true, message: "invalid invoice id" });
+
+  const body = req.body || {};
+  const markPaid = Boolean(body.markPaid);
+  const paidMethod = body.paidMethod ? String(body.paidMethod) : null;
+  const paidNote = body.paidNote ? String(body.paidNote) : null;
+
+  const discountValueRaw = body.discountValue;
+  const discountValue =
+    discountValueRaw === undefined || discountValueRaw === null || discountValueRaw === ""
+      ? null
+      : Number(discountValueRaw);
+
+  try {
+    // Carregar fatura + empresa
+    const invRows = await pgQuery<any>(
+      'SELECT * FROM "Invoices" WHERE id = $1 LIMIT 1',
+      [id]
+    );
+    const inv = Array.isArray(invRows) && invRows[0];
+    if (!inv) return res.status(404).json({ error: true, message: "invoice not found" });
+
+    const companyId = Number(inv.companyId || 0);
+    if (companyId === masterCompanyId) {
+      return res.status(400).json({ error: true, message: "master company is exempt" });
+    }
+
+    const currentValue = Number(inv.value || 0);
+    const currentStatus = String(inv.status || "").toLowerCase();
+
+    // Aplicar desconto: value := value - desconto (mínimo 0)
+    let newValue = currentValue;
+    let appliedDiscount: number | null = null;
+    if (discountValue !== null) {
+      if (!Number.isFinite(discountValue) || discountValue < 0) {
+        return res.status(400).json({ error: true, message: "invalid discountValue" });
+      }
+      appliedDiscount = Math.min(discountValue, currentValue);
+      newValue = Math.max(0, currentValue - appliedDiscount);
+    }
+
+    // Se for marcar como pago, status = paid + paidAt now
+    const nextStatus = markPaid ? "paid" : (inv.status || "open");
+
+    // Guardar originalValue apenas na primeira vez
+    const originalValue = inv.originalValue !== null && inv.originalValue !== undefined
+      ? Number(inv.originalValue)
+      : currentValue;
+
+    const updates: string[] = [];
+    const params: any[] = [];
+    function set(col: string, val: any) {
+      updates.push(`"${col}" = $${updates.length + 1}`);
+      params.push(val);
+    }
+
+    if (appliedDiscount !== null) {
+      set("originalValue", originalValue);
+      set("discountValue", appliedDiscount);
+      set("value", newValue);
+    }
+
+    if (markPaid && currentStatus !== "paid") {
+      set("status", "paid");
+      set("paidAt", new Date().toISOString());
+      if (paidMethod) set("paidMethod", paidMethod);
+      if (paidNote) set("paidNote", paidNote);
+    } else {
+      // mesmo sem marcar pago, pode salvar obs/método se enviados
+      if (paidMethod) set("paidMethod", paidMethod);
+      if (paidNote) set("paidNote", paidNote);
+    }
+
+    set("updatedAt", new Date().toISOString());
+
+    params.push(id);
+    const rows = await pgQuery<any>(
+      `UPDATE "Invoices" SET ${updates.join(", ")} WHERE id = $${updates.length + 1} RETURNING *`,
+      params
+    );
+    const row = Array.isArray(rows) && rows[0];
+    return res.json(row || { ok: true, status: nextStatus, value: newValue });
+  } catch (e: any) {
+    return res.status(400).json({ error: true, message: e?.message || "manual settlement error" });
   }
 });
 
