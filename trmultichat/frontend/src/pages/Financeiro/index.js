@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useContext } from "react";
 import { makeStyles } from "@material-ui/core/styles";
 import { motion } from "framer-motion";
 import {
@@ -17,6 +17,8 @@ import {
   TableHead,
   TableRow,
   Tooltip,
+  Typography,
+  Divider,
 } from "@material-ui/core";
 import SearchIcon from "@material-ui/icons/Search";
 import MonetizationOnIcon from "@material-ui/icons/MonetizationOn";
@@ -34,6 +36,7 @@ import SubscriptionModal from "../../components/SubscriptionModal";
 import api from "../../services/api";
 import toastError from "../../errors/toastError";
 import { TrButton } from "../../components/ui";
+import { AuthContext } from "../../context/Auth/AuthContext";
 
 const useStyles = makeStyles((theme) => ({
   scrollArea: {
@@ -109,12 +112,18 @@ const COLORS = ["#2e7d32", "#0288d1", "#d32f2f"];
 
 const Financeiro = () => {
   const classes = useStyles();
+  const { user } = useContext(AuthContext);
+  const email = String(user?.email || "").toLowerCase();
+  const isMasterEmail = email === "thercio@trtecnologias.com.br";
+  const isSuper = Boolean(user?.super || isMasterEmail);
+  const myCompanyId = Number(localStorage.getItem("companyId") || 0);
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(false);
   const [filters, setFilters] = useState({
     q: "",
     status: "all",
     month: "all",
+    companyId: "all",
   });
   const [payModalOpen, setPayModalOpen] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState(null);
@@ -122,8 +131,13 @@ const Financeiro = () => {
   const reloadInvoices = async () => {
     setLoading(true);
     try {
-      const { data } = await api.get("/invoices/all", { params: { pageNumber: 1 } });
-      setInvoices(Array.isArray(data) ? data : []);
+      if (isSuper) {
+        const { data } = await api.get("/invoices/admin/all", { params: { pageNumber: 1, ensureUpcoming: 1 } });
+        setInvoices(Array.isArray(data) ? data : []);
+      } else {
+        const { data } = await api.get("/invoices/all", { params: { pageNumber: 1 } });
+        setInvoices(Array.isArray(data) ? data : []);
+      }
     } catch (e) {
       toastError(e);
     } finally {
@@ -132,23 +146,9 @@ const Financeiro = () => {
   };
 
   useEffect(() => {
-    let mounted = true;
-    const fetchInvoices = async () => {
-      setLoading(true);
-      try {
-        const { data } = await api.get("/invoices/all", { params: { pageNumber: 1 } });
-        if (mounted) setInvoices(Array.isArray(data) ? data : []);
-      } catch (e) {
-        toastError(e);
-      } finally {
-        if (mounted) setLoading(false);
-      }
-    };
-    fetchInvoices();
-    return () => {
-      mounted = false;
-    };
-  }, []);
+    reloadInvoices();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSuper]);
 
   const monthsOptions = useMemo(() => {
     const months = new Set();
@@ -160,17 +160,53 @@ const Financeiro = () => {
     const q = (filters.q || "").toLowerCase().trim();
     const statusFilter = filters.status;
     const monthFilter = filters.month;
+    const companyFilter = filters.companyId;
     return invoices.filter((inv) => {
       const s = classifyStatus(inv);
       const inStatus = statusFilter === "all" || statusFilter === s;
       const inMonth = monthFilter === "all" || moment(inv.dueDate).format("YYYY-MM") === monthFilter;
+      const inCompany =
+        !isSuper ||
+        companyFilter === "all" ||
+        String(inv.companyId || "") === String(companyFilter);
       const inText =
         !q ||
         String(inv.detail || "").toLowerCase().includes(q) ||
-        String(inv.id || "").toLowerCase().includes(q);
-      return inStatus && inMonth && inText;
+        String(inv.id || "").toLowerCase().includes(q) ||
+        String(inv.companyName || "").toLowerCase().includes(q) ||
+        String(inv.companyEmail || "").toLowerCase().includes(q);
+      return inStatus && inMonth && inCompany && inText;
     });
-  }, [invoices, filters]);
+  }, [invoices, filters, isSuper]);
+
+  const companyOptions = useMemo(() => {
+    if (!isSuper) return [];
+    const map = new Map();
+    invoices.forEach((inv) => {
+      const cid = String(inv.companyId || "");
+      if (!cid) return;
+      if (!map.has(cid)) map.set(cid, inv.companyName || `Empresa ${cid}`);
+    });
+    const list = Array.from(map.entries()).map(([id, name]) => ({ id, name }));
+    list.sort((a, b) => String(a.name).localeCompare(String(b.name)));
+    return list;
+  }, [invoices, isSuper]);
+
+  const groupedByCompany = useMemo(() => {
+    if (!isSuper) return [];
+    const map = new Map();
+    filtered.forEach((inv) => {
+      const cid = String(inv.companyId || "");
+      if (!cid) return;
+      if (!map.has(cid)) {
+        map.set(cid, { companyId: cid, companyName: inv.companyName || `Empresa ${cid}`, invoices: [] });
+      }
+      map.get(cid).invoices.push(inv);
+    });
+    const list = Array.from(map.values());
+    list.sort((a, b) => String(a.companyName).localeCompare(String(b.companyName)));
+    return list;
+  }, [filtered, isSuper]);
 
   const summary = useMemo(() => {
     const totalInvoices = filtered.length;
@@ -215,6 +251,11 @@ const Financeiro = () => {
 
   const onPay = async (inv) => {
     try {
+      // No painel master, não permitir gerar pagamento para outras empresas
+      if (isSuper && Number(inv.companyId || 0) !== myCompanyId) {
+        toastError("Este pagamento deve ser realizado pelo cliente (empresa proprietária da fatura).");
+        return;
+      }
       // Garante que o valor da fatura esteja sincronizado com o plano atual da empresa
       // antes de gerar o PIX (evita mostrar 10 no plano e cobrar 30 no QR).
       const { data } = await api.patch(`/invoices/${inv.id}/sync-plan-value`);
@@ -286,9 +327,13 @@ const Financeiro = () => {
               <MonetizationOnIcon style={{ fontSize: 40, opacity: 0.95 }} />
             </Grid>
             <Grid item xs>
-              <h1 className={classes.headerTitle}>📊 Painel Financeiro</h1>
+              <h1 className={classes.headerTitle}>
+                {isSuper ? "📊 Painel Financeiro (Admin)" : "📊 Painel Financeiro"}
+              </h1>
               <div className={classes.headerSub}>
-                Acompanhe suas receitas, despesas e faturas em tempo real.
+                {isSuper
+                  ? "Gerencie e acompanhe faturas de todas as empresas (multi-tenant)."
+                  : "Acompanhe suas receitas, despesas e faturas em tempo real."}
               </div>
             </Grid>
           </Grid>
@@ -421,52 +466,122 @@ const Financeiro = () => {
             ))}
           </TextField>
         </Grid>
+        {isSuper && (
+          <Grid item xs={12} md={4}>
+            <TextField
+              select
+              fullWidth
+              variant="outlined"
+              size="small"
+              label="Cliente"
+              value={filters.companyId}
+              onChange={(e) => setFilters({ ...filters, companyId: e.target.value })}
+            >
+              <MenuItem value="all">Todos</MenuItem>
+              {companyOptions.map((c) => (
+                <MenuItem key={c.id} value={c.id}>
+                  {c.name}
+                </MenuItem>
+              ))}
+            </TextField>
+          </Grid>
+        )}
       </Grid>
 
-      <Paper className={classes.tablePaper} elevation={3}>
-        <div className={classes.roundedTable}>
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell align="center">Id</TableCell>
-                <TableCell>Detalhes</TableCell>
-                <TableCell align="right">Valor</TableCell>
-                <TableCell align="center">Vencimento</TableCell>
-                <TableCell align="center">Status</TableCell>
-                <TableCell align="center">Ação</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {filtered.map((inv) => (
-                <TableRow key={inv.id} className={classes.zebraRow}>
-                  <TableCell align="center">{inv.id}</TableCell>
-                  <TableCell>
-                    <Tooltip title={`Emitido em: ${moment(inv.createdAt || inv.dueDate).format("DD/MM/YYYY")}`}>
-                      <span>{inv.detail || "-"}</span>
-                    </Tooltip>
-                  </TableCell>
-                  <TableCell align="right" style={{ fontWeight: 700 }}>
-                    {currencyBRL(inv.value)}
-                  </TableCell>
-                  <TableCell align="center">{moment(inv.dueDate).format("DD/MM/YYYY")}</TableCell>
-                  <TableCell align="center">{statusChip(inv)}</TableCell>
-                  <TableCell align="center">
-                    {classifyStatus(inv) !== "paid" ? (
-                      <TrButton size="small" onClick={() => onPay(inv)} startIcon={<PaymentIcon />}>
-                        Pagar
-                      </TrButton>
-                    ) : (
-                      <TrButton size="small" disabled startIcon={<CheckCircleIcon />}>
-                        Pago
-                      </TrButton>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+      {isSuper ? (
+        <div>
+          {groupedByCompany.map((g) => {
+            const counts = { paid: 0, open: 0, overdue: 0 };
+            g.invoices.forEach((inv) => { counts[classifyStatus(inv)] += 1; });
+            return (
+              <Paper key={g.companyId} className={classes.tablePaper} elevation={3} style={{ marginBottom: 12 }}>
+                <Typography variant="h6" style={{ fontWeight: 700 }}>
+                  {g.companyName}
+                </Typography>
+                <Typography variant="caption" style={{ display: "block", opacity: 0.85 }}>
+                  {counts.overdue} vencida(s) • {counts.open} em aberto • {counts.paid} paga(s)
+                </Typography>
+                <Divider style={{ margin: "8px 0 12px" }} />
+                <div className={classes.roundedTable}>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow>
+                        <TableCell align="center">Id</TableCell>
+                        <TableCell>Detalhes</TableCell>
+                        <TableCell align="right">Valor</TableCell>
+                        <TableCell align="center">Vencimento</TableCell>
+                        <TableCell align="center">Status</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {g.invoices.map((inv) => (
+                        <TableRow key={inv.id} className={classes.zebraRow}>
+                          <TableCell align="center">{inv.id}</TableCell>
+                          <TableCell>
+                            <Tooltip title={`Emitido em: ${moment(inv.createdAt || inv.dueDate).format("DD/MM/YYYY")}`}>
+                              <span>{inv.detail || "-"}</span>
+                            </Tooltip>
+                          </TableCell>
+                          <TableCell align="right" style={{ fontWeight: 700 }}>
+                            {currencyBRL(inv.value)}
+                          </TableCell>
+                          <TableCell align="center">{moment(inv.dueDate).format("DD/MM/YYYY")}</TableCell>
+                          <TableCell align="center">{statusChip(inv)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </Paper>
+            );
+          })}
         </div>
-      </Paper>
+      ) : (
+        <Paper className={classes.tablePaper} elevation={3}>
+          <div className={classes.roundedTable}>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell align="center">Id</TableCell>
+                  <TableCell>Detalhes</TableCell>
+                  <TableCell align="right">Valor</TableCell>
+                  <TableCell align="center">Vencimento</TableCell>
+                  <TableCell align="center">Status</TableCell>
+                  <TableCell align="center">Ação</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {filtered.map((inv) => (
+                  <TableRow key={inv.id} className={classes.zebraRow}>
+                    <TableCell align="center">{inv.id}</TableCell>
+                    <TableCell>
+                      <Tooltip title={`Emitido em: ${moment(inv.createdAt || inv.dueDate).format("DD/MM/YYYY")}`}>
+                        <span>{inv.detail || "-"}</span>
+                      </Tooltip>
+                    </TableCell>
+                    <TableCell align="right" style={{ fontWeight: 700 }}>
+                      {currencyBRL(inv.value)}
+                    </TableCell>
+                    <TableCell align="center">{moment(inv.dueDate).format("DD/MM/YYYY")}</TableCell>
+                    <TableCell align="center">{statusChip(inv)}</TableCell>
+                    <TableCell align="center">
+                      {classifyStatus(inv) !== "paid" ? (
+                        <TrButton size="small" onClick={() => onPay(inv)} startIcon={<PaymentIcon />}>
+                          Pagar
+                        </TrButton>
+                      ) : (
+                        <TrButton size="small" disabled startIcon={<CheckCircleIcon />}>
+                          Pago
+                        </TrButton>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </Paper>
+      )}
       </div>
     </MainContainer>
   );
