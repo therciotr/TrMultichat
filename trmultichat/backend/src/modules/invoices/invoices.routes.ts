@@ -107,7 +107,7 @@ router.get("/admin/all", async (req, res) => {
         c.name AS "companyName", c.email AS "companyEmail", c.phone AS "companyPhone", c."dueDate" AS "companyDueDate"
       FROM "Invoices" i
       JOIN "Companies" c ON c.id = i."companyId"
-      ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
+      ${where.length ? `WHERE ${where.join(" AND ")} AND c.status IS DISTINCT FROM false` : "WHERE c.status IS DISTINCT FROM false"}
       ORDER BY c.name ASC, i."dueDate" DESC, i.id DESC
       LIMIT $${params.length - 1} OFFSET $${params.length}
     `;

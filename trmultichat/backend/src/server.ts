@@ -416,7 +416,9 @@ app.get("/companies-safe", async (_req, res) => {
     if (!sequelize || typeof sequelize.query !== "function") {
       return res.json([]);
     }
-    const [rows] = await sequelize.query('SELECT id, name, "planId", token FROM "Companies" ORDER BY id ASC LIMIT 10000;');
+    const [rows] = await sequelize.query(
+      'SELECT id, name, "planId", token FROM "Companies" WHERE status IS DISTINCT FROM false ORDER BY id ASC LIMIT 10000;'
+    );
     return res.json(Array.isArray(rows) ? rows : []);
   } catch (e) {
     return res.status(200).json([]);
@@ -431,7 +433,9 @@ app.get("/public/companies", async (_req, res) => {
     if (!sequelize || typeof sequelize.query !== "function") {
       return res.json([]);
     }
-    const [rows] = await sequelize.query('SELECT id, name, "planId", token FROM "Companies" ORDER BY id ASC LIMIT 10000;');
+    const [rows] = await sequelize.query(
+      'SELECT id, name, "planId", token FROM "Companies" WHERE status IS DISTINCT FROM false ORDER BY id ASC LIMIT 10000;'
+    );
     return res.json(Array.isArray(rows) ? rows : []);
   } catch (e) {
     return res.status(200).json([]);
