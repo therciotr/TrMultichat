@@ -31,8 +31,10 @@ router.get("/admin/companies", async (req, res) => {
   const ok = await isMasterFromAuth(req);
   if (!ok) return res.status(403).json({ error: true, message: "forbidden" });
   try {
+    const masterCompanyId = Number(process.env.MASTER_COMPANY_ID || 1);
     const rows = await pgQuery<{ id: number; name: string; dueDate?: string }>(
-      'SELECT id, name, "dueDate" FROM "Companies" WHERE status IS DISTINCT FROM false ORDER BY name ASC'
+      'SELECT id, name, "dueDate" FROM "Companies" WHERE status IS DISTINCT FROM false AND id <> $1 ORDER BY name ASC',
+      [masterCompanyId]
     );
     return res.json(Array.isArray(rows) ? rows : []);
   } catch {
@@ -44,6 +46,7 @@ router.get("/admin/companies", async (req, res) => {
 router.get("/admin/all", async (req, res) => {
   const ok = await isMasterFromAuth(req);
   if (!ok) return res.status(403).json({ error: true, message: "forbidden" });
+  const masterCompanyId = Number(process.env.MASTER_COMPANY_ID || 1);
 
   const pageNumber = Number(req.query.pageNumber || 1);
   const limitRaw = Number(req.query.limit || 5000);
@@ -60,7 +63,8 @@ router.get("/admin/all", async (req, res) => {
   if (ensureUpcoming) {
     try {
       const companies = await pgQuery<{ id: number }>(
-        'SELECT id FROM "Companies" WHERE status IS DISTINCT FROM false ORDER BY id ASC LIMIT 2000'
+        'SELECT id FROM "Companies" WHERE status IS DISTINCT FROM false AND id <> $1 ORDER BY id ASC LIMIT 2000',
+        [masterCompanyId]
       );
       for (const c of companies || []) {
         // eslint-disable-next-line no-await-in-loop
@@ -107,7 +111,9 @@ router.get("/admin/all", async (req, res) => {
         c.name AS "companyName", c.email AS "companyEmail", c.phone AS "companyPhone", c."dueDate" AS "companyDueDate"
       FROM "Invoices" i
       JOIN "Companies" c ON c.id = i."companyId"
-      ${where.length ? `WHERE ${where.join(" AND ")} AND c.status IS DISTINCT FROM false` : "WHERE c.status IS DISTINCT FROM false"}
+      ${where.length
+        ? `WHERE ${where.join(" AND ")} AND c.status IS DISTINCT FROM false AND c.id <> ${masterCompanyId}`
+        : `WHERE c.status IS DISTINCT FROM false AND c.id <> ${masterCompanyId}`}
       ORDER BY c.name ASC, i."dueDate" DESC, i.id DESC
       LIMIT $${params.length - 1} OFFSET $${params.length}
     `;
@@ -121,6 +127,9 @@ router.get("/admin/all", async (req, res) => {
 
 async function ensureUpcomingInvoicesForCompany(companyId: number, monthsAhead = 12) {
   if (!companyId) return;
+  const masterCompanyId = Number(process.env.MASTER_COMPANY_ID || 1);
+  // Empresa master (dona do SaaS) não deve gerar/cobrar faturas
+  if (companyId === masterCompanyId) return;
   const months = Math.max(1, Math.min(36, Number(monthsAhead || 12)));
   try {
     // Obter plano atual da empresa
@@ -150,15 +159,31 @@ async function ensureUpcomingInvoicesForCompany(companyId: number, monthsAhead =
       const mm = String(d.getMonth() + 1).padStart(2, "0");
       const dd = String(d.getDate()).padStart(2, "0");
       const dueDate = `${yyyy}-${mm}-${dd}`;
+      const monthKey = `${yyyy}-${mm}`;
 
-      // Já existe fatura para esse vencimento?
+      // Regra: 1 fatura por empresa por mês (evita duplicação por dias diferentes).
+      // Se já existir mais de uma no mês, remove duplicadas (mantém a mais recente;
+      // se houver uma paga, mantém a paga).
       // eslint-disable-next-line no-await-in-loop
-      const exists = await pgQuery<{ count: string }>(
-        'SELECT COUNT(*)::text AS count FROM "Invoices" WHERE "companyId" = $1 AND "dueDate" = $2',
-        [companyId, dueDate]
+      const existing = await pgQuery<{ id: number; status?: string; dueDate?: string }>(
+        'SELECT id, status, "dueDate" FROM "Invoices" WHERE "companyId" = $1 AND substring("dueDate", 1, 7) = $2 ORDER BY id DESC',
+        [companyId, monthKey]
       );
-      const count = exists && exists[0] ? Number(exists[0].count || 0) : 0;
-      if (count > 0) continue;
+      if (Array.isArray(existing) && existing.length > 1) {
+        const paid = existing.find((x: any) => String(x.status || "").toLowerCase() === "paid");
+        const keepId = paid ? Number((paid as any).id) : Number((existing[0] as any).id);
+        const toDelete = existing
+          .filter((x: any) => Number(x.id) !== keepId)
+          .map((x: any) => Number(x.id))
+          .filter((n: any) => Number.isFinite(n) && n > 0);
+        if (toDelete.length) {
+          // eslint-disable-next-line no-await-in-loop
+          await pgQuery('DELETE FROM "Invoices" WHERE id = ANY($1::int[])', [toDelete]);
+        }
+      }
+      if (Array.isArray(existing) && existing.length >= 1) {
+        continue;
+      }
 
       const detail = planName ? `Mensalidade - ${planName}` : `Mensalidade empresa ${companyId}`;
       // eslint-disable-next-line no-await-in-loop
@@ -237,6 +262,11 @@ router.get("/all", async (req, res) => {
 
     // Preferencial: Postgres direto (mais confiável em produção)
     if (companyId && Number.isFinite(companyId)) {
+      const masterCompanyId = Number(process.env.MASTER_COMPANY_ID || 1);
+      // Empresa master não deve ter cobrança/visão de faturas (dona do SaaS)
+      if (companyId === masterCompanyId) {
+        return res.json([]);
+      }
       const rows = await pgQuery<{
         id: number;
         detail: string;

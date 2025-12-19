@@ -51,6 +51,9 @@ async function ensureInitialInvoicesForCompany(
   planId?: number | null
 ) {
   if (!companyId) return;
+  const masterCompanyId = Number(process.env.MASTER_COMPANY_ID || 1);
+  // Empresa master (dona do SaaS) não deve gerar/cobrar faturas
+  if (companyId === masterCompanyId) return;
   try {
     // já existem faturas para esta empresa? então não cria duplicadas
     const existing = await pgQuery<{ count: string }>(
