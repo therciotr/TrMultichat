@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useContext, useEffect, useMemo, useRef, useState } from "react";
+import { useHistory } from "react-router-dom";
 import {
   Card,
   CardContent,
@@ -42,6 +43,7 @@ import Title from "../../../components/Title";
 import ButtonWithSpinner from "../../../components/ButtonWithSpinner";
 import ConfirmationModal from "../../../components/ConfirmationModal";
 import useHelps from "../../../hooks/useHelps";
+import { AuthContext } from "../../../context/Auth/AuthContext";
 
 const useStyles = makeStyles((theme) => ({
   headerSub: { opacity: 0.85, marginTop: theme.spacing(0.5) },
@@ -71,7 +73,7 @@ const useStyles = makeStyles((theme) => ({
   },
   toolbar: {
     display: "grid",
-    gridTemplateColumns: "1fr 180px 180px",
+    gridTemplateColumns: "minmax(220px, 1fr) 180px 180px 180px",
     gap: theme.spacing(1),
     marginBottom: theme.spacing(2),
     [theme.breakpoints.down("sm")]: {
@@ -107,32 +109,47 @@ function normalizeText(v) {
   return String(v || "").trim();
 }
 
-function extractYouTubeId(inputRaw) {
+const YT_ID_RE = /^[a-zA-Z0-9_-]{11}$/;
+
+function parseYouTube(inputRaw) {
   const input = normalizeText(inputRaw);
-  if (!input) return "";
-  // If it already looks like an ID
-  if (/^[a-zA-Z0-9_-]{8,20}$/.test(input) && !input.includes("http")) return input;
-  // Try parsing URL
+  if (!input) return { id: "", error: "" };
+
+  // ID direto
+  if (!input.includes("http") && !input.includes("/") && !input.includes("?")) {
+    const idOnly = input;
+    if (YT_ID_RE.test(idOnly)) return { id: idOnly, error: "" };
+    return { id: "", error: "Informe uma URL do YouTube ou um ID válido (11 caracteres)." };
+  }
+
+  // Try parsing URL variants (watch, youtu.be, embed, shorts)
   try {
     const url = new URL(input);
     const host = url.hostname.replace(/^www\./, "");
     if (host === "youtu.be") {
-      const id = url.pathname.replace("/", "");
-      return id || "";
+      const id = normalizeText(url.pathname.replace("/", ""));
+      if (YT_ID_RE.test(id)) return { id, error: "" };
+      return { id: "", error: "Link do YouTube inválido." };
     }
     if (host === "youtube.com" || host === "m.youtube.com") {
       const v = url.searchParams.get("v");
-      if (v) return v;
+      if (v && YT_ID_RE.test(v)) return { id: v, error: "" };
       // /embed/{id}
-      const m = url.pathname.match(/\/embed\/([a-zA-Z0-9_-]+)/);
-      if (m && m[1]) return m[1];
+      const embed = url.pathname.match(/\/embed\/([a-zA-Z0-9_-]{11})/);
+      if (embed && embed[1]) return { id: embed[1], error: "" };
+      // /shorts/{id}
+      const shorts = url.pathname.match(/\/shorts\/([a-zA-Z0-9_-]{11})/);
+      if (shorts && shorts[1]) return { id: shorts[1], error: "" };
     }
   } catch {
     // ignore
   }
+
   // Last resort: find v=... substring
-  const match = input.match(/[?&]v=([a-zA-Z0-9_-]+)/);
-  return match?.[1] || "";
+  const match = input.match(/[?&]v=([a-zA-Z0-9_-]{11})/);
+  if (match?.[1]) return { id: match[1], error: "" };
+
+  return { id: "", error: "URL/ID do YouTube inválido." };
 }
 
 function HelpListSkeleton() {
@@ -148,17 +165,28 @@ function HelpListSkeleton() {
 const schema = Yup.object().shape({
   title: Yup.string().trim().required("Título é obrigatório"),
   description: Yup.string().trim().required("Descrição é obrigatória").max(1000, "Máximo de 1000 caracteres"),
-  videoUrl: Yup.string().nullable(),
+  videoUrl: Yup.string()
+    .nullable()
+    .test("youtube", "URL/ID do YouTube inválido.", (value) => {
+      const v = normalizeText(value);
+      if (!v) return true;
+      return Boolean(parseYouTube(v).id);
+    }),
+  category: Yup.string().nullable(),
 });
 
 export default function HelpsAdmin() {
   const classes = useStyles();
   const { list, save, update, remove } = useHelps();
+  const { user } = useContext(AuthContext);
+  const history = useHistory();
 
   const titleRef = useRef(null);
   const [records, setRecords] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [selected, setSelected] = useState(null);
+  const [loadingList, setLoadingList] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [editingItem, setEditingItem] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [viewOpen, setViewOpen] = useState(false);
   const [viewItem, setViewItem] = useState(null);
@@ -166,50 +194,75 @@ export default function HelpsAdmin() {
   const [query, setQuery] = useState("");
   const [videoFilter, setVideoFilter] = useState("all"); // all|with|without
   const [sortBy, setSortBy] = useState("recent"); // recent|az
+  const [categoryFilter, setCategoryFilter] = useState("all"); // all|<value>
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [categoryUnsupported, setCategoryUnsupported] = useState(false);
 
-  const isEditing = Boolean(selected?.id);
+  const isEditing = Boolean(editingItem?.id);
+
+  // Guard simples: rota /admin/helps deve ser só para admin/super (padrão do painel)
+  useEffect(() => {
+    const email = String(user?.email || "").toLowerCase();
+    const isMasterEmail = email === "thercio@trtecnologias.com.br";
+    const ok = Boolean(user?.admin || user?.super || isMasterEmail || user?.profile === "admin");
+    if (user && !ok) history.replace("/");
+  }, [history, user]);
 
   const formik = useFormik({
     enableReinitialize: true,
     initialValues: {
-      title: selected?.title || "",
-      description: selected?.description || "",
-      videoUrl: selected?.video ? String(selected.video) : "",
+      title: editingItem?.title || "",
+      description: editingItem?.description || "",
+      videoUrl: editingItem?.video ? String(editingItem.video) : "",
+      category: editingItem?.category || editingItem?.categoria || editingItem?.tag || "",
     },
     validationSchema: schema,
     onSubmit: async (values, helpers) => {
-      setLoading(true);
+      setSaving(true);
       try {
-        const videoId = extractYouTubeId(values.videoUrl);
+        const parsed = parseYouTube(values.videoUrl);
+        const videoId = parsed.id;
         const payload = {
           title: normalizeText(values.title),
           description: normalizeText(values.description),
           video: videoId || "",
+          // Campo opcional: só persiste se o backend suportar (se não, ele será ignorado).
+          category: normalizeText(values.category) || undefined,
         };
 
         if (isEditing) {
-          await update({ id: selected.id, ...payload });
+          const resp = await update({ id: editingItem.id, ...payload });
           toast.success("Ajuda atualizada com sucesso!");
+          if (payload.category && !resp?.category && !resp?.categoria && !resp?.tag) {
+            setCategoryUnsupported(true);
+            toast.info("Categoria não foi salva (servidor ainda não suporta esse campo).");
+          }
         } else {
-          await save(payload);
+          const resp = await save(payload);
           toast.success("Ajuda criada com sucesso!");
+          if (payload.category && !resp?.category && !resp?.categoria && !resp?.tag) {
+            setCategoryUnsupported(true);
+            toast.info("Categoria não foi salva (servidor ainda não suporta esse campo).");
+          }
         }
 
         helpers.resetForm();
-        setSelected(null);
+        setEditingItem(null);
         await reload();
       } catch (e) {
         toast.error("Não foi possível salvar. Verifique os campos e tente novamente.");
       } finally {
-        setLoading(false);
+        setSaving(false);
       }
     },
   });
 
-  const videoId = useMemo(() => extractYouTubeId(formik.values.videoUrl), [formik.values.videoUrl]);
+  const videoParsed = useMemo(() => parseYouTube(formik.values.videoUrl), [formik.values.videoUrl]);
+  const videoId = videoParsed.id;
 
   const reload = async () => {
-    setLoading(true);
+    setLoadingList(true);
     try {
       const data = await list();
       setRecords(Array.isArray(data) ? data : []);
@@ -217,7 +270,7 @@ export default function HelpsAdmin() {
       toast.error("Não foi possível carregar os conteúdos de ajuda.");
       setRecords([]);
     } finally {
-      setLoading(false);
+      setLoadingList(false);
     }
   };
 
@@ -225,6 +278,24 @@ export default function HelpsAdmin() {
     reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const categoryKey = useMemo(() => {
+    const keys = ["category", "categoria", "tag"];
+    for (const k of keys) {
+      if (records.some((r) => normalizeText(r?.[k]))) return k;
+    }
+    return null;
+  }, [records]);
+
+  const categories = useMemo(() => {
+    if (!categoryKey) return [];
+    const set = new Set();
+    records.forEach((r) => {
+      const v = normalizeText(r?.[categoryKey]);
+      if (v) set.add(v);
+    });
+    return Array.from(set).sort((a, b) => String(a).localeCompare(String(b)));
+  }, [categoryKey, records]);
 
   const filtered = useMemo(() => {
     const q = normalizeText(query).toLowerCase();
@@ -238,7 +309,11 @@ export default function HelpsAdmin() {
         !q ||
         String(r.title || "").toLowerCase().includes(q) ||
         String(r.description || "").toLowerCase().includes(q);
-      return okVideo && okText;
+      const okCategory =
+        !categoryKey ||
+        categoryFilter === "all" ||
+        normalizeText(r?.[categoryKey]) === categoryFilter;
+      return okVideo && okText && okCategory;
     });
 
     const sorted = [...base].sort((a, b) => {
@@ -248,7 +323,11 @@ export default function HelpsAdmin() {
       return bT - aT;
     });
     return sorted;
-  }, [records, query, videoFilter, sortBy]);
+  }, [records, query, videoFilter, sortBy, categoryFilter, categoryKey]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [query, videoFilter, sortBy, categoryFilter]);
 
   const openView = (item) => {
     setViewItem(item);
@@ -256,38 +335,50 @@ export default function HelpsAdmin() {
   };
 
   const startEdit = (item) => {
-    setSelected(item);
+    setEditingItem(item);
     setTimeout(() => titleRef.current?.focus?.(), 50);
   };
 
   const resetForm = () => {
-    setSelected(null);
+    setEditingItem(null);
     formik.resetForm();
     setTimeout(() => titleRef.current?.focus?.(), 50);
   };
 
   const askDelete = (item) => {
-    setSelected(item);
+    setDeleteTarget(item);
     setConfirmOpen(true);
   };
 
   const confirmDelete = async () => {
-    if (!selected?.id) return;
-    setLoading(true);
+    if (!deleteTarget?.id) return;
+    setSaving(true);
     try {
-      await remove(selected.id);
+      await remove(deleteTarget.id);
       toast.success("Conteúdo removido com sucesso!");
       setConfirmOpen(false);
-      setSelected(null);
+      setDeleteTarget(null);
       await reload();
     } catch {
       toast.error("Não foi possível excluir o conteúdo.");
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
 
-  const isEmpty = !loading && filtered.length === 0;
+  const totalPages = useMemo(() => Math.max(1, Math.ceil(filtered.length / pageSize)), [filtered.length, pageSize]);
+  const safePage = Math.min(page, totalPages);
+  const pageItems = useMemo(() => {
+    const start = (safePage - 1) * pageSize;
+    const end = start + pageSize;
+    return filtered.slice(start, end);
+  }, [filtered, pageSize, safePage]);
+
+  useEffect(() => {
+    if (page !== safePage) setPage(safePage);
+  }, [page, safePage]);
+
+  const isEmpty = !loadingList && filtered.length === 0;
 
   return (
     <MainContainer>
@@ -323,6 +414,26 @@ export default function HelpsAdmin() {
                   error={Boolean(formik.touched.title && formik.errors.title)}
                   helperText={formik.touched.title && formik.errors.title ? formik.errors.title : " "}
                   placeholder="Ex.: Como conectar WhatsApp"
+                />
+
+                <TextField
+                  fullWidth
+                  variant="outlined"
+                  margin="dense"
+                  label="Categoria (opcional)"
+                  name="category"
+                  value={formik.values.category}
+                  onChange={formik.handleChange}
+                  onBlur={formik.handleBlur}
+                  error={Boolean(formik.touched.category && formik.errors.category)}
+                  helperText={
+                    formik.touched.category && formik.errors.category
+                      ? formik.errors.category
+                      : categoryUnsupported
+                        ? "Seu servidor ainda não suporta categoria (campo não será salvo)."
+                        : "Opcional. Será salva apenas se o servidor suportar."
+                  }
+                  placeholder="Ex.: Conexões, Usuários, Atendimento..."
                 />
 
                 <TextField
@@ -391,14 +502,14 @@ export default function HelpsAdmin() {
                         type="submit"
                         variant="contained"
                         color="primary"
-                        loading={loading}
+                        loading={saving}
                       >
                         Atualizar
                       </ButtonWithSpinner>
                       <ButtonWithSpinner
                         variant="outlined"
                         onClick={resetForm}
-                        loading={loading}
+                        loading={saving}
                       >
                         Cancelar
                       </ButtonWithSpinner>
@@ -409,14 +520,14 @@ export default function HelpsAdmin() {
                         type="submit"
                         variant="contained"
                         color="primary"
-                        loading={loading}
+                        loading={saving}
                       >
                         Salvar
                       </ButtonWithSpinner>
                       <ButtonWithSpinner
                         variant="outlined"
                         onClick={() => formik.resetForm()}
-                        loading={loading}
+                        loading={saving}
                       >
                         Limpar
                       </ButtonWithSpinner>
@@ -480,9 +591,30 @@ export default function HelpsAdmin() {
                     <MenuItem value="az">A–Z</MenuItem>
                   </Select>
                 </FormControl>
+
+                {categories.length > 0 ? (
+                  <FormControl variant="outlined" size="small">
+                    <InputLabel id="category-filter-label">Categoria</InputLabel>
+                    <Select
+                      labelId="category-filter-label"
+                      value={categoryFilter}
+                      onChange={(e) => setCategoryFilter(e.target.value)}
+                      label="Categoria"
+                    >
+                      <MenuItem value="all">Todas</MenuItem>
+                      {categories.map((c) => (
+                        <MenuItem key={c} value={c}>
+                          {c}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                ) : (
+                  <div />
+                )}
               </div>
 
-              {loading ? (
+              {loadingList ? (
                 <HelpListSkeleton />
               ) : isEmpty ? (
                 <div className={classes.emptyWrap}>
@@ -515,7 +647,7 @@ export default function HelpsAdmin() {
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {filtered.map((row) => {
+                      {pageItems.map((row) => {
                         const hasVideo = Boolean(normalizeText(row.video));
                         return (
                           <TableRow key={row.id} hover>
@@ -563,6 +695,54 @@ export default function HelpsAdmin() {
                       })}
                     </TableBody>
                   </Table>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      padding: 12,
+                      borderTop: "1px solid rgba(0,0,0,0.08)",
+                      gap: 12,
+                      flexWrap: "wrap"
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <ButtonWithSpinner
+                        variant="outlined"
+                        disabled={saving || safePage <= 1}
+                        onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      >
+                        Anterior
+                      </ButtonWithSpinner>
+                      <Typography variant="body2" style={{ opacity: 0.85 }}>
+                        Página {safePage} de {totalPages}
+                      </Typography>
+                      <ButtonWithSpinner
+                        variant="outlined"
+                        disabled={saving || safePage >= totalPages}
+                        onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                      >
+                        Próximo
+                      </ButtonWithSpinner>
+                    </div>
+
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <Typography variant="body2" style={{ opacity: 0.85 }}>
+                        Itens por página:
+                      </Typography>
+                      <FormControl variant="outlined" size="small">
+                        <Select
+                          value={pageSize}
+                          onChange={(e) => setPageSize(Number(e.target.value))}
+                          disabled={saving}
+                        >
+                          <MenuItem value={10}>10</MenuItem>
+                          <MenuItem value={20}>20</MenuItem>
+                          <MenuItem value={50}>50</MenuItem>
+                        </Select>
+                      </FormControl>
+                    </div>
+                  </div>
                 </Paper>
               )}
             </CardContent>
@@ -577,12 +757,12 @@ export default function HelpsAdmin() {
           <Typography variant="body2" style={{ whiteSpace: "pre-wrap" }}>
             {viewItem?.description || "-"}
           </Typography>
-          {extractYouTubeId(viewItem?.video) ? (
+          {parseYouTube(viewItem?.video).id ? (
             <div className={classes.previewWrap} style={{ marginTop: 16 }}>
               <iframe
                 className={classes.iframe}
                 title="Preview do vídeo"
-                src={`https://www.youtube.com/embed/${extractYouTubeId(viewItem?.video)}`}
+                src={`https://www.youtube.com/embed/${parseYouTube(viewItem?.video).id}`}
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                 allowFullScreen
               />
