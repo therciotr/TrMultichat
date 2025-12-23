@@ -223,7 +223,7 @@ export default function HelpsAdmin() {
       try {
         const parsed = parseYouTube(values.videoUrl);
         const videoId = parsed.id;
-        const payload = {
+        const basePayload = {
           title: normalizeText(values.title),
           description: normalizeText(values.description),
           video: videoId || "",
@@ -231,20 +231,35 @@ export default function HelpsAdmin() {
           category: normalizeText(values.category) || undefined,
         };
 
-        if (isEditing) {
-          const resp = await update({ id: editingItem.id, ...payload });
-          toast.success("Ajuda atualizada com sucesso!");
-          if (payload.category && !resp?.category && !resp?.categoria && !resp?.tag) {
-            setCategoryUnsupported(true);
-            toast.info("Categoria não foi salva (servidor ainda não suporta esse campo).");
+        async function persist(payload) {
+          if (isEditing) return await update({ id: editingItem.id, ...payload });
+          return await save(payload);
+        }
+
+        let resp;
+        try {
+          resp = await persist(basePayload);
+        } catch (e) {
+          // Fallback seguro: se o backend rejeitar "category", tenta de novo sem ela
+          if (basePayload.category) {
+            try {
+              const retryPayload = { ...basePayload };
+              delete retryPayload.category;
+              resp = await persist(retryPayload);
+              setCategoryUnsupported(true);
+              toast.info("Categoria não foi salva (servidor ainda não suporta esse campo).");
+            } catch (e2) {
+              throw e2;
+            }
+          } else {
+            throw e;
           }
-        } else {
-          const resp = await save(payload);
-          toast.success("Ajuda criada com sucesso!");
-          if (payload.category && !resp?.category && !resp?.categoria && !resp?.tag) {
-            setCategoryUnsupported(true);
-            toast.info("Categoria não foi salva (servidor ainda não suporta esse campo).");
-          }
+        }
+
+        toast.success(isEditing ? "Ajuda atualizada com sucesso!" : "Ajuda criada com sucesso!");
+        if (basePayload.category && resp && !resp?.category && !resp?.categoria && !resp?.tag) {
+          setCategoryUnsupported(true);
+          toast.info("Categoria não foi salva (servidor ainda não suporta esse campo).");
         }
 
         helpers.resetForm();
