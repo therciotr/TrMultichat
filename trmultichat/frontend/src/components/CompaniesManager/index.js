@@ -11,6 +11,7 @@ import {
   Divider,
   IconButton,
   Select,
+  InputAdornment,
 } from "@material-ui/core";
 import { Card, CardHeader, CardContent } from "@material-ui/core";
 import BusinessIcon from "@material-ui/icons/Business";
@@ -21,6 +22,8 @@ import EmailIcon from "@material-ui/icons/Email";
 import PhoneIcon from "@material-ui/icons/Phone";
 import EventIcon from "@material-ui/icons/Event";
 import AssignmentIcon from "@material-ui/icons/Assignment";
+import BadgeOutlinedIcon from "@material-ui/icons/BadgeOutlined";
+import HomeOutlinedIcon from "@material-ui/icons/HomeOutlined";
 import { Formik, Form, Field } from "formik";
 import ButtonWithSpinner from "../ButtonWithSpinner";
 import ConfirmationModal from "../ConfirmationModal";
@@ -131,6 +134,7 @@ const useStyles = makeStyles((theme) => ({
     background: theme.palette.type === "dark" ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.02)",
   },
   iconBtn: { borderRadius: 10 },
+  formSectionTitle: { marginTop: 12, fontWeight: 900 },
 }));
 
 function dueChip(dueDateRaw, recurrenceRaw) {
@@ -466,7 +470,7 @@ export function CompanyForm(props) {
           }, 500)
         }
       >
-        {({ values, errors, touched, setFieldValue }) => (
+        {({ values, errors, touched, setFieldValue, resetForm }) => (
           <Form className={classes.fullWidth}>
             <Grid spacing={2} justifyContent="flex-end" container>
               <Grid xs={12} sm={6} md={4} item>
@@ -500,6 +504,14 @@ export function CompanyForm(props) {
                   variant="outlined"
                   className={classes.fullWidth}
                   margin="dense"
+                  size="small"
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <BusinessIcon fontSize="small" />
+                      </InputAdornment>
+                    ),
+                  }}
                 />
               </Grid>
               <Grid xs={12} sm={6} md={4} item>
@@ -510,7 +522,15 @@ export function CompanyForm(props) {
                   variant="outlined"
                   className={classes.fullWidth}
                   margin="dense"
+                  size="small"
                   required
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <EmailIcon fontSize="small" />
+                      </InputAdornment>
+                    ),
+                  }}
                 />
               </Grid>
               <Grid xs={12} sm={6} md={4} item>
@@ -522,8 +542,16 @@ export function CompanyForm(props) {
                       variant="outlined"
                       className={classes.fullWidth}
                       margin="dense"
+                      size="small"
                       value={field.value || ""}
                       onChange={(e) => setFieldValue("phone", maskPhoneBR(e.target.value))}
+                      InputProps={{
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            <PhoneIcon fontSize="small" />
+                          </InputAdornment>
+                        ),
+                      }}
                     />
                   )}
                 </Field>
@@ -593,6 +621,7 @@ export function CompanyForm(props) {
                     variant="outlined"
                     fullWidth
                     margin="dense"
+                    size="small"
                   />
                 </FormControl>
               </Grid>
@@ -623,7 +652,7 @@ export function CompanyForm(props) {
                 <>
                   <Grid xs={12} item>
                     <Divider style={{ marginTop: 8 }} />
-                    <Typography variant="subtitle2" style={{ marginTop: 12, fontWeight: 900 }}>
+                    <Typography variant="subtitle2" className={classes.formSectionTitle}>
                       Pessoa Jurídica (PJ)
                     </Typography>
                   </Grid>
@@ -637,10 +666,18 @@ export function CompanyForm(props) {
                           variant="outlined"
                           className={classes.fullWidth}
                           margin="dense"
+                          size="small"
                           value={field.value || ""}
                           onChange={(e) => setFieldValue("pj.cnpj", maskCNPJ(e.target.value))}
                           error={Boolean(touched?.pj?.cnpj && errors?.pj?.cnpj)}
                           helperText={touched?.pj?.cnpj && errors?.pj?.cnpj ? errors.pj.cnpj : " "}
+                          InputProps={{
+                            startAdornment: (
+                              <InputAdornment position="start">
+                                <BadgeOutlinedIcon fontSize="small" />
+                              </InputAdornment>
+                            ),
+                          }}
                         />
                       )}
                     </Field>
@@ -665,6 +702,7 @@ export function CompanyForm(props) {
                       variant="outlined"
                       className={classes.fullWidth}
                       margin="dense"
+                      size="small"
                       required
                       error={Boolean(touched?.pj?.razaoSocial && errors?.pj?.razaoSocial)}
                       helperText={touched?.pj?.razaoSocial && errors?.pj?.razaoSocial ? errors.pj.razaoSocial : " "}
@@ -678,6 +716,7 @@ export function CompanyForm(props) {
                       variant="outlined"
                       className={classes.fullWidth}
                       margin="dense"
+                      size="small"
                       required
                       error={Boolean(touched?.pj?.nomeFantasia && errors?.pj?.nomeFantasia)}
                       helperText={touched?.pj?.nomeFantasia && errors?.pj?.nomeFantasia ? errors.pj.nomeFantasia : " "}
@@ -715,7 +754,7 @@ export function CompanyForm(props) {
                   </Grid>
 
                   <Grid xs={12} item>
-                    <Typography variant="subtitle2" style={{ marginTop: 12, fontWeight: 900 }}>
+                    <Typography variant="subtitle2" className={classes.formSectionTitle}>
                       Endereço (PJ)
                     </Typography>
                   </Grid>
@@ -728,8 +767,16 @@ export function CompanyForm(props) {
                           variant="outlined"
                           className={classes.fullWidth}
                           margin="dense"
+                          size="small"
                           value={field.value || ""}
                           onChange={(e) => setFieldValue("pj.endereco.cep", maskCEP(e.target.value))}
+                          InputProps={{
+                            startAdornment: (
+                              <InputAdornment position="start">
+                                <HomeOutlinedIcon fontSize="small" />
+                              </InputAdornment>
+                            ),
+                          }}
                         />
                       )}
                     </Field>
@@ -757,7 +804,7 @@ export function CompanyForm(props) {
                 <>
                   <Grid xs={12} item>
                     <Divider style={{ marginTop: 8 }} />
-                    <Typography variant="subtitle2" style={{ marginTop: 12, fontWeight: 900 }}>
+                    <Typography variant="subtitle2" className={classes.formSectionTitle}>
                       Pessoa Física (PF)
                     </Typography>
                   </Grid>
@@ -770,10 +817,18 @@ export function CompanyForm(props) {
                           variant="outlined"
                           className={classes.fullWidth}
                           margin="dense"
+                          size="small"
                           value={field.value || ""}
                           onChange={(e) => setFieldValue("pf.cpf", maskCPF(e.target.value))}
                           error={Boolean(touched?.pf?.cpf && errors?.pf?.cpf)}
                           helperText={touched?.pf?.cpf && errors?.pf?.cpf ? errors.pf.cpf : " "}
+                          InputProps={{
+                            startAdornment: (
+                              <InputAdornment position="start">
+                                <BadgeOutlinedIcon fontSize="small" />
+                              </InputAdornment>
+                            ),
+                          }}
                         />
                       )}
                     </Field>
@@ -786,6 +841,7 @@ export function CompanyForm(props) {
                       variant="outlined"
                       className={classes.fullWidth}
                       margin="dense"
+                      size="small"
                       required
                       error={Boolean(touched?.pf?.nomeCompleto && errors?.pf?.nomeCompleto)}
                       helperText={touched?.pf?.nomeCompleto && errors?.pf?.nomeCompleto ? errors.pf.nomeCompleto : " "}
@@ -812,7 +868,7 @@ export function CompanyForm(props) {
                     <Field as={TextField} label="Estado civil" name="pf.estadoCivil" variant="outlined" className={classes.fullWidth} margin="dense" />
                   </Grid>
                   <Grid xs={12} item>
-                    <Typography variant="subtitle2" style={{ marginTop: 12, fontWeight: 900 }}>
+                    <Typography variant="subtitle2" className={classes.formSectionTitle}>
                       RG (opcional)
                     </Typography>
                   </Grid>
@@ -827,7 +883,7 @@ export function CompanyForm(props) {
                   </Grid>
 
                   <Grid xs={12} item>
-                    <Typography variant="subtitle2" style={{ marginTop: 12, fontWeight: 900 }}>
+                    <Typography variant="subtitle2" className={classes.formSectionTitle}>
                       Endereço (PF)
                     </Typography>
                   </Grid>
@@ -874,7 +930,12 @@ export function CompanyForm(props) {
                       className={classes.fullWidth}
                       style={{ marginTop: 7 }}
                       loading={loading}
-                      onClick={() => onCancel()}
+                      onClick={() => {
+                        // Importante: limpar precisa resetar o form (Formik) e sair do modo edição (onCancel)
+                        onCancel();
+                        // garante reset mesmo se o estado pai atualizar async
+                        setTimeout(() => resetForm(), 0);
+                      }}
                       variant="contained"
                     >
                       Limpar
@@ -1182,6 +1243,7 @@ export default function CompaniesManager() {
   const handleCancel = () => {
     setRecord((prev) => ({
       ...prev,
+      id: undefined,
       name: "",
       email: "",
       phone: "",
@@ -1190,6 +1252,7 @@ export default function CompaniesManager() {
       campaignsEnabled: false,
       dueDate: "",
       recurrence: "",
+      profile: undefined,
     }));
   };
 
