@@ -1474,7 +1474,7 @@ export default function CompaniesManager() {
     }));
   };
 
-  const handleSelect = (data) => {
+  const handleSelect = async (data) => {
     let campaignsEnabled = false;
 
     const setting = Array.isArray(data?.settings)
@@ -1485,6 +1485,9 @@ export default function CompaniesManager() {
         setting.value === "true" || setting.value === "enabled";
     }
 
+    const selectedId = data?.id;
+
+    // Seta imediatamente o básico (UI responsiva) e tenta usar cache de profile se existir
     setRecord((prev) => ({
       ...prev,
       id: data.id,
@@ -1498,6 +1501,25 @@ export default function CompaniesManager() {
       recurrence: data.recurrence || "",
       profile: profilesById && data?.id ? profilesById[data.id] : undefined,
     }));
+
+    // Garantia: ao editar, sempre buscar o profile PJ/PF (Settings) sob demanda.
+    // Isso evita abrir o form sem os campos preenchidos caso o prefetch falhe/atraso.
+    if (!selectedId) return;
+    const cached = profilesById && profilesById[selectedId];
+    const hasCached = cached && typeof cached === "object" && (cached.personType || cached.pj || cached.pf);
+    if (hasCached) return;
+
+    try {
+      const profile = await fetchCompanyProfile(selectedId);
+      setProfilesById((prev) => ({ ...(prev || {}), [selectedId]: profile || {} }));
+      // só aplica se ainda for a empresa selecionada (evita race)
+      setRecord((prev) => {
+        if (prev?.id !== selectedId) return prev;
+        return { ...prev, profile: profile || {} };
+      });
+    } catch {
+      // silencioso: o form ainda funciona com dados básicos
+    }
   };
 
   return (
