@@ -6,7 +6,8 @@ cd "/Users/therciojosesilva/Desktop/TR MULTCHAT"
 
 #
 # SSH por senha (não-interativo) — sem salvar senha no Git.
-# - Coloque a senha em um arquivo local ignorado (recomendado): .deploy.local.env
+# - Coloque a senha em um arquivo local ignorado (recomendado): .deploy.local.env (oculto no macOS)
+#   ou deploy_local.env (visível)
 #   Exemplo:
 #     VPS_PASSWORD='SUA_SENHA_AQUI'
 # - Ou exporte a variável no terminal antes de rodar:
@@ -15,6 +16,9 @@ cd "/Users/therciojosesilva/Desktop/TR MULTCHAT"
 if [ -f .deploy.local.env ]; then
   # shellcheck disable=SC1091
   . ./.deploy.local.env
+elif [ -f deploy_local.env ]; then
+  # shellcheck disable=SC1091
+  . ./deploy_local.env
 fi
 
 echo "[LOCAL] Estado do repositório:"
