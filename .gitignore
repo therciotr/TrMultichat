@@ -18,6 +18,7 @@ backend/dist/
 # Deploy (senha/local)
 deploy_local.env
 .deploy.local.env
+.deploy_local.env
 
 # Logs
 npm-debug.log*

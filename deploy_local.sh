@@ -13,7 +13,11 @@ cd "/Users/therciojosesilva/Desktop/TR MULTCHAT"
 # - Ou exporte a variável no terminal antes de rodar:
 #     export VPS_PASSWORD='SUA_SENHA_AQUI'
 #
-if [ -f .deploy.local.env ]; then
+# Compat: alguns usuários criam .deploy_local.env (com underscore)
+if [ -f .deploy_local.env ]; then
+  # shellcheck disable=SC1091
+  . ./.deploy_local.env
+elif [ -f .deploy.local.env ]; then
   # shellcheck disable=SC1091
   . ./.deploy.local.env
 elif [ -f deploy_local.env ]; then
