@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import {
   makeStyles,
   Grid,
@@ -22,9 +22,11 @@ import EmailIcon from "@material-ui/icons/Email";
 import PhoneIcon from "@material-ui/icons/Phone";
 import EventIcon from "@material-ui/icons/Event";
 import AssignmentIcon from "@material-ui/icons/Assignment";
-import BadgeOutlinedIcon from "@material-ui/icons/BadgeOutlined";
+import AssignmentIndIcon from "@material-ui/icons/AssignmentInd";
 import HomeOutlinedIcon from "@material-ui/icons/HomeOutlined";
-import { Formik, Form, Field } from "formik";
+import GroupAddIcon from "@material-ui/icons/GroupAdd";
+import HighlightOffIcon from "@material-ui/icons/HighlightOff";
+import { Formik, Form, Field, FieldArray } from "formik";
 import ButtonWithSpinner from "../ButtonWithSpinner";
 import ConfirmationModal from "../ConfirmationModal";
 
@@ -71,6 +73,26 @@ const useStyles = makeStyles((theme) => ({
     background: theme.palette.type === "dark" ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.01)",
   },
   sectionHeader: { paddingBottom: theme.spacing(1) },
+  formGrid: {
+    // deixa o form “respirar” e evita quebra esquisita no mobile
+    marginTop: theme.spacing(0.5),
+  },
+  subSection: {
+    padding: theme.spacing(1.5),
+    borderRadius: 16,
+    border: `1px solid ${theme.palette.divider}`,
+    background: theme.palette.type === "dark" ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.02)",
+  },
+  subSectionTitle: {
+    fontWeight: 900,
+    display: "flex",
+    alignItems: "center",
+    gap: theme.spacing(1),
+  },
+  hint: {
+    opacity: 0.75,
+    marginTop: 2,
+  },
   cardsGrid: { marginTop: theme.spacing(1) },
   companyCard: {
     height: "100%",
@@ -135,7 +157,76 @@ const useStyles = makeStyles((theme) => ({
   },
   iconBtn: { borderRadius: 10 },
   formSectionTitle: { marginTop: 12, fontWeight: 900 },
+  inlineActions: {
+    display: "flex",
+    gap: theme.spacing(1),
+    alignItems: "center",
+    justifyContent: "flex-end",
+    width: "100%",
+  },
+  removeMiniBtn: {
+    borderRadius: 12,
+  },
 }));
+
+const EMPTY_PJ = {
+  cnpj: "",
+  razaoSocial: "",
+  nomeFantasia: "",
+  naturezaJuridica: "",
+  dataAbertura: "",
+  situacaoCadastral: "",
+  cnaePrincipal: "",
+  cnaesSecundarios: "",
+  capitalSocial: "",
+  regimeTributario: "",
+  socios: [],
+  endereco: {
+    cep: "",
+    logradouro: "",
+    numero: "",
+    bairro: "",
+    cidade: "",
+    uf: "",
+    complemento: "",
+  },
+};
+
+const EMPTY_PF = {
+  cpf: "",
+  nomeCompleto: "",
+  dataNascimento: "",
+  nomeMae: "",
+  sexo: "",
+  estadoCivil: "",
+  rg: { numero: "", orgaoEmissor: "", uf: "" },
+  endereco: {
+    cep: "",
+    logradouro: "",
+    numero: "",
+    bairro: "",
+    cidade: "",
+    uf: "",
+    complemento: "",
+  },
+};
+
+function buildBlankCompanyValues() {
+  return {
+    id: undefined,
+    name: "",
+    email: "",
+    phone: "",
+    planId: "",
+    status: true,
+    campaignsEnabled: false,
+    dueDate: "",
+    recurrence: "",
+    personType: "PJ",
+    pj: JSON.parse(JSON.stringify(EMPTY_PJ)),
+    pf: JSON.parse(JSON.stringify(EMPTY_PF)),
+  };
+}
 
 function dueChip(dueDateRaw, recurrenceRaw) {
   const due = dueDateRaw && moment(dueDateRaw).isValid() ? moment(dueDateRaw) : null;
@@ -202,59 +293,12 @@ export function CompanyForm(props) {
   const [cnpjLoading, setCnpjLoading] = useState(false);
 
   const [record, setRecord] = useState({
-    name: "",
-    email: "",
-    phone: "",
-    planId: "",
-    status: true,
-    campaignsEnabled: false,
-    dueDate: "",
-    recurrence: "",
-    personType: "PJ",
-    pj: {
-      cnpj: "",
-      razaoSocial: "",
-      nomeFantasia: "",
-      naturezaJuridica: "",
-      dataAbertura: "",
-      situacaoCadastral: "",
-      cnaePrincipal: "",
-      cnaesSecundarios: "",
-      capitalSocial: "",
-      regimeTributario: "",
-      socios: [],
-      endereco: {
-        cep: "",
-        logradouro: "",
-        numero: "",
-        bairro: "",
-        cidade: "",
-        uf: "",
-        complemento: "",
-      },
-    },
-    pf: {
-      cpf: "",
-      nomeCompleto: "",
-      dataNascimento: "",
-      nomeMae: "",
-      sexo: "",
-      estadoCivil: "",
-      rg: { numero: "", orgaoEmissor: "", uf: "" },
-      endereco: {
-        cep: "",
-        logradouro: "",
-        numero: "",
-        bairro: "",
-        cidade: "",
-        uf: "",
-        complemento: "",
-      },
-    },
+    ...buildBlankCompanyValues(),
     ...initialValue,
   });
 
   const { list: listPlans } = usePlans();
+  const blankValues = useMemo(() => buildBlankCompanyValues(), []);
 
   useEffect(() => {
     async function fetchData() {
@@ -472,453 +516,622 @@ export function CompanyForm(props) {
       >
         {({ values, errors, touched, setFieldValue, resetForm }) => (
           <Form className={classes.fullWidth}>
-            <Grid spacing={2} justifyContent="flex-end" container>
-              <Grid xs={12} sm={6} md={4} item>
-                <FormControl margin="dense" variant="outlined" fullWidth>
-                  <InputLabel htmlFor="personType-selection">Tipo de Cadastro *</InputLabel>
-                  <Field
-                    as={Select}
-                    id="personType-selection"
-                    label="Tipo de Cadastro *"
-                    labelId="personType-selection-label"
-                    name="personType"
-                    margin="dense"
-                    required
-                  >
-                    <MenuItem value="PJ">Pessoa Jurídica (PJ)</MenuItem>
-                    <MenuItem value="PF">Pessoa Física (PF)</MenuItem>
-                  </Field>
-                </FormControl>
-                {touched?.personType && errors?.personType ? (
-                  <Typography variant="caption" color="error">
-                    {errors.personType}
+            <Grid spacing={2} justifyContent="flex-end" container className={classes.formGrid}>
+              {/* Dados principais */}
+              <Grid xs={12} item>
+                <div className={classes.subSection}>
+                  <Typography variant="subtitle2" className={classes.subSectionTitle}>
+                    <BusinessIcon fontSize="small" color="primary" />
+                    Dados principais
                   </Typography>
-                ) : null}
+                  <Typography variant="caption" className={classes.hint}>
+                    Nome/contato e tipo de cadastro (PJ/PF).
+                  </Typography>
+                  <Divider style={{ margin: "12px 0" }} />
+
+                  <Grid container spacing={2}>
+                    <Grid xs={12} sm={6} md={4} item>
+                      <FormControl margin="dense" variant="outlined" fullWidth size="small">
+                        <InputLabel htmlFor="personType-selection">Tipo de Cadastro *</InputLabel>
+                        <Field
+                          as={Select}
+                          id="personType-selection"
+                          label="Tipo de Cadastro *"
+                          labelId="personType-selection-label"
+                          name="personType"
+                          margin="dense"
+                          required
+                        >
+                          <MenuItem value="PJ">Pessoa Jurídica (PJ)</MenuItem>
+                          <MenuItem value="PF">Pessoa Física (PF)</MenuItem>
+                        </Field>
+                      </FormControl>
+                      {touched?.personType && errors?.personType ? (
+                        <Typography variant="caption" color="error">
+                          {errors.personType}
+                        </Typography>
+                      ) : null}
+                    </Grid>
+
+                    <Grid xs={12} item>
+                      <Field
+                        as={TextField}
+                        label="Nome"
+                        name="name"
+                        variant="outlined"
+                        className={classes.fullWidth}
+                        margin="dense"
+                        size="small"
+                        InputProps={{
+                          startAdornment: (
+                            <InputAdornment position="start">
+                              <BusinessIcon fontSize="small" />
+                            </InputAdornment>
+                          ),
+                        }}
+                      />
+                    </Grid>
+
+                    <Grid xs={12} sm={6} md={4} item>
+                      <Field
+                        as={TextField}
+                        label="E-mail"
+                        name="email"
+                        variant="outlined"
+                        className={classes.fullWidth}
+                        margin="dense"
+                        size="small"
+                        required
+                        InputProps={{
+                          startAdornment: (
+                            <InputAdornment position="start">
+                              <EmailIcon fontSize="small" />
+                            </InputAdornment>
+                          ),
+                        }}
+                      />
+                    </Grid>
+
+                    <Grid xs={12} sm={6} md={4} item>
+                      <Field name="phone">
+                        {({ field }) => (
+                          <TextField
+                            {...field}
+                            label="Telefone"
+                            variant="outlined"
+                            className={classes.fullWidth}
+                            margin="dense"
+                            size="small"
+                            value={field.value || ""}
+                            onChange={(e) => setFieldValue("phone", maskPhoneBR(e.target.value))}
+                            InputProps={{
+                              startAdornment: (
+                                <InputAdornment position="start">
+                                  <PhoneIcon fontSize="small" />
+                                </InputAdornment>
+                              ),
+                            }}
+                          />
+                        )}
+                      </Field>
+                    </Grid>
+                  </Grid>
+                </div>
               </Grid>
 
+              {/* Plano e status */}
               <Grid xs={12} item>
-                <Field
-                  as={TextField}
-                  label="Nome"
-                  name="name"
-                  variant="outlined"
-                  className={classes.fullWidth}
-                  margin="dense"
-                  size="small"
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <BusinessIcon fontSize="small" />
-                      </InputAdornment>
-                    ),
-                  }}
-                />
+                <div className={classes.subSection}>
+                  <Typography variant="subtitle2" className={classes.subSectionTitle}>
+                    <AssignmentIcon fontSize="small" color="primary" />
+                    Plano e status
+                  </Typography>
+                  <Typography variant="caption" className={classes.hint}>
+                    Defina plano, status e campanhas.
+                  </Typography>
+                  <Divider style={{ margin: "12px 0" }} />
+
+                  <Grid container spacing={2}>
+                    <Grid xs={12} sm={6} md={4} item>
+                      <FormControl margin="dense" variant="outlined" fullWidth size="small">
+                        <InputLabel htmlFor="plan-selection">Plano</InputLabel>
+                        <Field
+                          as={Select}
+                          id="plan-selection"
+                          label="Plano"
+                          labelId="plan-selection-label"
+                          name="planId"
+                          margin="dense"
+                          required
+                        >
+                          {plans.map((plan, key) => (
+                            <MenuItem key={key} value={plan.id}>
+                              {plan.name}
+                            </MenuItem>
+                          ))}
+                        </Field>
+                      </FormControl>
+                    </Grid>
+                    <Grid xs={12} sm={6} md={4} item>
+                      <FormControl margin="dense" variant="outlined" fullWidth size="small">
+                        <InputLabel htmlFor="status-selection">Status</InputLabel>
+                        <Field
+                          as={Select}
+                          id="status-selection"
+                          label="Status"
+                          labelId="status-selection-label"
+                          name="status"
+                          margin="dense"
+                        >
+                          <MenuItem value={true}>Sim</MenuItem>
+                          <MenuItem value={false}>Não</MenuItem>
+                        </Field>
+                      </FormControl>
+                    </Grid>
+                    <Grid xs={12} sm={6} md={4} item>
+                      <FormControl margin="dense" variant="outlined" fullWidth size="small">
+                        <InputLabel htmlFor="campaigns-selection">Campanhas</InputLabel>
+                        <Field
+                          as={Select}
+                          id="campaigns-selection"
+                          label="Campanhas"
+                          labelId="campaigns-selection-label"
+                          name="campaignsEnabled"
+                          margin="dense"
+                        >
+                          <MenuItem value={true}>Habilitadas</MenuItem>
+                          <MenuItem value={false}>Desabilitadas</MenuItem>
+                        </Field>
+                      </FormControl>
+                    </Grid>
+                  </Grid>
+                </div>
               </Grid>
-              <Grid xs={12} sm={6} md={4} item>
-                <Field
-                  as={TextField}
-                  label="E-mail"
-                  name="email"
-                  variant="outlined"
-                  className={classes.fullWidth}
-                  margin="dense"
-                  size="small"
-                  required
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <EmailIcon fontSize="small" />
-                      </InputAdornment>
-                    ),
-                  }}
-                />
-              </Grid>
-              <Grid xs={12} sm={6} md={4} item>
-                <Field name="phone">
-                  {({ field }) => (
-                    <TextField
-                      {...field}
-                      label="Telefone"
-                      variant="outlined"
-                      className={classes.fullWidth}
-                      margin="dense"
-                      size="small"
-                      value={field.value || ""}
-                      onChange={(e) => setFieldValue("phone", maskPhoneBR(e.target.value))}
-                      InputProps={{
-                        startAdornment: (
-                          <InputAdornment position="start">
-                            <PhoneIcon fontSize="small" />
-                          </InputAdornment>
-                        ),
-                      }}
-                    />
-                  )}
-                </Field>
-              </Grid>
-              <Grid xs={12} sm={6} md={4} item>
-                <FormControl margin="dense" variant="outlined" fullWidth>
-                  <InputLabel htmlFor="plan-selection">Plano</InputLabel>
-                  <Field
-                    as={Select}
-                    id="plan-selection"
-                    label="Plano"
-                    labelId="plan-selection-label"
-                    name="planId"
-                    margin="dense"
-                    required
-                  >
-                    {plans.map((plan, key) => (
-                      <MenuItem key={key} value={plan.id}>
-                        {plan.name}
-                      </MenuItem>
-                    ))}
-                  </Field>
-                </FormControl>
-              </Grid>
-              <Grid xs={12} sm={6} md={4} item>
-                <FormControl margin="dense" variant="outlined" fullWidth>
-                  <InputLabel htmlFor="status-selection">Status</InputLabel>
-                  <Field
-                    as={Select}
-                    id="status-selection"
-                    label="Status"
-                    labelId="status-selection-label"
-                    name="status"
-                    margin="dense"
-                  >
-                    <MenuItem value={true}>Sim</MenuItem>
-                    <MenuItem value={false}>Não</MenuItem>
-                  </Field>
-                </FormControl>
-              </Grid>
-              <Grid xs={12} sm={6} md={4} item>
-                <FormControl margin="dense" variant="outlined" fullWidth>
-                  <InputLabel htmlFor="status-selection">Campanhas</InputLabel>
-                  <Field
-                    as={Select}
-                    id="campaigns-selection"
-                    label="Campanhas"
-                    labelId="campaigns-selection-label"
-                    name="campaignsEnabled"
-                    margin="dense"
-                  >
-                    <MenuItem value={true}>Habilitadas</MenuItem>
-                    <MenuItem value={false}>Desabilitadas</MenuItem>
-                  </Field>
-                </FormControl>
-              </Grid>
-              <Grid xs={12} sm={6} md={4} item>
-                <FormControl variant="outlined" fullWidth>
-                  <Field
-                    as={TextField}
-                    label="Data de Vencimento"
-                    type="date"
-                    name="dueDate"
-                    InputLabelProps={{
-                      shrink: true,
-                    }}
-                    variant="outlined"
-                    fullWidth
-                    margin="dense"
-                    size="small"
-                  />
-                </FormControl>
-              </Grid>
-              <Grid xs={12} sm={6} md={4} item>
-                <FormControl margin="dense" variant="outlined" fullWidth>
-                  <InputLabel htmlFor="recorrencia-selection">
-                    Recorrência
-                  </InputLabel>
-                  <Field
-                    as={Select}
-                    label="Recorrência"
-                    labelId="recorrencia-selection-label"
-                    id="recurrence"
-                    name="recurrence"
-                    margin="dense"
-                  >
-                    <MenuItem value="MENSAL">Mensal</MenuItem>
-                    {/*<MenuItem value="BIMESTRAL">Bimestral</MenuItem>*/}
-                    {/*<MenuItem value="TRIMESTRAL">Trimestral</MenuItem>*/}
-                    {/*<MenuItem value="SEMESTRAL">Semestral</MenuItem>*/}
-                    {/*<MenuItem value="ANUAL">Anual</MenuItem>*/}
-                  </Field>
-                </FormControl>
+
+              {/* Cobrança */}
+              <Grid xs={12} item>
+                <div className={classes.subSection}>
+                  <Typography variant="subtitle2" className={classes.subSectionTitle}>
+                    <EventIcon fontSize="small" color="primary" />
+                    Cobrança
+                  </Typography>
+                  <Typography variant="caption" className={classes.hint}>
+                    Controle de vencimento e recorrência.
+                  </Typography>
+                  <Divider style={{ margin: "12px 0" }} />
+
+                  <Grid container spacing={2}>
+                    <Grid xs={12} sm={6} md={4} item>
+                      <FormControl variant="outlined" fullWidth size="small">
+                        <Field
+                          as={TextField}
+                          label="Data de Vencimento"
+                          type="date"
+                          name="dueDate"
+                          InputLabelProps={{ shrink: true }}
+                          variant="outlined"
+                          fullWidth
+                          margin="dense"
+                          size="small"
+                        />
+                      </FormControl>
+                    </Grid>
+                    <Grid xs={12} sm={6} md={4} item>
+                      <FormControl margin="dense" variant="outlined" fullWidth size="small">
+                        <InputLabel htmlFor="recorrencia-selection">Recorrência</InputLabel>
+                        <Field
+                          as={Select}
+                          label="Recorrência"
+                          labelId="recorrencia-selection-label"
+                          id="recorrencia-selection"
+                          name="recurrence"
+                          margin="dense"
+                        >
+                          <MenuItem value="MENSAL">Mensal</MenuItem>
+                        </Field>
+                      </FormControl>
+                    </Grid>
+                  </Grid>
+                </div>
               </Grid>
 
               {/* Campos PJ/PF (salvos em /companies/:id/profile) */}
               {values.personType === "PJ" ? (
                 <>
                   <Grid xs={12} item>
-                    <Divider style={{ marginTop: 8 }} />
-                    <Typography variant="subtitle2" className={classes.formSectionTitle}>
-                      Pessoa Jurídica (PJ)
-                    </Typography>
-                  </Grid>
+                    <div className={classes.subSection}>
+                      <Typography variant="subtitle2" className={classes.subSectionTitle}>
+                        <AssignmentIndIcon fontSize="small" color="primary" />
+                        Pessoa Jurídica (PJ)
+                      </Typography>
+                      <Typography variant="caption" className={classes.hint}>
+                        CNPJ + dados cadastrais. Você pode buscar pela BrasilAPI.
+                      </Typography>
+                      <Divider style={{ margin: "12px 0" }} />
 
-                  <Grid xs={12} sm={6} md={4} item>
-                    <Field name="pj.cnpj">
-                      {({ field }) => (
-                        <TextField
-                          {...field}
-                          label="CNPJ *"
-                          variant="outlined"
-                          className={classes.fullWidth}
-                          margin="dense"
-                          size="small"
-                          value={field.value || ""}
-                          onChange={(e) => setFieldValue("pj.cnpj", maskCNPJ(e.target.value))}
-                          error={Boolean(touched?.pj?.cnpj && errors?.pj?.cnpj)}
-                          helperText={touched?.pj?.cnpj && errors?.pj?.cnpj ? errors.pj.cnpj : " "}
-                          InputProps={{
-                            startAdornment: (
-                              <InputAdornment position="start">
-                                <BadgeOutlinedIcon fontSize="small" />
-                              </InputAdornment>
-                            ),
-                          }}
-                        />
-                      )}
-                    </Field>
-                  </Grid>
-                  <Grid xs={12} sm={6} md={4} item style={{ display: "flex", alignItems: "center" }}>
-                    <ButtonWithSpinner
-                      loading={cnpjLoading}
-                      variant="contained"
-                      color="primary"
-                      onClick={() => handleBuscarCnpj(values, setFieldValue)}
-                      style={{ marginTop: 6, width: "100%" }}
-                    >
-                      Buscar CNPJ (BrasilAPI)
-                    </ButtonWithSpinner>
-                  </Grid>
+                      <Grid container spacing={2}>
+                        <Grid xs={12} md={8} item>
+                          <Field name="pj.cnpj">
+                            {({ field }) => (
+                              <TextField
+                                {...field}
+                                label="CNPJ *"
+                                variant="outlined"
+                                className={classes.fullWidth}
+                                margin="dense"
+                                size="small"
+                                value={field.value || ""}
+                                onChange={(e) => setFieldValue("pj.cnpj", maskCNPJ(e.target.value))}
+                                error={Boolean(touched?.pj?.cnpj && errors?.pj?.cnpj)}
+                                helperText={touched?.pj?.cnpj && errors?.pj?.cnpj ? errors.pj.cnpj : " "}
+                                InputProps={{
+                                  startAdornment: (
+                                    <InputAdornment position="start">
+                                      <AssignmentIndIcon fontSize="small" />
+                                    </InputAdornment>
+                                  ),
+                                }}
+                              />
+                            )}
+                          </Field>
+                        </Grid>
+                        <Grid xs={12} md={4} item style={{ display: "flex", alignItems: "center" }}>
+                          <ButtonWithSpinner
+                            loading={cnpjLoading}
+                            variant="contained"
+                            color="primary"
+                            onClick={() => handleBuscarCnpj(values, setFieldValue)}
+                            className={classes.fullWidth}
+                            style={{ marginTop: 6 }}
+                          >
+                            Buscar CNPJ
+                          </ButtonWithSpinner>
+                        </Grid>
 
-                  <Grid xs={12} item>
-                    <Field
-                      as={TextField}
-                      label="Razão Social *"
-                      name="pj.razaoSocial"
-                      variant="outlined"
-                      className={classes.fullWidth}
-                      margin="dense"
-                      size="small"
-                      required
-                      error={Boolean(touched?.pj?.razaoSocial && errors?.pj?.razaoSocial)}
-                      helperText={touched?.pj?.razaoSocial && errors?.pj?.razaoSocial ? errors.pj.razaoSocial : " "}
-                    />
-                  </Grid>
-                  <Grid xs={12} item>
-                    <Field
-                      as={TextField}
-                      label="Nome Fantasia *"
-                      name="pj.nomeFantasia"
-                      variant="outlined"
-                      className={classes.fullWidth}
-                      margin="dense"
-                      size="small"
-                      required
-                      error={Boolean(touched?.pj?.nomeFantasia && errors?.pj?.nomeFantasia)}
-                      helperText={touched?.pj?.nomeFantasia && errors?.pj?.nomeFantasia ? errors.pj.nomeFantasia : " "}
-                    />
-                  </Grid>
+                        <Grid xs={12} item>
+                          <Field
+                            as={TextField}
+                            label="Razão Social *"
+                            name="pj.razaoSocial"
+                            variant="outlined"
+                            className={classes.fullWidth}
+                            margin="dense"
+                            size="small"
+                            required
+                            error={Boolean(touched?.pj?.razaoSocial && errors?.pj?.razaoSocial)}
+                            helperText={touched?.pj?.razaoSocial && errors?.pj?.razaoSocial ? errors.pj.razaoSocial : " "}
+                          />
+                        </Grid>
+                        <Grid xs={12} item>
+                          <Field
+                            as={TextField}
+                            label="Nome Fantasia *"
+                            name="pj.nomeFantasia"
+                            variant="outlined"
+                            className={classes.fullWidth}
+                            margin="dense"
+                            size="small"
+                            required
+                            error={Boolean(touched?.pj?.nomeFantasia && errors?.pj?.nomeFantasia)}
+                            helperText={touched?.pj?.nomeFantasia && errors?.pj?.nomeFantasia ? errors.pj.nomeFantasia : " "}
+                          />
+                        </Grid>
 
-                  <Grid xs={12} sm={6} md={4} item>
-                    <Field as={TextField} label="Natureza Jurídica" name="pj.naturezaJuridica" variant="outlined" className={classes.fullWidth} margin="dense" />
-                  </Grid>
-                  <Grid xs={12} sm={6} md={4} item>
-                    <Field as={TextField} label="Data de abertura" name="pj.dataAbertura" type="date" InputLabelProps={{ shrink: true }} variant="outlined" className={classes.fullWidth} margin="dense" />
-                  </Grid>
-                  <Grid xs={12} sm={6} md={4} item>
-                    <Field as={TextField} label="Situação cadastral" name="pj.situacaoCadastral" variant="outlined" className={classes.fullWidth} margin="dense" />
-                  </Grid>
-                  <Grid xs={12} sm={6} md={4} item>
-                    <Field as={TextField} label="CNAE principal" name="pj.cnaePrincipal" variant="outlined" className={classes.fullWidth} margin="dense" />
-                  </Grid>
-                  <Grid xs={12} item>
-                    <Field as={TextField} label="CNAEs secundários" name="pj.cnaesSecundarios" variant="outlined" className={classes.fullWidth} margin="dense" multiline rows={3} />
-                  </Grid>
-                  <Grid xs={12} sm={6} md={4} item>
-                    <Field as={TextField} label="Capital social" name="pj.capitalSocial" variant="outlined" className={classes.fullWidth} margin="dense" />
-                  </Grid>
-                  <Grid xs={12} sm={6} md={4} item>
-                    <FormControl margin="dense" variant="outlined" fullWidth>
-                      <InputLabel htmlFor="regime-selection">Regime tributário</InputLabel>
-                      <Field as={Select} id="regime-selection" label="Regime tributário" name="pj.regimeTributario" margin="dense">
-                        <MenuItem value="">Não informado</MenuItem>
-                        <MenuItem value="Simples">Simples</MenuItem>
-                        <MenuItem value="Lucro Presumido">Lucro Presumido</MenuItem>
-                        <MenuItem value="Lucro Real">Lucro Real</MenuItem>
-                      </Field>
-                    </FormControl>
-                  </Grid>
+                        <Grid xs={12} sm={6} md={4} item>
+                          <Field as={TextField} size="small" label="Natureza Jurídica" name="pj.naturezaJuridica" variant="outlined" className={classes.fullWidth} margin="dense" />
+                        </Grid>
+                        <Grid xs={12} sm={6} md={4} item>
+                          <Field as={TextField} size="small" label="Data de abertura" name="pj.dataAbertura" type="date" InputLabelProps={{ shrink: true }} variant="outlined" className={classes.fullWidth} margin="dense" />
+                        </Grid>
+                        <Grid xs={12} sm={6} md={4} item>
+                          <Field as={TextField} size="small" label="Situação cadastral" name="pj.situacaoCadastral" variant="outlined" className={classes.fullWidth} margin="dense" />
+                        </Grid>
+                        <Grid xs={12} sm={6} md={6} item>
+                          <Field as={TextField} size="small" label="CNAE principal" name="pj.cnaePrincipal" variant="outlined" className={classes.fullWidth} margin="dense" />
+                        </Grid>
+                        <Grid xs={12} item>
+                          <Field as={TextField} size="small" label="CNAEs secundários" name="pj.cnaesSecundarios" variant="outlined" className={classes.fullWidth} margin="dense" multiline rows={3} />
+                        </Grid>
+                        <Grid xs={12} sm={6} md={4} item>
+                          <Field as={TextField} size="small" label="Capital social" name="pj.capitalSocial" variant="outlined" className={classes.fullWidth} margin="dense" />
+                        </Grid>
+                        <Grid xs={12} sm={6} md={4} item>
+                          <FormControl margin="dense" variant="outlined" fullWidth size="small">
+                            <InputLabel htmlFor="regime-selection">Regime tributário</InputLabel>
+                            <Field as={Select} id="regime-selection" label="Regime tributário" name="pj.regimeTributario" margin="dense">
+                              <MenuItem value="">Não informado</MenuItem>
+                              <MenuItem value="Simples">Simples</MenuItem>
+                              <MenuItem value="Lucro Presumido">Lucro Presumido</MenuItem>
+                              <MenuItem value="Lucro Real">Lucro Real</MenuItem>
+                            </Field>
+                          </FormControl>
+                        </Grid>
 
-                  <Grid xs={12} item>
-                    <Typography variant="subtitle2" className={classes.formSectionTitle}>
-                      Endereço (PJ)
-                    </Typography>
-                  </Grid>
-                  <Grid xs={12} sm={6} md={3} item>
-                    <Field name="pj.endereco.cep">
-                      {({ field }) => (
-                        <TextField
-                          {...field}
-                          label="CEP"
-                          variant="outlined"
-                          className={classes.fullWidth}
-                          margin="dense"
-                          size="small"
-                          value={field.value || ""}
-                          onChange={(e) => setFieldValue("pj.endereco.cep", maskCEP(e.target.value))}
-                          InputProps={{
-                            startAdornment: (
-                              <InputAdornment position="start">
-                                <HomeOutlinedIcon fontSize="small" />
-                              </InputAdornment>
-                            ),
-                          }}
-                        />
-                      )}
-                    </Field>
-                  </Grid>
-                  <Grid xs={12} sm={6} md={7} item>
-                    <Field as={TextField} label="Logradouro" name="pj.endereco.logradouro" variant="outlined" className={classes.fullWidth} margin="dense" />
-                  </Grid>
-                  <Grid xs={12} sm={6} md={2} item>
-                    <Field as={TextField} label="Número" name="pj.endereco.numero" variant="outlined" className={classes.fullWidth} margin="dense" />
-                  </Grid>
-                  <Grid xs={12} sm={6} md={4} item>
-                    <Field as={TextField} label="Bairro" name="pj.endereco.bairro" variant="outlined" className={classes.fullWidth} margin="dense" />
-                  </Grid>
-                  <Grid xs={12} sm={6} md={6} item>
-                    <Field as={TextField} label="Cidade" name="pj.endereco.cidade" variant="outlined" className={classes.fullWidth} margin="dense" />
-                  </Grid>
-                  <Grid xs={12} sm={6} md={2} item>
-                    <Field as={TextField} label="UF" name="pj.endereco.uf" variant="outlined" className={classes.fullWidth} margin="dense" />
-                  </Grid>
-                  <Grid xs={12} item>
-                    <Field as={TextField} label="Complemento" name="pj.endereco.complemento" variant="outlined" className={classes.fullWidth} margin="dense" />
+                        {/* Sócios / Administradores */}
+                        <Grid xs={12} item>
+                          <Divider style={{ margin: "12px 0" }} />
+                          <Typography variant="subtitle2" className={classes.subSectionTitle}>
+                            <GroupAddIcon fontSize="small" color="primary" />
+                            Sócios / Administradores (opcional)
+                          </Typography>
+                          <Typography variant="caption" className={classes.hint}>
+                            Lista simples — fica salva em <b>extraData.pj.socios</b>.
+                          </Typography>
+                        </Grid>
+
+                        <Grid xs={12} item>
+                          <FieldArray
+                            name="pj.socios"
+                            render={(arrayHelpers) => (
+                              <Grid container spacing={2}>
+                                {(Array.isArray(values?.pj?.socios) ? values.pj.socios : []).map((s, idx) => (
+                                  <Grid key={idx} xs={12} item>
+                                    <div className={classes.subSection}>
+                                      <Grid container spacing={2} alignItems="center">
+                                        <Grid xs={12} md={4} item>
+                                          <Field
+                                            as={TextField}
+                                            size="small"
+                                            label="Nome"
+                                            name={`pj.socios.${idx}.nome`}
+                                            variant="outlined"
+                                            className={classes.fullWidth}
+                                            margin="dense"
+                                          />
+                                        </Grid>
+                                        <Grid xs={12} md={3} item>
+                                          <Field name={`pj.socios.${idx}.cpf`}>
+                                            {({ field }) => (
+                                              <TextField
+                                                {...field}
+                                                size="small"
+                                                label="CPF"
+                                                variant="outlined"
+                                                className={classes.fullWidth}
+                                                margin="dense"
+                                                value={field.value || ""}
+                                                onChange={(e) => setFieldValue(`pj.socios.${idx}.cpf`, maskCPF(e.target.value))}
+                                              />
+                                            )}
+                                          </Field>
+                                        </Grid>
+                                        <Grid xs={12} md={4} item>
+                                          <Field
+                                            as={TextField}
+                                            size="small"
+                                            label="Qualificação"
+                                            name={`pj.socios.${idx}.qualificacao`}
+                                            variant="outlined"
+                                            className={classes.fullWidth}
+                                            margin="dense"
+                                          />
+                                        </Grid>
+                                        <Grid xs={12} md={1} item>
+                                          <div className={classes.inlineActions}>
+                                            <IconButton
+                                              size="small"
+                                              className={classes.removeMiniBtn}
+                                              onClick={() => arrayHelpers.remove(idx)}
+                                              aria-label="Remover sócio"
+                                            >
+                                              <HighlightOffIcon fontSize="small" style={{ color: "#d32f2f" }} />
+                                            </IconButton>
+                                          </div>
+                                        </Grid>
+                                      </Grid>
+                                    </div>
+                                  </Grid>
+                                ))}
+
+                                <Grid xs={12} sm={6} md={4} item>
+                                  <ButtonWithSpinner
+                                    variant="contained"
+                                    onClick={() => arrayHelpers.push({ nome: "", cpf: "", qualificacao: "" })}
+                                    className={classes.fullWidth}
+                                  >
+                                    Adicionar sócio
+                                  </ButtonWithSpinner>
+                                </Grid>
+                              </Grid>
+                            )}
+                          />
+                        </Grid>
+
+                        {/* Endereço PJ */}
+                        <Grid xs={12} item>
+                          <Divider style={{ margin: "12px 0" }} />
+                          <Typography variant="subtitle2" className={classes.subSectionTitle}>
+                            <HomeOutlinedIcon fontSize="small" color="primary" />
+                            Endereço (PJ)
+                          </Typography>
+                        </Grid>
+                        <Grid xs={12} sm={6} md={3} item>
+                          <Field name="pj.endereco.cep">
+                            {({ field }) => (
+                              <TextField
+                                {...field}
+                                label="CEP"
+                                variant="outlined"
+                                className={classes.fullWidth}
+                                margin="dense"
+                                size="small"
+                                value={field.value || ""}
+                                onChange={(e) => setFieldValue("pj.endereco.cep", maskCEP(e.target.value))}
+                                InputProps={{
+                                  startAdornment: (
+                                    <InputAdornment position="start">
+                                      <HomeOutlinedIcon fontSize="small" />
+                                    </InputAdornment>
+                                  ),
+                                }}
+                              />
+                            )}
+                          </Field>
+                        </Grid>
+                        <Grid xs={12} sm={6} md={7} item>
+                          <Field as={TextField} size="small" label="Logradouro" name="pj.endereco.logradouro" variant="outlined" className={classes.fullWidth} margin="dense" />
+                        </Grid>
+                        <Grid xs={12} sm={6} md={2} item>
+                          <Field as={TextField} size="small" label="Número" name="pj.endereco.numero" variant="outlined" className={classes.fullWidth} margin="dense" />
+                        </Grid>
+                        <Grid xs={12} sm={6} md={4} item>
+                          <Field as={TextField} size="small" label="Bairro" name="pj.endereco.bairro" variant="outlined" className={classes.fullWidth} margin="dense" />
+                        </Grid>
+                        <Grid xs={12} sm={6} md={6} item>
+                          <Field as={TextField} size="small" label="Cidade" name="pj.endereco.cidade" variant="outlined" className={classes.fullWidth} margin="dense" />
+                        </Grid>
+                        <Grid xs={12} sm={6} md={2} item>
+                          <Field as={TextField} size="small" label="UF" name="pj.endereco.uf" variant="outlined" className={classes.fullWidth} margin="dense" />
+                        </Grid>
+                        <Grid xs={12} item>
+                          <Field as={TextField} size="small" label="Complemento" name="pj.endereco.complemento" variant="outlined" className={classes.fullWidth} margin="dense" />
+                        </Grid>
+                      </Grid>
+                    </div>
                   </Grid>
                 </>
               ) : (
                 <>
                   <Grid xs={12} item>
-                    <Divider style={{ marginTop: 8 }} />
-                    <Typography variant="subtitle2" className={classes.formSectionTitle}>
-                      Pessoa Física (PF)
-                    </Typography>
-                  </Grid>
-                  <Grid xs={12} sm={6} md={4} item>
-                    <Field name="pf.cpf">
-                      {({ field }) => (
-                        <TextField
-                          {...field}
-                          label="CPF *"
-                          variant="outlined"
-                          className={classes.fullWidth}
-                          margin="dense"
-                          size="small"
-                          value={field.value || ""}
-                          onChange={(e) => setFieldValue("pf.cpf", maskCPF(e.target.value))}
-                          error={Boolean(touched?.pf?.cpf && errors?.pf?.cpf)}
-                          helperText={touched?.pf?.cpf && errors?.pf?.cpf ? errors.pf.cpf : " "}
-                          InputProps={{
-                            startAdornment: (
-                              <InputAdornment position="start">
-                                <BadgeOutlinedIcon fontSize="small" />
-                              </InputAdornment>
-                            ),
-                          }}
-                        />
-                      )}
-                    </Field>
-                  </Grid>
-                  <Grid xs={12} item>
-                    <Field
-                      as={TextField}
-                      label="Nome completo *"
-                      name="pf.nomeCompleto"
-                      variant="outlined"
-                      className={classes.fullWidth}
-                      margin="dense"
-                      size="small"
-                      required
-                      error={Boolean(touched?.pf?.nomeCompleto && errors?.pf?.nomeCompleto)}
-                      helperText={touched?.pf?.nomeCompleto && errors?.pf?.nomeCompleto ? errors.pf.nomeCompleto : " "}
-                    />
-                  </Grid>
-                  <Grid xs={12} sm={6} md={4} item>
-                    <Field as={TextField} label="Data de nascimento" name="pf.dataNascimento" type="date" InputLabelProps={{ shrink: true }} variant="outlined" className={classes.fullWidth} margin="dense" />
-                  </Grid>
-                  <Grid xs={12} sm={6} md={4} item>
-                    <Field as={TextField} label="Nome da mãe" name="pf.nomeMae" variant="outlined" className={classes.fullWidth} margin="dense" />
-                  </Grid>
-                  <Grid xs={12} sm={6} md={4} item>
-                    <FormControl margin="dense" variant="outlined" fullWidth>
-                      <InputLabel htmlFor="sexo-selection">Sexo</InputLabel>
-                      <Field as={Select} id="sexo-selection" label="Sexo" name="pf.sexo" margin="dense">
-                        <MenuItem value="">Não informado</MenuItem>
-                        <MenuItem value="F">Feminino</MenuItem>
-                        <MenuItem value="M">Masculino</MenuItem>
-                        <MenuItem value="O">Outro</MenuItem>
-                      </Field>
-                    </FormControl>
-                  </Grid>
-                  <Grid xs={12} sm={6} md={4} item>
-                    <Field as={TextField} label="Estado civil" name="pf.estadoCivil" variant="outlined" className={classes.fullWidth} margin="dense" />
-                  </Grid>
-                  <Grid xs={12} item>
-                    <Typography variant="subtitle2" className={classes.formSectionTitle}>
-                      RG (opcional)
-                    </Typography>
-                  </Grid>
-                  <Grid xs={12} sm={6} md={4} item>
-                    <Field as={TextField} label="Número" name="pf.rg.numero" variant="outlined" className={classes.fullWidth} margin="dense" />
-                  </Grid>
-                  <Grid xs={12} sm={6} md={4} item>
-                    <Field as={TextField} label="Órgão emissor" name="pf.rg.orgaoEmissor" variant="outlined" className={classes.fullWidth} margin="dense" />
-                  </Grid>
-                  <Grid xs={12} sm={6} md={4} item>
-                    <Field as={TextField} label="UF" name="pf.rg.uf" variant="outlined" className={classes.fullWidth} margin="dense" />
-                  </Grid>
+                    <div className={classes.subSection}>
+                      <Typography variant="subtitle2" className={classes.subSectionTitle}>
+                        <AssignmentIndIcon fontSize="small" color="primary" />
+                        Pessoa Física (PF)
+                      </Typography>
+                      <Typography variant="caption" className={classes.hint}>
+                        CPF com validação matemática + dados pessoais.
+                      </Typography>
+                      <Divider style={{ margin: "12px 0" }} />
 
-                  <Grid xs={12} item>
-                    <Typography variant="subtitle2" className={classes.formSectionTitle}>
-                      Endereço (PF)
-                    </Typography>
-                  </Grid>
-                  <Grid xs={12} sm={6} md={3} item>
-                    <Field name="pf.endereco.cep">
-                      {({ field }) => (
-                        <TextField
-                          {...field}
-                          label="CEP"
-                          variant="outlined"
-                          className={classes.fullWidth}
-                          margin="dense"
-                          value={field.value || ""}
-                          onChange={(e) => setFieldValue("pf.endereco.cep", maskCEP(e.target.value))}
-                        />
-                      )}
-                    </Field>
-                  </Grid>
-                  <Grid xs={12} sm={6} md={7} item>
-                    <Field as={TextField} label="Logradouro" name="pf.endereco.logradouro" variant="outlined" className={classes.fullWidth} margin="dense" />
-                  </Grid>
-                  <Grid xs={12} sm={6} md={2} item>
-                    <Field as={TextField} label="Número" name="pf.endereco.numero" variant="outlined" className={classes.fullWidth} margin="dense" />
-                  </Grid>
-                  <Grid xs={12} sm={6} md={4} item>
-                    <Field as={TextField} label="Bairro" name="pf.endereco.bairro" variant="outlined" className={classes.fullWidth} margin="dense" />
-                  </Grid>
-                  <Grid xs={12} sm={6} md={6} item>
-                    <Field as={TextField} label="Cidade" name="pf.endereco.cidade" variant="outlined" className={classes.fullWidth} margin="dense" />
-                  </Grid>
-                  <Grid xs={12} sm={6} md={2} item>
-                    <Field as={TextField} label="UF" name="pf.endereco.uf" variant="outlined" className={classes.fullWidth} margin="dense" />
-                  </Grid>
-                  <Grid xs={12} item>
-                    <Field as={TextField} label="Complemento" name="pf.endereco.complemento" variant="outlined" className={classes.fullWidth} margin="dense" />
+                      <Grid container spacing={2}>
+                        <Grid xs={12} sm={6} md={4} item>
+                          <Field name="pf.cpf">
+                            {({ field }) => (
+                              <TextField
+                                {...field}
+                                label="CPF *"
+                                variant="outlined"
+                                className={classes.fullWidth}
+                                margin="dense"
+                                size="small"
+                                value={field.value || ""}
+                                onChange={(e) => setFieldValue("pf.cpf", maskCPF(e.target.value))}
+                                error={Boolean(touched?.pf?.cpf && errors?.pf?.cpf)}
+                                helperText={touched?.pf?.cpf && errors?.pf?.cpf ? errors.pf.cpf : " "}
+                                InputProps={{
+                                  startAdornment: (
+                                    <InputAdornment position="start">
+                                      <AssignmentIndIcon fontSize="small" />
+                                    </InputAdornment>
+                                  ),
+                                }}
+                              />
+                            )}
+                          </Field>
+                        </Grid>
+                        <Grid xs={12} item>
+                          <Field
+                            as={TextField}
+                            label="Nome completo *"
+                            name="pf.nomeCompleto"
+                            variant="outlined"
+                            className={classes.fullWidth}
+                            margin="dense"
+                            size="small"
+                            required
+                            error={Boolean(touched?.pf?.nomeCompleto && errors?.pf?.nomeCompleto)}
+                            helperText={touched?.pf?.nomeCompleto && errors?.pf?.nomeCompleto ? errors.pf.nomeCompleto : " "}
+                          />
+                        </Grid>
+                        <Grid xs={12} sm={6} md={4} item>
+                          <Field as={TextField} size="small" label="Data de nascimento" name="pf.dataNascimento" type="date" InputLabelProps={{ shrink: true }} variant="outlined" className={classes.fullWidth} margin="dense" />
+                        </Grid>
+                        <Grid xs={12} sm={6} md={4} item>
+                          <Field as={TextField} size="small" label="Nome da mãe" name="pf.nomeMae" variant="outlined" className={classes.fullWidth} margin="dense" />
+                        </Grid>
+                        <Grid xs={12} sm={6} md={4} item>
+                          <FormControl margin="dense" variant="outlined" fullWidth size="small">
+                            <InputLabel htmlFor="sexo-selection">Sexo</InputLabel>
+                            <Field as={Select} id="sexo-selection" label="Sexo" name="pf.sexo" margin="dense">
+                              <MenuItem value="">Não informado</MenuItem>
+                              <MenuItem value="F">Feminino</MenuItem>
+                              <MenuItem value="M">Masculino</MenuItem>
+                              <MenuItem value="O">Outro</MenuItem>
+                            </Field>
+                          </FormControl>
+                        </Grid>
+                        <Grid xs={12} sm={6} md={4} item>
+                          <Field as={TextField} size="small" label="Estado civil" name="pf.estadoCivil" variant="outlined" className={classes.fullWidth} margin="dense" />
+                        </Grid>
+
+                        <Grid xs={12} item>
+                          <Divider style={{ margin: "12px 0" }} />
+                          <Typography variant="subtitle2" className={classes.subSectionTitle}>
+                            <AssignmentIcon fontSize="small" color="primary" />
+                            RG (opcional)
+                          </Typography>
+                        </Grid>
+                        <Grid xs={12} sm={6} md={4} item>
+                          <Field as={TextField} size="small" label="Número" name="pf.rg.numero" variant="outlined" className={classes.fullWidth} margin="dense" />
+                        </Grid>
+                        <Grid xs={12} sm={6} md={4} item>
+                          <Field as={TextField} size="small" label="Órgão emissor" name="pf.rg.orgaoEmissor" variant="outlined" className={classes.fullWidth} margin="dense" />
+                        </Grid>
+                        <Grid xs={12} sm={6} md={4} item>
+                          <Field as={TextField} size="small" label="UF" name="pf.rg.uf" variant="outlined" className={classes.fullWidth} margin="dense" />
+                        </Grid>
+
+                        {/* Endereço PF */}
+                        <Grid xs={12} item>
+                          <Divider style={{ margin: "12px 0" }} />
+                          <Typography variant="subtitle2" className={classes.subSectionTitle}>
+                            <HomeOutlinedIcon fontSize="small" color="primary" />
+                            Endereço (PF)
+                          </Typography>
+                        </Grid>
+                        <Grid xs={12} sm={6} md={3} item>
+                          <Field name="pf.endereco.cep">
+                            {({ field }) => (
+                              <TextField
+                                {...field}
+                                label="CEP"
+                                variant="outlined"
+                                className={classes.fullWidth}
+                                margin="dense"
+                                size="small"
+                                value={field.value || ""}
+                                onChange={(e) => setFieldValue("pf.endereco.cep", maskCEP(e.target.value))}
+                                InputProps={{
+                                  startAdornment: (
+                                    <InputAdornment position="start">
+                                      <HomeOutlinedIcon fontSize="small" />
+                                    </InputAdornment>
+                                  ),
+                                }}
+                              />
+                            )}
+                          </Field>
+                        </Grid>
+                        <Grid xs={12} sm={6} md={7} item>
+                          <Field as={TextField} size="small" label="Logradouro" name="pf.endereco.logradouro" variant="outlined" className={classes.fullWidth} margin="dense" />
+                        </Grid>
+                        <Grid xs={12} sm={6} md={2} item>
+                          <Field as={TextField} size="small" label="Número" name="pf.endereco.numero" variant="outlined" className={classes.fullWidth} margin="dense" />
+                        </Grid>
+                        <Grid xs={12} sm={6} md={4} item>
+                          <Field as={TextField} size="small" label="Bairro" name="pf.endereco.bairro" variant="outlined" className={classes.fullWidth} margin="dense" />
+                        </Grid>
+                        <Grid xs={12} sm={6} md={6} item>
+                          <Field as={TextField} size="small" label="Cidade" name="pf.endereco.cidade" variant="outlined" className={classes.fullWidth} margin="dense" />
+                        </Grid>
+                        <Grid xs={12} sm={6} md={2} item>
+                          <Field as={TextField} size="small" label="UF" name="pf.endereco.uf" variant="outlined" className={classes.fullWidth} margin="dense" />
+                        </Grid>
+                        <Grid xs={12} item>
+                          <Field as={TextField} size="small" label="Complemento" name="pf.endereco.complemento" variant="outlined" className={classes.fullWidth} margin="dense" />
+                        </Grid>
+                      </Grid>
+                    </div>
                   </Grid>
                 </>
               )}
@@ -931,10 +1144,15 @@ export function CompanyForm(props) {
                       style={{ marginTop: 7 }}
                       loading={loading}
                       onClick={() => {
-                        // Importante: limpar precisa resetar o form (Formik) e sair do modo edição (onCancel)
+                        // Importante: limpar precisa resetar o form imediatamente (mesmo enquanto digita),
+                        // e também sair do modo edição (onCancel).
+                        const nextBlank = {
+                          ...blankValues,
+                          // preserva seleção atual se quiser manter contexto
+                          personType: values?.personType === "PF" ? "PF" : "PJ",
+                        };
+                        resetForm({ values: nextBlank });
                         onCancel();
-                        // garante reset mesmo se o estado pai atualizar async
-                        setTimeout(() => resetForm(), 0);
                       }}
                       variant="contained"
                     >
