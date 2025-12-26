@@ -50,11 +50,18 @@ const useStyles = makeStyles((theme) => ({
   grid: { alignItems: "stretch" },
   card: { borderRadius: 14 },
   scrollArea: {
-    flex: 1,
-    minHeight: 0,
-    overflowY: "auto",
+    // Evita scroll aninhado (MainContainer já tem overflowY: auto).
+    // Isso corrige "scroll travado" especialmente no mobile.
     paddingBottom: theme.spacing(2),
-    ...(theme.scrollbarStyles || {}),
+  },
+  formContent: {
+    // No mobile, o formulário pode ficar mais alto que a viewport e precisa rolar
+    // sem depender de scroll aninhado de containers pais.
+    [theme.breakpoints.down("sm")]: {
+      maxHeight: "calc(100vh - 220px)",
+      overflowY: "auto",
+      WebkitOverflowScrolling: "touch",
+    },
   },
   cardHeader: {
     paddingBottom: theme.spacing(1),
@@ -273,7 +280,12 @@ export default function HelpsAdmin() {
         setEditingItem(null);
         await reload();
       } catch (e) {
-        toast.error("Não foi possível salvar. Verifique os campos e tente novamente.");
+        const status = e?.response?.status;
+        if (status === 403) {
+          toast.error("Sem permissão para criar/editar conteúdos de ajuda (apenas admin/super).");
+        } else {
+          toast.error("Não foi possível salvar. Verifique os campos e tente novamente.");
+        }
       } finally {
         setSaving(false);
       }
@@ -381,8 +393,13 @@ export default function HelpsAdmin() {
       setConfirmOpen(false);
       setDeleteTarget(null);
       await reload();
-    } catch {
-      toast.error("Não foi possível excluir o conteúdo.");
+    } catch (e) {
+      const status = e?.response?.status;
+      if (status === 403) {
+        toast.error("Sem permissão para excluir conteúdos de ajuda (apenas admin/super).");
+      } else {
+        toast.error("Não foi possível excluir o conteúdo.");
+      }
     } finally {
       setSaving(false);
     }
@@ -422,7 +439,7 @@ export default function HelpsAdmin() {
                 title={isEditing ? "Editar Ajuda" : "Criar Ajuda"}
                 subheader={isEditing ? "Atualize o conteúdo selecionado." : "Cadastre um novo conteúdo de ajuda."}
               />
-              <CardContent>
+              <CardContent className={classes.formContent}>
                 <form onSubmit={formik.handleSubmit}>
                   <TextField
                     inputRef={titleRef}

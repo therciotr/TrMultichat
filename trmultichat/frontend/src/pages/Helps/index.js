@@ -1,5 +1,7 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { makeStyles, Paper, Typography, Modal, IconButton } from "@material-ui/core";
+import CloseIcon from "@material-ui/icons/Close";
+import YouTubeIcon from "@material-ui/icons/YouTube";
 import MainContainer from "../../components/MainContainer";
 import MainHeader from "../../components/MainHeader";
 import MainHeaderButtonsWrapper from "../../components/MainHeaderButtonsWrapper";
@@ -70,13 +72,36 @@ const useStyles = makeStyles(theme => ({
     borderRadius: theme.spacing(1),
     overflow: 'hidden',
   },
+  modalClose: {
+    position: "absolute",
+    top: 6,
+    right: 6,
+    zIndex: 2,
+    background: "rgba(255,255,255,0.8)",
+  },
+  modalBody: {
+    position: "absolute",
+    inset: 0,
+    padding: theme.spacing(2),
+    overflowY: "auto",
+  },
+  emptyThumb: {
+    width: "100%",
+    height: "calc(100% - 56px)",
+    borderRadius: `${theme.spacing(1)}px ${theme.spacing(1)}px 0 0`,
+    background: theme.palette.action.hover,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    color: theme.palette.text.secondary,
+  },
 }));
 
 const Helps = () => {
   const classes = useStyles();
   const [records, setRecords] = useState([]);
   const { list } = useHelps();
-  const [selectedVideo, setSelectedVideo] = useState(null);
+  const [selectedHelp, setSelectedHelp] = useState(null);
 
   useEffect(() => {
     async function fetchData() {
@@ -87,17 +112,13 @@ const Helps = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const openVideoModal = (video) => {
-    setSelectedVideo(video);
-  };
+  const openHelpModal = (help) => setSelectedHelp(help || null);
 
-  const closeVideoModal = () => {
-    setSelectedVideo(null);
-  };
+  const closeHelpModal = () => setSelectedHelp(null);
 
   const handleModalClose = useCallback((event) => {
     if (event.key === "Escape") {
-      closeVideoModal();
+      closeHelpModal();
     }
   }, []);
 
@@ -108,23 +129,52 @@ const Helps = () => {
     };
   }, [handleModalClose]);
 
+  const modalVideoId = useMemo(() => {
+    const v = selectedHelp?.video ? String(selectedHelp.video).trim() : "";
+    return v || "";
+  }, [selectedHelp]);
+
   const renderVideoModal = () => {
     return (
       <Modal
-        open={Boolean(selectedVideo)}
-        onClose={closeVideoModal}
+        open={Boolean(selectedHelp)}
+        onClose={closeHelpModal}
         className={classes.videoModal}
       >
         <div className={classes.videoModalContent}>
-          {selectedVideo && (
+          <IconButton
+            aria-label="Fechar"
+            className={classes.modalClose}
+            onClick={closeHelpModal}
+            size="small"
+          >
+            <CloseIcon />
+          </IconButton>
+
+          {modalVideoId ? (
             <iframe
               style={{ width: "100%", height: "100%", position: "absolute", top: 0, left: 0 }}
-              src={`https://www.youtube.com/embed/${selectedVideo}`}
+              src={`https://www.youtube.com/embed/${modalVideoId}`}
               title="YouTube video player"
               frameBorder="0"
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
               allowFullScreen
             />
+          ) : (
+            <div className={classes.modalBody}>
+              <Typography variant="h6" gutterBottom>
+                {selectedHelp?.title || i18n.t("helps.title")}
+              </Typography>
+              {selectedHelp?.description ? (
+                <Typography variant="body2" style={{ whiteSpace: "pre-wrap" }}>
+                  {selectedHelp.description}
+                </Typography>
+              ) : (
+                <Typography variant="body2" color="textSecondary">
+                  Sem descrição.
+                </Typography>
+              )}
+            </div>
           )}
         </div>
       </Modal>
@@ -135,13 +185,28 @@ const Helps = () => {
     return (
       <>
         <div className={`${classes.mainPaper} ${classes.mainPaperContainer}`}>
-          {records.length ? records.map((record, key) => (
-            <Paper key={key} className={`${classes.helpPaper} ${classes.paperHover}`} onClick={() => openVideoModal(record.video)}>
-              <img
-                src={`https://img.youtube.com/vi/${record.video}/mqdefault.jpg`}
-                alt="Thumbnail"
-                className={classes.videoThumbnail}
-              />
+          {records.length ? records.map((record, key) => {
+            const videoId = record?.video ? String(record.video).trim() : "";
+            const hasVideo = Boolean(videoId);
+            return (
+            <Paper
+              key={record?.id || key}
+              className={`${classes.helpPaper} ${classes.paperHover}`}
+              onClick={() => openHelpModal(record)}
+              role="button"
+            >
+              {hasVideo ? (
+                <img
+                  src={`https://img.youtube.com/vi/${videoId}/mqdefault.jpg`}
+                  alt="Thumbnail"
+                  className={classes.videoThumbnail}
+                />
+              ) : (
+                <div className={classes.emptyThumb}>
+                  <YouTubeIcon style={{ marginRight: 8, opacity: 0.8 }} />
+                  <Typography variant="caption">Sem vídeo</Typography>
+                </div>
+              )}
               <Typography variant="button" className={classes.videoTitle}>
                 {record.title}
               </Typography>
@@ -149,7 +214,7 @@ const Helps = () => {
                 {record.description}
               </Typography>
             </Paper>
-          )) : null}
+          )}) : null}
         </div>
       </>
     );

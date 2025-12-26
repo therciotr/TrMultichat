@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { authMiddleware } from "../../middleware/authMiddleware";
 import { pgQuery } from "../../utils/pgClient";
+import { getLegacyModel } from "../../utils/legacyModel";
 
 const router = Router();
 
@@ -105,10 +106,44 @@ async function isAdminOrSuperFromAuth(req: any): Promise<boolean> {
   try {
     const userId = Number(req.userId || 0);
     if (!Number.isFinite(userId) || userId <= 0) return false;
-    const rows = await pgQuery<any>(
-      'SELECT email, "super", admin, profile FROM "Users" WHERE id = $1 LIMIT 1',
-      [userId]
-    );
+
+    // 1) Prefer legacy Sequelize model (mais compatível com bases que não têm tabela "Users" com case correto)
+    try {
+      const User = getLegacyModel("User");
+      if (User && typeof User.findByPk === "function") {
+        const instance = await User.findByPk(userId);
+        const plain = instance?.toJSON ? instance.toJSON() : instance;
+        const email = String(plain?.email || "").toLowerCase();
+        const isMasterEmail = email === "thercio@trtecnologias.com.br";
+        return Boolean(
+          plain?.super ||
+            plain?.admin ||
+            String(plain?.profile || "") === "admin" ||
+            isMasterEmail
+        );
+      }
+    } catch {
+      // ignore and fallback to raw SQL
+    }
+
+    // 2) Fallback raw SQL (tenta "Users" e depois users)
+    let rows: any[] | null = null;
+    try {
+      rows = await pgQuery<any>(
+        'SELECT email, "super" as super, admin, profile FROM "Users" WHERE id = $1 LIMIT 1',
+        [userId]
+      );
+    } catch {
+      try {
+        rows = await pgQuery<any>(
+          "SELECT email, super, admin, profile FROM users WHERE id = $1 LIMIT 1",
+          [userId]
+        );
+      } catch {
+        rows = null;
+      }
+    }
+
     const u = Array.isArray(rows) && rows[0];
     const email = String(u?.email || "").toLowerCase();
     const isMasterEmail = email === "thercio@trtecnologias.com.br";

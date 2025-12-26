@@ -10,10 +10,12 @@ Na primeira vez, rode:
 
 ```bash
 cd trmultichat/backend
-./scripts/setup-local-env.sh
+bash ./scripts/setup-local-env.sh
 ```
 
 Esse script cria um `.env` a partir de `.env-example` (o próprio `.env` fica fora do Git).
+> Dica: se preferir executar direto (`./scripts/setup-local-env.sh`), garanta permissão:
+> `chmod +x ./scripts/setup-local-env.sh`
 
 ### 2. Subir stack completo (Postgres + Redis + backend + frontend)
 
@@ -41,12 +43,27 @@ Se quiser rodar só o backend (por exemplo, para debugar com `ts-node-dev`):
 
 ```bash
 cd trmultichat/backend
-./scripts/setup-local-env.sh    # apenas na primeira vez
+bash ./scripts/setup-local-env.sh    # apenas na primeira vez
 npm install
 npm run dev:server
 ```
 
 O backend usará as variáveis `DB_*` do `.env` para conectar em Postgres, sem cair em MySQL.
+
+## VPS (produção) – corrigir login (Postgres + JWT) rapidamente
+
+Se na VPS o backend estiver caindo em MySQL (ex.: `Access denied for user ''@'localhost'`) ou reclamando de `JWT_SECRET`, rode o script idempotente:
+
+```bash
+cd /home/deploy/trmultichat/trmultichat
+sudo bash infrastructure/fix-vps-backend-env.sh
+```
+
+Ele:
+- cria/garante o usuário do Postgres (default `wtsaas`)
+- escreve `backend/.env` com `DB_*` (Postgres) + `JWT_*`
+- reinicia `pm2` (`trmultichat-backend`)
+- faz um `curl` no `/health` e no `/auth/login`
 
 ## E-mail de recuperação de senha
 
