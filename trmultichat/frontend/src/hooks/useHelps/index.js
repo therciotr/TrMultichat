@@ -23,19 +23,24 @@ const usePlans = () => {
     }
 
     const save = async (data) => {
+        const isForm = typeof FormData !== "undefined" && data instanceof FormData;
         const { data: responseData } = await api.request({
             url: '/helps',
             method: 'POST',
-            data
+            data,
+            headers: isForm ? {} : undefined
         });
         return responseData;
     }
 
     const update = async (data) => {
+        const id = data?.id;
+        const isForm = typeof FormData !== "undefined" && data instanceof FormData;
         const { data: responseData } = await api.request({
-            url: `/helps/${data.id}`,
+            url: `/helps/${id}`,
             method: 'PUT',
-            data
+            data,
+            headers: isForm ? {} : undefined
         });
         return responseData;
     }

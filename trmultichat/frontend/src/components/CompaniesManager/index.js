@@ -1,28 +1,29 @@
 import React, { useState, useEffect } from "react";
 import {
   makeStyles,
-  Paper,
   Grid,
   FormControl,
   InputLabel,
   MenuItem,
   TextField,
-  Table,
-  TableHead,
-  TableBody,
-  TableCell,
-  TableRow,
+  Chip,
+  Typography,
+  Divider,
   IconButton,
   Select,
 } from "@material-ui/core";
 import { Card, CardHeader, CardContent } from "@material-ui/core";
 import BusinessIcon from "@material-ui/icons/Business";
 import ListAltIcon from "@material-ui/icons/ListAlt";
+import EditOutlinedIcon from "@material-ui/icons/EditOutlined";
+import DeleteOutlineIcon from "@material-ui/icons/DeleteOutline";
+import EmailIcon from "@material-ui/icons/Email";
+import PhoneIcon from "@material-ui/icons/Phone";
+import EventIcon from "@material-ui/icons/Event";
+import AssignmentIcon from "@material-ui/icons/Assignment";
 import { Formik, Form, Field } from "formik";
 import ButtonWithSpinner from "../ButtonWithSpinner";
 import ConfirmationModal from "../ConfirmationModal";
-
-import { Edit as EditIcon } from "@material-ui/icons";
 
 import { toast } from "react-toastify";
 import useCompanies from "../../hooks/useCompanies";
@@ -33,25 +34,15 @@ import { head, isArray, has } from "lodash";
 import { useDate } from "../../hooks/useDate";
 
 import moment from "moment";
+import { isValidCPF } from "../../utils/cpf";
+import { maskCPF, maskCNPJ, maskCEP, maskPhoneBR, onlyDigits as onlyDigitsMask } from "../../utils/masks";
 
 const useStyles = makeStyles((theme) => ({
   root: {
     width: "100%",
   },
-  mainPaper: {
-    width: "100%",
-    flex: 1,
-    padding: theme.spacing(2),
-  },
   fullWidth: {
     width: "100%",
-  },
-  tableContainer: {
-    width: "100%",
-    overflowX: "auto",
-    overflowY: "auto",
-    maxHeight: "60vh",
-    ...theme.scrollbarStyles,
   },
   textfield: {
     width: "100%",
@@ -71,7 +62,132 @@ const useStyles = makeStyles((theme) => ({
     textAlign: "right",
     padding: theme.spacing(1),
   },
+  softCard: {
+    borderRadius: 16,
+    border: `1px solid ${theme.palette.divider}`,
+    background: theme.palette.type === "dark" ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.01)",
+  },
+  sectionHeader: { paddingBottom: theme.spacing(1) },
+  cardsGrid: { marginTop: theme.spacing(1) },
+  companyCard: {
+    height: "100%",
+    borderRadius: 16,
+    border: `1px solid ${theme.palette.divider}`,
+    overflow: "hidden",
+    transition: "transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease",
+    "&:hover": {
+      transform: "translateY(-1px)",
+      boxShadow: theme.shadows[4],
+      borderColor: theme.palette.primary.main,
+    },
+  },
+  titleRow: {
+    display: "flex",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: theme.spacing(1),
+    flexWrap: "wrap",
+  },
+  companyName: {
+    fontWeight: 900,
+    lineHeight: 1.15,
+    wordBreak: "break-word",
+    display: "-webkit-box",
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: "vertical",
+    overflow: "hidden",
+    minWidth: 0,
+  },
+  pill: {
+    fontWeight: 900,
+    borderRadius: 12,
+  },
+  pillPrimary: { backgroundColor: theme.palette.primary.main, color: "#fff" },
+  metaRow: {
+    display: "flex",
+    gap: theme.spacing(1),
+    flexWrap: "wrap",
+    marginTop: theme.spacing(1.25),
+  },
+  metaItem: {
+    display: "flex",
+    alignItems: "center",
+    gap: theme.spacing(1),
+    padding: theme.spacing(1),
+    borderRadius: 12,
+    border: `1px solid ${theme.palette.divider}`,
+    background: theme.palette.type === "dark" ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.02)",
+    flex: "1 1 180px",
+    minWidth: 180,
+  },
+  metaLabel: { opacity: 0.75, fontWeight: 700, fontSize: 12, lineHeight: 1.2 },
+  metaValue: { fontWeight: 900, fontSize: 13, lineHeight: 1.2, wordBreak: "break-word" },
+  actions: {
+    display: "flex",
+    justifyContent: "flex-end",
+    gap: theme.spacing(0.5),
+    padding: theme.spacing(1, 1.5),
+    borderTop: `1px solid ${theme.palette.divider}`,
+    background: theme.palette.type === "dark" ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.02)",
+  },
+  iconBtn: { borderRadius: 10 },
 }));
+
+function dueChip(dueDateRaw, recurrenceRaw) {
+  const due = dueDateRaw && moment(dueDateRaw).isValid() ? moment(dueDateRaw) : null;
+  const recurrence = String(recurrenceRaw || "").trim();
+  if (!due) return { label: "Sem vencimento", color: "default" };
+  const now = moment();
+  const diff = due.diff(now, "days");
+  const base = `${due.format("DD/MM/YYYY")}${recurrence ? ` • ${recurrence}` : ""}`;
+  if (diff < 0) return { label: `Vencido: ${base}`, color: "secondary" };
+  if (diff <= 5) return { label: `Vence em ${diff}d: ${base}`, color: "secondary" };
+  return { label: `Venc.: ${base}`, color: "default" };
+}
+
+function safeJsonParse(v) {
+  if (!v) return null;
+  if (typeof v === "object") return v;
+  try {
+    return JSON.parse(String(v));
+  } catch {
+    return null;
+  }
+}
+
+function buildExtraData(values) {
+  const personType = values?.personType === "PF" ? "PF" : "PJ";
+  return {
+    personType,
+    pj: values?.pj || {},
+    pf: values?.pf || {},
+  };
+}
+
+function buildCompanyPayload(values) {
+  // Mantém payload base como já era (compatível com backend atual)
+  const base = {
+    name: values?.name,
+    email: values?.email,
+    phone: values?.phone,
+    planId: values?.planId,
+    status: values?.status,
+    dueDate: values?.dueDate,
+    recurrence: values?.recurrence,
+    campaignsEnabled: values?.campaignsEnabled,
+  };
+  // Compat: campos novos vão em extraData (e persistimos via /companies/:id/profile)
+  return { ...base, extraData: buildExtraData(values) };
+}
+
+async function fetchCompanyProfile(companyId) {
+  const { data } = await api.get(`/companies/${companyId}/profile`);
+  return data?.profile || {};
+}
+
+async function saveCompanyProfile(companyId, profile) {
+  await api.put(`/companies/${companyId}/profile`, { profile: profile || {} });
+}
 
 export function CompanyForm(props) {
   const { onSubmit, onDelete, onCancel, initialValue, loading } = props;
@@ -79,6 +195,7 @@ export function CompanyForm(props) {
   const [plans, setPlans] = useState([]);
   const [modalUser, setModalUser] = useState(false);
   const [firstUser, setFirstUser] = useState({});
+  const [cnpjLoading, setCnpjLoading] = useState(false);
 
   const [record, setRecord] = useState({
     name: "",
@@ -89,6 +206,47 @@ export function CompanyForm(props) {
     campaignsEnabled: false,
     dueDate: "",
     recurrence: "",
+    personType: "PJ",
+    pj: {
+      cnpj: "",
+      razaoSocial: "",
+      nomeFantasia: "",
+      naturezaJuridica: "",
+      dataAbertura: "",
+      situacaoCadastral: "",
+      cnaePrincipal: "",
+      cnaesSecundarios: "",
+      capitalSocial: "",
+      regimeTributario: "",
+      socios: [],
+      endereco: {
+        cep: "",
+        logradouro: "",
+        numero: "",
+        bairro: "",
+        cidade: "",
+        uf: "",
+        complemento: "",
+      },
+    },
+    pf: {
+      cpf: "",
+      nomeCompleto: "",
+      dataNascimento: "",
+      nomeMae: "",
+      sexo: "",
+      estadoCivil: "",
+      rg: { numero: "", orgaoEmissor: "", uf: "" },
+      endereco: {
+        cep: "",
+        logradouro: "",
+        numero: "",
+        bairro: "",
+        cidade: "",
+        uf: "",
+        complemento: "",
+      },
+    },
     ...initialValue,
   });
 
@@ -109,6 +267,16 @@ export function CompanyForm(props) {
       const d = next && next.dueDate ? moment(next.dueDate) : null;
       next.dueDate =
         d && d.isValid() ? d.format("YYYY-MM-DD") : "";
+
+      // profile pode vir de /companies/:id/profile (Settings) ou de algum campo anterior
+      const profileRaw = next?.profile || next?.extraData;
+      const profile = safeJsonParse(profileRaw) || {};
+      if (profile && typeof profile === "object") {
+        const pType = profile.personType === "PF" ? "PF" : "PJ";
+        next.personType = pType;
+        if (profile.pj && typeof profile.pj === "object") next.pj = { ...prev.pj, ...profile.pj };
+        if (profile.pf && typeof profile.pf === "object") next.pf = { ...prev.pf, ...profile.pf };
+      }
       return {
         ...prev,
         ...next,
@@ -181,6 +349,103 @@ export function CompanyForm(props) {
     setRecord(data);
   };
 
+  const validate = (values) => {
+    const errors = {};
+    const personType = values?.personType === "PF" ? "PF" : "PJ";
+
+    if (!values?.personType) {
+      errors.personType = "Selecione PJ ou PF.";
+    }
+
+    if (personType === "PF") {
+      const cpf = values?.pf?.cpf;
+      if (!cpf) {
+        errors.pf = { ...(errors.pf || {}), cpf: "CPF é obrigatório." };
+      } else if (!isValidCPF(cpf)) {
+        errors.pf = { ...(errors.pf || {}), cpf: "CPF inválido." };
+      }
+      if (!values?.pf?.nomeCompleto) {
+        errors.pf = { ...(errors.pf || {}), nomeCompleto: "Nome completo é obrigatório." };
+      }
+    } else {
+      const cnpj = values?.pj?.cnpj;
+      if (!cnpj || onlyDigitsMask(cnpj).length !== 14) {
+        errors.pj = { ...(errors.pj || {}), cnpj: "CNPJ é obrigatório." };
+      }
+      if (!values?.pj?.razaoSocial) {
+        errors.pj = { ...(errors.pj || {}), razaoSocial: "Razão Social é obrigatória." };
+      }
+      if (!values?.pj?.nomeFantasia) {
+        errors.pj = { ...(errors.pj || {}), nomeFantasia: "Nome Fantasia é obrigatório." };
+      }
+    }
+
+    return errors;
+  };
+
+  const handleBuscarCnpj = async (values, setFieldValue) => {
+    const raw = onlyDigitsMask(values?.pj?.cnpj);
+    if (!raw || raw.length !== 14) {
+      toast.error("Informe um CNPJ válido (14 dígitos) para buscar.");
+      return;
+    }
+    setCnpjLoading(true);
+    try {
+      const resp = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${raw}`);
+      if (!resp.ok) throw new Error("not_found");
+      const data = await resp.json();
+
+      const razao = data?.razao_social || "";
+      const fantasia = data?.nome_fantasia || "";
+      const natureza = data?.natureza_juridica || "";
+      const situacao = data?.descricao_situacao_cadastral || data?.situacao_cadastral || "";
+      const abertura = data?.data_inicio_atividade || data?.data_abertura || "";
+      const cnaePrincipal = data?.cnae_fiscal_descricao || data?.cnae_fiscal || "";
+      const cnaesSec = Array.isArray(data?.cnaes_secundarios)
+        ? data.cnaes_secundarios
+            .map((c) => c?.descricao || c?.codigo || "")
+            .filter(Boolean)
+            .join("\n")
+        : "";
+      const capital = data?.capital_social || "";
+
+      const cep = data?.cep || "";
+      const logradouro = data?.logradouro || "";
+      const numero = data?.numero || "";
+      const bairro = data?.bairro || "";
+      const cidade = data?.municipio || data?.cidade || "";
+      const uf = data?.uf || "";
+      const complemento = data?.complemento || "";
+
+      setFieldValue("pj.razaoSocial", razao);
+      setFieldValue("pj.nomeFantasia", fantasia);
+      setFieldValue("pj.naturezaJuridica", natureza);
+      setFieldValue("pj.situacaoCadastral", situacao);
+      setFieldValue("pj.dataAbertura", abertura ? String(abertura).slice(0, 10) : "");
+      setFieldValue("pj.cnaePrincipal", cnaePrincipal);
+      setFieldValue("pj.cnaesSecundarios", cnaesSec);
+      setFieldValue("pj.capitalSocial", capital ? String(capital) : "");
+
+      setFieldValue("pj.endereco.cep", maskCEP(cep));
+      setFieldValue("pj.endereco.logradouro", logradouro);
+      setFieldValue("pj.endereco.numero", String(numero || ""));
+      setFieldValue("pj.endereco.bairro", bairro);
+      setFieldValue("pj.endereco.cidade", cidade);
+      setFieldValue("pj.endereco.uf", uf);
+      setFieldValue("pj.endereco.complemento", complemento);
+
+      if (!String(values?.name || "").trim()) {
+        setFieldValue("name", fantasia || razao || "");
+      }
+
+      toast.success("CNPJ encontrado. Dados preenchidos!");
+    } catch (e) {
+      toast.error("CNPJ não encontrado ou inválido.");
+    } finally {
+      setCnpjLoading(false);
+    }
+  };
+
   return (
     <>
       <ModalUsers
@@ -193,6 +458,7 @@ export function CompanyForm(props) {
         enableReinitialize
         className={classes.fullWidth}
         initialValues={record}
+        validate={validate}
         onSubmit={(values, { resetForm }) =>
           setTimeout(() => {
             handleSubmit(values);
@@ -200,10 +466,33 @@ export function CompanyForm(props) {
           }, 500)
         }
       >
-        {(values, setValues) => (
+        {({ values, errors, touched, setFieldValue }) => (
           <Form className={classes.fullWidth}>
             <Grid spacing={2} justifyContent="flex-end" container>
               <Grid xs={12} sm={6} md={4} item>
+                <FormControl margin="dense" variant="outlined" fullWidth>
+                  <InputLabel htmlFor="personType-selection">Tipo de Cadastro *</InputLabel>
+                  <Field
+                    as={Select}
+                    id="personType-selection"
+                    label="Tipo de Cadastro *"
+                    labelId="personType-selection-label"
+                    name="personType"
+                    margin="dense"
+                    required
+                  >
+                    <MenuItem value="PJ">Pessoa Jurídica (PJ)</MenuItem>
+                    <MenuItem value="PF">Pessoa Física (PF)</MenuItem>
+                  </Field>
+                </FormControl>
+                {touched?.personType && errors?.personType ? (
+                  <Typography variant="caption" color="error">
+                    {errors.personType}
+                  </Typography>
+                ) : null}
+              </Grid>
+
+              <Grid xs={12} item>
                 <Field
                   as={TextField}
                   label="Nome"
@@ -213,7 +502,7 @@ export function CompanyForm(props) {
                   margin="dense"
                 />
               </Grid>
-              <Grid xs={12} sm={6} md={2} item>
+              <Grid xs={12} sm={6} md={4} item>
                 <Field
                   as={TextField}
                   label="E-mail"
@@ -224,17 +513,22 @@ export function CompanyForm(props) {
                   required
                 />
               </Grid>
-              <Grid xs={12} sm={6} md={2} item>
-                <Field
-                  as={TextField}
-                  label="Telefone"
-                  name="phone"
-                  variant="outlined"
-                  className={classes.fullWidth}
-                  margin="dense"
-                />
+              <Grid xs={12} sm={6} md={4} item>
+                <Field name="phone">
+                  {({ field }) => (
+                    <TextField
+                      {...field}
+                      label="Telefone"
+                      variant="outlined"
+                      className={classes.fullWidth}
+                      margin="dense"
+                      value={field.value || ""}
+                      onChange={(e) => setFieldValue("phone", maskPhoneBR(e.target.value))}
+                    />
+                  )}
+                </Field>
               </Grid>
-              <Grid xs={12} sm={6} md={2} item>
+              <Grid xs={12} sm={6} md={4} item>
                 <FormControl margin="dense" variant="outlined" fullWidth>
                   <InputLabel htmlFor="plan-selection">Plano</InputLabel>
                   <Field
@@ -254,7 +548,7 @@ export function CompanyForm(props) {
                   </Field>
                 </FormControl>
               </Grid>
-              <Grid xs={12} sm={6} md={2} item>
+              <Grid xs={12} sm={6} md={4} item>
                 <FormControl margin="dense" variant="outlined" fullWidth>
                   <InputLabel htmlFor="status-selection">Status</InputLabel>
                   <Field
@@ -270,7 +564,7 @@ export function CompanyForm(props) {
                   </Field>
                 </FormControl>
               </Grid>
-              <Grid xs={12} sm={6} md={2} item>
+              <Grid xs={12} sm={6} md={4} item>
                 <FormControl margin="dense" variant="outlined" fullWidth>
                   <InputLabel htmlFor="status-selection">Campanhas</InputLabel>
                   <Field
@@ -286,7 +580,7 @@ export function CompanyForm(props) {
                   </Field>
                 </FormControl>
               </Grid>
-              <Grid xs={12} sm={6} md={2} item>
+              <Grid xs={12} sm={6} md={4} item>
                 <FormControl variant="outlined" fullWidth>
                   <Field
                     as={TextField}
@@ -302,7 +596,7 @@ export function CompanyForm(props) {
                   />
                 </FormControl>
               </Grid>
-              <Grid xs={12} sm={6} md={2} item>
+              <Grid xs={12} sm={6} md={4} item>
                 <FormControl margin="dense" variant="outlined" fullWidth>
                   <InputLabel htmlFor="recorrencia-selection">
                     Recorrência
@@ -323,9 +617,259 @@ export function CompanyForm(props) {
                   </Field>
                 </FormControl>
               </Grid>
+
+              {/* Campos PJ/PF (salvos em /companies/:id/profile) */}
+              {values.personType === "PJ" ? (
+                <>
+                  <Grid xs={12} item>
+                    <Divider style={{ marginTop: 8 }} />
+                    <Typography variant="subtitle2" style={{ marginTop: 12, fontWeight: 900 }}>
+                      Pessoa Jurídica (PJ)
+                    </Typography>
+                  </Grid>
+
+                  <Grid xs={12} sm={6} md={4} item>
+                    <Field name="pj.cnpj">
+                      {({ field }) => (
+                        <TextField
+                          {...field}
+                          label="CNPJ *"
+                          variant="outlined"
+                          className={classes.fullWidth}
+                          margin="dense"
+                          value={field.value || ""}
+                          onChange={(e) => setFieldValue("pj.cnpj", maskCNPJ(e.target.value))}
+                          error={Boolean(touched?.pj?.cnpj && errors?.pj?.cnpj)}
+                          helperText={touched?.pj?.cnpj && errors?.pj?.cnpj ? errors.pj.cnpj : " "}
+                        />
+                      )}
+                    </Field>
+                  </Grid>
+                  <Grid xs={12} sm={6} md={4} item style={{ display: "flex", alignItems: "center" }}>
+                    <ButtonWithSpinner
+                      loading={cnpjLoading}
+                      variant="contained"
+                      color="primary"
+                      onClick={() => handleBuscarCnpj(values, setFieldValue)}
+                      style={{ marginTop: 6, width: "100%" }}
+                    >
+                      Buscar CNPJ (BrasilAPI)
+                    </ButtonWithSpinner>
+                  </Grid>
+
+                  <Grid xs={12} item>
+                    <Field
+                      as={TextField}
+                      label="Razão Social *"
+                      name="pj.razaoSocial"
+                      variant="outlined"
+                      className={classes.fullWidth}
+                      margin="dense"
+                      required
+                      error={Boolean(touched?.pj?.razaoSocial && errors?.pj?.razaoSocial)}
+                      helperText={touched?.pj?.razaoSocial && errors?.pj?.razaoSocial ? errors.pj.razaoSocial : " "}
+                    />
+                  </Grid>
+                  <Grid xs={12} item>
+                    <Field
+                      as={TextField}
+                      label="Nome Fantasia *"
+                      name="pj.nomeFantasia"
+                      variant="outlined"
+                      className={classes.fullWidth}
+                      margin="dense"
+                      required
+                      error={Boolean(touched?.pj?.nomeFantasia && errors?.pj?.nomeFantasia)}
+                      helperText={touched?.pj?.nomeFantasia && errors?.pj?.nomeFantasia ? errors.pj.nomeFantasia : " "}
+                    />
+                  </Grid>
+
+                  <Grid xs={12} sm={6} md={4} item>
+                    <Field as={TextField} label="Natureza Jurídica" name="pj.naturezaJuridica" variant="outlined" className={classes.fullWidth} margin="dense" />
+                  </Grid>
+                  <Grid xs={12} sm={6} md={4} item>
+                    <Field as={TextField} label="Data de abertura" name="pj.dataAbertura" type="date" InputLabelProps={{ shrink: true }} variant="outlined" className={classes.fullWidth} margin="dense" />
+                  </Grid>
+                  <Grid xs={12} sm={6} md={4} item>
+                    <Field as={TextField} label="Situação cadastral" name="pj.situacaoCadastral" variant="outlined" className={classes.fullWidth} margin="dense" />
+                  </Grid>
+                  <Grid xs={12} sm={6} md={4} item>
+                    <Field as={TextField} label="CNAE principal" name="pj.cnaePrincipal" variant="outlined" className={classes.fullWidth} margin="dense" />
+                  </Grid>
+                  <Grid xs={12} item>
+                    <Field as={TextField} label="CNAEs secundários" name="pj.cnaesSecundarios" variant="outlined" className={classes.fullWidth} margin="dense" multiline rows={3} />
+                  </Grid>
+                  <Grid xs={12} sm={6} md={4} item>
+                    <Field as={TextField} label="Capital social" name="pj.capitalSocial" variant="outlined" className={classes.fullWidth} margin="dense" />
+                  </Grid>
+                  <Grid xs={12} sm={6} md={4} item>
+                    <FormControl margin="dense" variant="outlined" fullWidth>
+                      <InputLabel htmlFor="regime-selection">Regime tributário</InputLabel>
+                      <Field as={Select} id="regime-selection" label="Regime tributário" name="pj.regimeTributario" margin="dense">
+                        <MenuItem value="">Não informado</MenuItem>
+                        <MenuItem value="Simples">Simples</MenuItem>
+                        <MenuItem value="Lucro Presumido">Lucro Presumido</MenuItem>
+                        <MenuItem value="Lucro Real">Lucro Real</MenuItem>
+                      </Field>
+                    </FormControl>
+                  </Grid>
+
+                  <Grid xs={12} item>
+                    <Typography variant="subtitle2" style={{ marginTop: 12, fontWeight: 900 }}>
+                      Endereço (PJ)
+                    </Typography>
+                  </Grid>
+                  <Grid xs={12} sm={6} md={3} item>
+                    <Field name="pj.endereco.cep">
+                      {({ field }) => (
+                        <TextField
+                          {...field}
+                          label="CEP"
+                          variant="outlined"
+                          className={classes.fullWidth}
+                          margin="dense"
+                          value={field.value || ""}
+                          onChange={(e) => setFieldValue("pj.endereco.cep", maskCEP(e.target.value))}
+                        />
+                      )}
+                    </Field>
+                  </Grid>
+                  <Grid xs={12} sm={6} md={7} item>
+                    <Field as={TextField} label="Logradouro" name="pj.endereco.logradouro" variant="outlined" className={classes.fullWidth} margin="dense" />
+                  </Grid>
+                  <Grid xs={12} sm={6} md={2} item>
+                    <Field as={TextField} label="Número" name="pj.endereco.numero" variant="outlined" className={classes.fullWidth} margin="dense" />
+                  </Grid>
+                  <Grid xs={12} sm={6} md={4} item>
+                    <Field as={TextField} label="Bairro" name="pj.endereco.bairro" variant="outlined" className={classes.fullWidth} margin="dense" />
+                  </Grid>
+                  <Grid xs={12} sm={6} md={6} item>
+                    <Field as={TextField} label="Cidade" name="pj.endereco.cidade" variant="outlined" className={classes.fullWidth} margin="dense" />
+                  </Grid>
+                  <Grid xs={12} sm={6} md={2} item>
+                    <Field as={TextField} label="UF" name="pj.endereco.uf" variant="outlined" className={classes.fullWidth} margin="dense" />
+                  </Grid>
+                  <Grid xs={12} item>
+                    <Field as={TextField} label="Complemento" name="pj.endereco.complemento" variant="outlined" className={classes.fullWidth} margin="dense" />
+                  </Grid>
+                </>
+              ) : (
+                <>
+                  <Grid xs={12} item>
+                    <Divider style={{ marginTop: 8 }} />
+                    <Typography variant="subtitle2" style={{ marginTop: 12, fontWeight: 900 }}>
+                      Pessoa Física (PF)
+                    </Typography>
+                  </Grid>
+                  <Grid xs={12} sm={6} md={4} item>
+                    <Field name="pf.cpf">
+                      {({ field }) => (
+                        <TextField
+                          {...field}
+                          label="CPF *"
+                          variant="outlined"
+                          className={classes.fullWidth}
+                          margin="dense"
+                          value={field.value || ""}
+                          onChange={(e) => setFieldValue("pf.cpf", maskCPF(e.target.value))}
+                          error={Boolean(touched?.pf?.cpf && errors?.pf?.cpf)}
+                          helperText={touched?.pf?.cpf && errors?.pf?.cpf ? errors.pf.cpf : " "}
+                        />
+                      )}
+                    </Field>
+                  </Grid>
+                  <Grid xs={12} item>
+                    <Field
+                      as={TextField}
+                      label="Nome completo *"
+                      name="pf.nomeCompleto"
+                      variant="outlined"
+                      className={classes.fullWidth}
+                      margin="dense"
+                      required
+                      error={Boolean(touched?.pf?.nomeCompleto && errors?.pf?.nomeCompleto)}
+                      helperText={touched?.pf?.nomeCompleto && errors?.pf?.nomeCompleto ? errors.pf.nomeCompleto : " "}
+                    />
+                  </Grid>
+                  <Grid xs={12} sm={6} md={4} item>
+                    <Field as={TextField} label="Data de nascimento" name="pf.dataNascimento" type="date" InputLabelProps={{ shrink: true }} variant="outlined" className={classes.fullWidth} margin="dense" />
+                  </Grid>
+                  <Grid xs={12} sm={6} md={4} item>
+                    <Field as={TextField} label="Nome da mãe" name="pf.nomeMae" variant="outlined" className={classes.fullWidth} margin="dense" />
+                  </Grid>
+                  <Grid xs={12} sm={6} md={4} item>
+                    <FormControl margin="dense" variant="outlined" fullWidth>
+                      <InputLabel htmlFor="sexo-selection">Sexo</InputLabel>
+                      <Field as={Select} id="sexo-selection" label="Sexo" name="pf.sexo" margin="dense">
+                        <MenuItem value="">Não informado</MenuItem>
+                        <MenuItem value="F">Feminino</MenuItem>
+                        <MenuItem value="M">Masculino</MenuItem>
+                        <MenuItem value="O">Outro</MenuItem>
+                      </Field>
+                    </FormControl>
+                  </Grid>
+                  <Grid xs={12} sm={6} md={4} item>
+                    <Field as={TextField} label="Estado civil" name="pf.estadoCivil" variant="outlined" className={classes.fullWidth} margin="dense" />
+                  </Grid>
+                  <Grid xs={12} item>
+                    <Typography variant="subtitle2" style={{ marginTop: 12, fontWeight: 900 }}>
+                      RG (opcional)
+                    </Typography>
+                  </Grid>
+                  <Grid xs={12} sm={6} md={4} item>
+                    <Field as={TextField} label="Número" name="pf.rg.numero" variant="outlined" className={classes.fullWidth} margin="dense" />
+                  </Grid>
+                  <Grid xs={12} sm={6} md={4} item>
+                    <Field as={TextField} label="Órgão emissor" name="pf.rg.orgaoEmissor" variant="outlined" className={classes.fullWidth} margin="dense" />
+                  </Grid>
+                  <Grid xs={12} sm={6} md={4} item>
+                    <Field as={TextField} label="UF" name="pf.rg.uf" variant="outlined" className={classes.fullWidth} margin="dense" />
+                  </Grid>
+
+                  <Grid xs={12} item>
+                    <Typography variant="subtitle2" style={{ marginTop: 12, fontWeight: 900 }}>
+                      Endereço (PF)
+                    </Typography>
+                  </Grid>
+                  <Grid xs={12} sm={6} md={3} item>
+                    <Field name="pf.endereco.cep">
+                      {({ field }) => (
+                        <TextField
+                          {...field}
+                          label="CEP"
+                          variant="outlined"
+                          className={classes.fullWidth}
+                          margin="dense"
+                          value={field.value || ""}
+                          onChange={(e) => setFieldValue("pf.endereco.cep", maskCEP(e.target.value))}
+                        />
+                      )}
+                    </Field>
+                  </Grid>
+                  <Grid xs={12} sm={6} md={7} item>
+                    <Field as={TextField} label="Logradouro" name="pf.endereco.logradouro" variant="outlined" className={classes.fullWidth} margin="dense" />
+                  </Grid>
+                  <Grid xs={12} sm={6} md={2} item>
+                    <Field as={TextField} label="Número" name="pf.endereco.numero" variant="outlined" className={classes.fullWidth} margin="dense" />
+                  </Grid>
+                  <Grid xs={12} sm={6} md={4} item>
+                    <Field as={TextField} label="Bairro" name="pf.endereco.bairro" variant="outlined" className={classes.fullWidth} margin="dense" />
+                  </Grid>
+                  <Grid xs={12} sm={6} md={6} item>
+                    <Field as={TextField} label="Cidade" name="pf.endereco.cidade" variant="outlined" className={classes.fullWidth} margin="dense" />
+                  </Grid>
+                  <Grid xs={12} sm={6} md={2} item>
+                    <Field as={TextField} label="UF" name="pf.endereco.uf" variant="outlined" className={classes.fullWidth} margin="dense" />
+                  </Grid>
+                  <Grid xs={12} item>
+                    <Field as={TextField} label="Complemento" name="pf.endereco.complemento" variant="outlined" className={classes.fullWidth} margin="dense" />
+                  </Grid>
+                </>
+              )}
+
               <Grid xs={12} item>
-                <Grid justifyContent="flex-end" spacing={1} container>
-                  <Grid xs={4} md={1} item>
+                <Grid justifyContent="flex-end" spacing={2} container style={{ marginTop: 4 }}>
+                  <Grid xs={12} sm={4} md={3} item>
                     <ButtonWithSpinner
                       className={classes.fullWidth}
                       style={{ marginTop: 7 }}
@@ -338,7 +882,7 @@ export function CompanyForm(props) {
                   </Grid>
                   {record.id !== undefined ? (
                     <>
-                      <Grid xs={6} md={1} item>
+                      <Grid xs={12} sm={4} md={3} item>
                         <ButtonWithSpinner
                           style={{ marginTop: 7 }}
                           className={classes.fullWidth}
@@ -350,7 +894,7 @@ export function CompanyForm(props) {
                           Excluir
                         </ButtonWithSpinner>
                       </Grid>
-                      <Grid xs={6} md={2} item>
+                      <Grid xs={12} sm={4} md={3} item>
                         <ButtonWithSpinner
                           style={{ marginTop: 7 }}
                           className={classes.fullWidth}
@@ -362,7 +906,7 @@ export function CompanyForm(props) {
                           + Vencimento
                         </ButtonWithSpinner>
                       </Grid>
-                      <Grid xs={6} md={1} item>
+                      <Grid xs={12} sm={4} md={3} item>
                         <ButtonWithSpinner
                           style={{ marginTop: 7 }}
                           className={classes.fullWidth}
@@ -376,7 +920,7 @@ export function CompanyForm(props) {
                       </Grid>
                     </>
                   ) : null}
-                  <Grid xs={6} md={1} item>
+                  <Grid xs={12} sm={4} md={3} item>
                     <ButtonWithSpinner
                       className={classes.fullWidth}
                       style={{ marginTop: 7 }}
@@ -399,7 +943,7 @@ export function CompanyForm(props) {
 }
 
 export function CompaniesManagerGrid(props) {
-  const { records, onSelect } = props;
+  const { records, onSelect, onDelete, profilesById } = props;
   const classes = useStyles();
   const { dateToClient } = useDate();
 
@@ -427,71 +971,104 @@ export function CompaniesManagerGrid(props) {
     return "Desabilitadas";
   };
 
-  const rowStyle = (record) => {
-    if (moment(record.dueDate).isValid()) {
-      const now = moment();
-      const dueDate = moment(record.dueDate);
-      const diff = dueDate.diff(now, "days");
-      if (diff === 5) {
-        return { backgroundColor: "#fffead" };
-      }
-      if (diff >= -3 && diff <= 4) {
-        return { backgroundColor: "#f7cc8f" };
-      }
-      if (diff === -4) {
-        return { backgroundColor: "#fa8c8c" };
-      }
-    }
-    return {};
-  };
-
   return (
-    <Paper className={classes.tableContainer}>
-      <Table
-        className={classes.fullWidth}
-        size="small"
-        aria-label="a dense table"
-      >
-        <TableHead>
-          <TableRow>
-            <TableCell align="center" style={{ width: "1%" }}>
-              #
-            </TableCell>
-            <TableCell align="left">Nome</TableCell>
-            <TableCell align="left">E-mail</TableCell>
-            <TableCell align="left">Telefone</TableCell>
-            <TableCell align="left">Plano</TableCell>
-            <TableCell align="left">Campanhas</TableCell>
-            <TableCell align="left">Status</TableCell>
-            <TableCell align="left">Criada Em</TableCell>
-            <TableCell align="left">Vencimento</TableCell>
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {records.filter(Boolean).map((row, key) => (
-            <TableRow style={rowStyle(row)} key={key}>
-              <TableCell align="center" style={{ width: "1%" }}>
-                <IconButton onClick={() => onSelect(row)} aria-label="delete">
-                  <EditIcon />
+    <Grid container spacing={2} className={classes.cardsGrid}>
+      {(records || []).filter(Boolean).map((row) => {
+        const profile = profilesById && row?.id ? profilesById[row.id] : null;
+        const pType = profile?.personType === "PF" ? "PF" : profile?.personType === "PJ" ? "PJ" : "";
+        const due = dueChip(row.dueDate, row.recurrence);
+        const planName = renderPlan(row);
+        const campaigns = renderCampaignsStatus(row);
+        const status = renderStatus(row);
+        return (
+          <Grid item xs={12} sm={6} md={4} key={row.id || row.name}>
+            <Card className={classes.companyCard} elevation={0}>
+              <CardContent>
+                <div className={classes.titleRow}>
+                  <Typography variant="subtitle1" className={classes.companyName}>
+                    {row.name || "-"}
+                  </Typography>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                    {pType ? (
+                      <Chip size="small" variant="outlined" className={classes.pill} label={pType} />
+                    ) : null}
+                    <Chip
+                      size="small"
+                      className={`${classes.pill} ${classes.pillPrimary}`}
+                      icon={<AssignmentIcon fontSize="small" />}
+                      label={planName}
+                    />
+                  </div>
+                </div>
+
+                {pType === "PJ" ? (
+                  <Typography variant="body2" style={{ marginTop: 8, opacity: 0.9 }}>
+                    <b>CNPJ:</b> {profile?.pj?.cnpj || "-"} {profile?.pj?.razaoSocial ? `• ${profile.pj.razaoSocial}` : ""}
+                  </Typography>
+                ) : pType === "PF" ? (
+                  <Typography variant="body2" style={{ marginTop: 8, opacity: 0.9 }}>
+                    <b>CPF:</b> {profile?.pf?.cpf || "-"} {profile?.pf?.nomeCompleto ? `• ${profile.pf.nomeCompleto}` : ""}
+                  </Typography>
+                ) : null}
+
+                <div className={classes.metaRow}>
+                  <div className={classes.metaItem}>
+                    <EmailIcon fontSize="small" style={{ opacity: 0.85 }} />
+                    <div>
+                      <div className={classes.metaLabel}>E-mail</div>
+                      <div className={classes.metaValue}>{row.email || "-"}</div>
+                    </div>
+                  </div>
+                  <div className={classes.metaItem}>
+                    <PhoneIcon fontSize="small" style={{ opacity: 0.85 }} />
+                    <div>
+                      <div className={classes.metaLabel}>Telefone</div>
+                      <div className={classes.metaValue}>{row.phone || "-"}</div>
+                    </div>
+                  </div>
+                  <div className={classes.metaItem}>
+                    <EventIcon fontSize="small" style={{ opacity: 0.85 }} />
+                    <div>
+                      <div className={classes.metaLabel}>Criada em</div>
+                      <div className={classes.metaValue}>{dateToClient(row.createdAt)}</div>
+                    </div>
+                  </div>
+                </div>
+
+                <Divider style={{ margin: "12px 0" }} />
+
+                <div className={classes.metaRow} style={{ marginTop: 0 }}>
+                  <Chip size="small" variant="outlined" className={classes.pill} label={`Status: ${status}`} />
+                  <Chip size="small" variant="outlined" className={classes.pill} label={`Campanhas: ${campaigns}`} />
+                  <Chip size="small" color={due.color} className={classes.pill} label={due.label} />
+                </div>
+              </CardContent>
+
+              <div className={classes.actions}>
+                <IconButton
+                  className={classes.iconBtn}
+                  size="small"
+                  color="primary"
+                  onClick={() => onSelect(row)}
+                  aria-label={`Editar empresa ${row.name || ""}`}
+                >
+                  <EditOutlinedIcon fontSize="small" />
                 </IconButton>
-              </TableCell>
-              <TableCell align="left">{row.name || "-"}</TableCell>
-              <TableCell align="left">{row.email || "-"}</TableCell>
-              <TableCell align="left">{row.phone || "-"}</TableCell>
-              <TableCell align="left">{renderPlan(row)}</TableCell>
-              <TableCell align="left">{renderCampaignsStatus(row)}</TableCell>
-              <TableCell align="left">{renderStatus(row)}</TableCell>
-              <TableCell align="left">{dateToClient(row.createdAt)}</TableCell>
-              <TableCell align="left">
-                {dateToClient(row.dueDate)}
-                <br />
-                <span>{row.recurrence}</span>
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </Paper>
+                <IconButton
+                  className={classes.iconBtn}
+                  size="small"
+                  style={{ color: "#d32f2f" }}
+                  onClick={() => onDelete && onDelete(row)}
+                  aria-label={`Excluir empresa ${row.name || ""}`}
+                >
+                  <DeleteOutlineIcon fontSize="small" />
+                </IconButton>
+              </div>
+            </Card>
+          </Grid>
+        );
+      })}
+    </Grid>
   );
 }
 
@@ -502,6 +1079,7 @@ export default function CompaniesManager() {
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [loading, setLoading] = useState(false);
   const [records, setRecords] = useState([]);
+  const [profilesById, setProfilesById] = useState({});
   const [record, setRecord] = useState({
     name: "",
     email: "",
@@ -526,6 +1104,26 @@ export default function CompaniesManager() {
         ? companyList.filter((c) => c && typeof c === "object" && (c.id !== undefined || c.name !== undefined))
         : [];
       setRecords(safe);
+
+      // Cache perfis PJ/PF (não bloquear caso falhe)
+      try {
+        const ids = safe.map((c) => c?.id).filter(Boolean);
+        const results = await Promise.all(
+          ids.map(async (id) => {
+            try {
+              const profile = await fetchCompanyProfile(id);
+              return [id, profile];
+            } catch {
+              return [id, null];
+            }
+          })
+        );
+        const map = {};
+        results.forEach(([id, profile]) => {
+          if (id) map[id] = profile || {};
+        });
+        setProfilesById(map);
+      } catch {}
     } catch (e) {
       toast.error("Não foi possível carregar a lista de registros");
     }
@@ -535,10 +1133,23 @@ export default function CompaniesManager() {
   const handleSubmit = async (data) => {
     setLoading(true);
     try {
+      const payload = buildCompanyPayload(data);
+      let savedCompany = null;
       if (data.id !== undefined) {
-        await update(data);
+        // IMPORTANTE: o hook de update usa data.id para montar a URL.
+        // Sem isso vira /companies/undefined.
+        savedCompany = await update({ id: data.id, ...payload });
       } else {
-        await save(data);
+        savedCompany = await save(payload);
+      }
+
+      // Persistência segura dos novos campos (Settings -> companyProfile)
+      const companyId = Number(savedCompany?.id || data?.id || 0);
+      if (companyId) {
+        try {
+          await saveCompanyProfile(companyId, payload.extraData);
+          setProfilesById((prev) => ({ ...(prev || {}), [companyId]: payload.extraData }));
+        } catch {}
       }
       await loadPlans();
       handleCancel();
@@ -604,42 +1215,51 @@ export default function CompaniesManager() {
       campaignsEnabled,
       dueDate: data.dueDate || "",
       recurrence: data.recurrence || "",
+      profile: profilesById && data?.id ? profilesById[data.id] : undefined,
     }));
   };
 
   return (
-    <Paper className={classes.mainPaper} elevation={0}>
-      <Grid spacing={2} container>
-        <Grid xs={12} item>
-          <Card elevation={2}>
-            <CardHeader
-              avatar={<BusinessIcon color="primary" />}
-              title="Cadastro de Empresas"
-              subheader="Gerencie nome, contato, plano e recorrência"
+    <Grid spacing={2} container>
+      <Grid xs={12} item>
+        <Card className={classes.softCard} elevation={0}>
+          <CardHeader
+            className={classes.sectionHeader}
+            avatar={<BusinessIcon color="primary" />}
+            title={record?.id ? "Editar empresa" : "Cadastro de Empresas"}
+            subheader="Gerencie nome, contato, plano e recorrência"
+          />
+          <CardContent>
+            <CompanyForm
+              initialValue={record}
+              onDelete={handleOpenDeleteDialog}
+              onSubmit={handleSubmit}
+              onCancel={handleCancel}
+              loading={loading}
             />
-            <CardContent>
-              <CompanyForm
-                initialValue={record}
-                onDelete={handleOpenDeleteDialog}
-                onSubmit={handleSubmit}
-                onCancel={handleCancel}
-                loading={loading}
-              />
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid xs={12} item>
-          <Card elevation={2}>
-            <CardHeader
-              avatar={<ListAltIcon color="primary" />}
-              title="Empresas cadastradas"
-              subheader="Clique no lápis para editar"
+          </CardContent>
+        </Card>
+      </Grid>
+      <Grid xs={12} item>
+        <Card className={classes.softCard} elevation={0}>
+          <CardHeader
+            className={classes.sectionHeader}
+            avatar={<ListAltIcon color="primary" />}
+            title="Empresas cadastradas"
+            subheader={`${Array.isArray(records) ? records.length : 0} item(ns)`}
+          />
+          <CardContent>
+            <CompaniesManagerGrid
+              records={records}
+              onSelect={handleSelect}
+              profilesById={profilesById}
+              onDelete={(row) => {
+                handleSelect(row);
+                handleOpenDeleteDialog();
+              }}
             />
-            <CardContent>
-              <CompaniesManagerGrid records={records} onSelect={handleSelect} />
-            </CardContent>
-          </Card>
-        </Grid>
+          </CardContent>
+        </Card>
       </Grid>
       <ConfirmationModal
         title="Exclusão de Registro"
@@ -649,6 +1269,6 @@ export default function CompaniesManager() {
       >
         Deseja realmente excluir esse registro?
       </ConfirmationModal>
-    </Paper>
+    </Grid>
   );
 }

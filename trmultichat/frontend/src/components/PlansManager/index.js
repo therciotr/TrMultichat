@@ -1,14 +1,14 @@
 import React, { useState, useEffect } from "react";
 import {
     makeStyles,
-    Paper,
     Grid,
     TextField,
-    Table,
-    TableHead,
-    TableBody,
-    TableCell,
-    TableRow,
+    Card,
+    CardHeader,
+    CardContent,
+    Chip,
+    Typography,
+    Divider,
     IconButton,
     FormControl,
     InputLabel,
@@ -19,7 +19,21 @@ import { Formik, Form, Field } from 'formik';
 import ButtonWithSpinner from "../ButtonWithSpinner";
 import ConfirmationModal from "../ConfirmationModal";
 
-import { Edit as EditIcon } from "@material-ui/icons";
+import EditOutlinedIcon from "@material-ui/icons/EditOutlined";
+import PeopleOutlineIcon from "@material-ui/icons/PeopleOutline";
+import LinkIcon from "@material-ui/icons/Link";
+import DnsIcon from "@material-ui/icons/Dns";
+import MonetizationOnIcon from "@material-ui/icons/MonetizationOn";
+import CheckCircleOutlineIcon from "@material-ui/icons/CheckCircleOutline";
+import HighlightOffIcon from "@material-ui/icons/HighlightOff";
+import LocalOfferIcon from "@material-ui/icons/LocalOffer";
+import EventIcon from "@material-ui/icons/Event";
+import ForumIcon from "@material-ui/icons/Forum";
+import SettingsEthernetIcon from "@material-ui/icons/SettingsEthernet";
+import ViewColumnIcon from "@material-ui/icons/ViewColumn";
+import EmojiObjectsIcon from "@material-ui/icons/EmojiObjects";
+import DeviceHubIcon from "@material-ui/icons/DeviceHub";
+import DeleteOutlineIcon from "@material-ui/icons/DeleteOutline";
 
 import { toast } from "react-toastify";
 import usePlans from "../../hooks/usePlans";
@@ -30,18 +44,8 @@ const useStyles = makeStyles(theme => ({
     root: {
         width: '100%'
     },
-    mainPaper: {
-        width: '100%',
-        flex: 1,
-        padding: theme.spacing(2)
-    },
     fullWidth: {
         width: '100%'
-    },
-    tableContainer: {
-        width: '100%',
-        overflowX: "scroll",
-        ...theme.scrollbarStyles
     },
     textfield: {
         width: '100%'
@@ -60,8 +64,116 @@ const useStyles = makeStyles(theme => ({
     buttonContainer: {
         textAlign: 'right',
         padding: theme.spacing(1)
-    }
+    },
+    softCard: {
+        borderRadius: 16,
+        border: `1px solid ${theme.palette.divider}`,
+        background: theme.palette.type === "dark" ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.01)"
+    },
+    cardsGrid: {
+        marginTop: theme.spacing(1)
+    },
+    planCard: {
+        height: "100%",
+        borderRadius: 16,
+        border: `1px solid ${theme.palette.divider}`,
+        overflow: "hidden",
+        transition: "transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease",
+        "&:hover": {
+            transform: "translateY(-1px)",
+            boxShadow: theme.shadows[4],
+            borderColor: theme.palette.primary.main,
+        }
+    },
+    planHeader: {
+        paddingBottom: theme.spacing(1)
+    },
+    titleRow: {
+        display: "flex",
+        alignItems: "flex-start",
+        justifyContent: "space-between",
+        gap: theme.spacing(1),
+        flexWrap: "wrap"
+    },
+    planName: {
+        fontWeight: 900,
+        lineHeight: 1.15,
+        wordBreak: "break-word",
+        display: "-webkit-box",
+        WebkitLineClamp: 2,
+        WebkitBoxOrient: "vertical",
+        overflow: "hidden",
+        minWidth: 0
+    },
+    pricePill: {
+        fontWeight: 900,
+        backgroundColor: theme.palette.primary.main,
+        color: "#fff"
+    },
+    metricsRow: {
+        display: "flex",
+        gap: theme.spacing(1),
+        flexWrap: "wrap",
+        marginTop: theme.spacing(1.25),
+    },
+    metric: {
+        display: "flex",
+        alignItems: "center",
+        gap: theme.spacing(1),
+        padding: theme.spacing(1),
+        borderRadius: 12,
+        border: `1px solid ${theme.palette.divider}`,
+        background: theme.palette.type === "dark" ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.02)",
+        flex: "1 1 140px",
+        minWidth: 140
+    },
+    metricIcon: { opacity: 0.85 },
+    metricLabel: { opacity: 0.75, fontWeight: 700, fontSize: 12, lineHeight: 1.2 },
+    metricValue: { fontWeight: 900, fontSize: 14, lineHeight: 1.2 },
+    featuresWrap: {
+        display: "flex",
+        flexWrap: "wrap",
+        gap: theme.spacing(0.75),
+        marginTop: theme.spacing(1.25),
+    },
+    featureChip: {
+        borderRadius: 12,
+        fontWeight: 800,
+    },
+    featureOn: {
+        color: theme.palette.primary.main,
+        borderColor: theme.palette.primary.main
+    },
+    featureOff: {
+        opacity: 0.8
+    },
+    actions: {
+        display: "flex",
+        justifyContent: "flex-end",
+        padding: theme.spacing(1, 1.5),
+        borderTop: `1px solid ${theme.palette.divider}`,
+        background: theme.palette.type === "dark" ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.02)"
+    },
+    iconBtn: { borderRadius: 10 }
 }));
+
+function formatMoneyBRL(value) {
+    const n = Number(value || 0);
+    const v = Number.isFinite(n) ? n : 0;
+    return v.toLocaleString('pt-br', { minimumFractionDigits: 2 });
+}
+
+function yesNoChip(classes, label, enabled, Icon) {
+    return (
+        <Chip
+            size="small"
+            variant="outlined"
+            className={`${classes.featureChip} ${enabled ? classes.featureOn : classes.featureOff}`}
+            icon={enabled ? <CheckCircleOutlineIcon fontSize="small" /> : <HighlightOffIcon fontSize="small" />}
+            label={label}
+        />
+    );
+}
 
 export function PlanManagerForm(props) {
     const { onSubmit, onDelete, onCancel, initialValue, loading } = props;
@@ -104,9 +216,9 @@ export function PlanManagerForm(props) {
         >
             {(values) => (
                 <Form className={classes.fullWidth}>
-                    <Grid spacing={1} justifyContent="flex-start" container>
+                    <Grid spacing={2} justifyContent="flex-start" container>
                         {/* NOME */}
-                        <Grid xs={12} sm={6} md={2} item>
+                        <Grid xs={12} item>
                             <Field
                                 as={TextField}
                                 label={i18n.t("plans.form.name")}
@@ -118,7 +230,7 @@ export function PlanManagerForm(props) {
                         </Grid>
 
                         {/* USUARIOS */}
-                        <Grid xs={12} sm={6} md={1} item>
+                        <Grid xs={12} sm={6} md={3} item>
                             <Field
                                 as={TextField}
                                 label={i18n.t("plans.form.users")}
@@ -131,7 +243,7 @@ export function PlanManagerForm(props) {
                         </Grid>
 
                         {/* CONEXOES */}
-                        <Grid xs={12} sm={6} md={1} item>
+                        <Grid xs={12} sm={6} md={3} item>
                             <Field
                                 as={TextField}
                                 label={i18n.t("plans.form.connections")}
@@ -144,7 +256,7 @@ export function PlanManagerForm(props) {
                         </Grid>
 
                         {/* FILAS */}
-                        <Grid xs={12} sm={6} md={1} item>
+                        <Grid xs={12} sm={6} md={3} item>
                             <Field
                                 as={TextField}
                                 label="Filas"
@@ -157,7 +269,7 @@ export function PlanManagerForm(props) {
                         </Grid>
 
                         {/* VALOR */}
-                        <Grid xs={12} sm={6} md={1} item>
+                        <Grid xs={12} sm={6} md={3} item>
                             <Field
                                 as={TextField}
                                 label="Valor"
@@ -170,7 +282,7 @@ export function PlanManagerForm(props) {
                         </Grid>
 
                         {/* CAMPANHAS */}
-                        <Grid xs={12} sm={6} md={2} item>
+                        <Grid xs={12} sm={6} md={6} lg={4} item>
                             <FormControl margin="dense" variant="outlined" fullWidth>
                                 <InputLabel htmlFor="useCampaigns-selection">{i18n.t("plans.form.campaigns")}</InputLabel>
                                 <Field
@@ -188,7 +300,7 @@ export function PlanManagerForm(props) {
                         </Grid>
 
                         {/* AGENDAMENTOS */}
-                        <Grid xs={12} sm={8} md={2} item>
+                        <Grid xs={12} sm={6} md={6} lg={4} item>
                             <FormControl margin="dense" variant="outlined" fullWidth>
                                 <InputLabel htmlFor="useSchedules-selection">{i18n.t("plans.form.schedules")}</InputLabel>
                                 <Field
@@ -206,7 +318,7 @@ export function PlanManagerForm(props) {
                         </Grid>
 
                         {/* CHAT INTERNO */}
-                        <Grid xs={12} sm={8} md={2} item>
+                        <Grid xs={12} sm={6} md={6} lg={4} item>
                             <FormControl margin="dense" variant="outlined" fullWidth>
                                 <InputLabel htmlFor="useInternalChat-selection">Chat Interno</InputLabel>
                                 <Field
@@ -224,7 +336,7 @@ export function PlanManagerForm(props) {
                         </Grid>
 
                         {/* API Externa */}
-                        <Grid xs={12} sm={8} md={4} item>
+                        <Grid xs={12} sm={6} md={6} lg={4} item>
                             <FormControl margin="dense" variant="outlined" fullWidth>
                                 <InputLabel htmlFor="useExternalApi-selection">API Externa</InputLabel>
                                 <Field
@@ -242,7 +354,7 @@ export function PlanManagerForm(props) {
                         </Grid>
 
                         {/* KANBAN */}
-                        <Grid xs={12} sm={8} md={2} item>
+                        <Grid xs={12} sm={6} md={6} lg={4} item>
                             <FormControl margin="dense" variant="outlined" fullWidth>
                                 <InputLabel htmlFor="useKanban-selection">Kanban</InputLabel>
                                 <Field
@@ -260,7 +372,7 @@ export function PlanManagerForm(props) {
                         </Grid>
 
                         {/* OPENAI */}
-                        <Grid xs={12} sm={8} md={2} item>
+                        <Grid xs={12} sm={6} md={6} lg={4} item>
                             <FormControl margin="dense" variant="outlined" fullWidth>
                                 <InputLabel htmlFor="useOpenAi-selection">Open.Ai</InputLabel>
                                 <Field
@@ -278,7 +390,7 @@ export function PlanManagerForm(props) {
                         </Grid>
 
                         {/* INTEGRACOES */}
-                        <Grid xs={12} sm={8} md={2} item>
+                        <Grid xs={12} sm={6} md={6} lg={4} item>
                             <FormControl margin="dense" variant="outlined" fullWidth>
                                 <InputLabel htmlFor="useIntegrations-selection">Integrações</InputLabel>
                                 <Field
@@ -295,21 +407,21 @@ export function PlanManagerForm(props) {
                             </FormControl>
                         </Grid>
                     </Grid>
-                    <Grid spacing={2} justifyContent="flex-end" container>
+                    <Grid spacing={2} justifyContent="flex-end" container style={{ marginTop: 4 }}>
 
-                        <Grid sm={3} md={2} item>
+                        <Grid xs={12} sm={4} md={3} item>
                             <ButtonWithSpinner className={classes.fullWidth} loading={loading} onClick={() => onCancel()} variant="contained">
                                 {i18n.t("plans.form.clear")}
                             </ButtonWithSpinner>
                         </Grid>
                         {record.id !== undefined ? (
-                            <Grid sm={3} md={2} item>
+                            <Grid xs={12} sm={4} md={3} item>
                                 <ButtonWithSpinner className={classes.fullWidth} loading={loading} onClick={() => onDelete(record)} variant="contained" color="secondary">
                                     {i18n.t("plans.form.delete")}
                                 </ButtonWithSpinner>
                             </Grid>
                         ) : null}
-                        <Grid sm={3} md={2} item>
+                        <Grid xs={12} sm={4} md={3} item>
                             <ButtonWithSpinner className={classes.fullWidth} loading={loading} type="submit" variant="contained" color="primary">
                                 {i18n.t("plans.form.save")}
                             </ButtonWithSpinner>
@@ -322,87 +434,97 @@ export function PlanManagerForm(props) {
 }
 
 export function PlansManagerGrid(props) {
-    const { records, onSelect } = props
+    const { records, onSelect, onDelete } = props
     const classes = useStyles()
-    
-    const renderCampaigns = (row) => {
-        return row.useCampaigns === false ? `${i18n.t("plans.form.no")}` : `${i18n.t("plans.form.yes")}`;
-    };
-
-    const renderSchedules = (row) => {
-        return row.useSchedules === false ? `${i18n.t("plans.form.no")}` : `${i18n.t("plans.form.yes")}`;
-    };
-
-    const renderInternalChat = (row) => {
-        return row.useInternalChat === false ? `${i18n.t("plans.form.no")}` : `${i18n.t("plans.form.yes")}`;
-    };
-
-    const renderExternalApi = (row) => {
-        return row.useExternalApi === false ? `${i18n.t("plans.form.no")}` : `${i18n.t("plans.form.yes")}`;
-    };
-
-    const renderKanban = (row) => {
-        return row.useKanban === false ? `${i18n.t("plans.form.no")}` : `${i18n.t("plans.form.yes")}`;
-    };
-
-    const renderOpenAi = (row) => {
-        return row.useOpenAi === false ? `${i18n.t("plans.form.no")}` : `${i18n.t("plans.form.yes")}`;
-    };
-
-    const renderIntegrations = (row) => {
-        return row.useIntegrations === false ? `${i18n.t("plans.form.no")}` : `${i18n.t("plans.form.yes")}`;
-    };
 
     return (
-        <Paper className={classes.tableContainer}>
-            <Table
-                className={classes.fullWidth}
-                // size="small"
-                padding="none"
-                aria-label="a dense table"
-            >
-                <TableHead>
-                    <TableRow>
-                        <TableCell align="center" style={{ width: '1%' }}>#</TableCell>
-                        <TableCell align="left">{i18n.t("plans.form.name")}</TableCell>
-                        <TableCell align="center">{i18n.t("plans.form.users")}</TableCell>
-                        <TableCell align="center">{i18n.t("plans.form.connections")}</TableCell>
-                        <TableCell align="center">Filas</TableCell>
-                        <TableCell align="center">Valor</TableCell>
-                        <TableCell align="center">{i18n.t("plans.form.campaigns")}</TableCell>
-                        <TableCell align="center">{i18n.t("plans.form.schedules")}</TableCell>
-                        <TableCell align="center">Chat Interno</TableCell>
-                        <TableCell align="center">API Externa</TableCell>
-                        <TableCell align="center">Kanban</TableCell>
-                        <TableCell align="center">Open.Ai</TableCell>
-                        <TableCell align="center">Integrações</TableCell>
-                    </TableRow>
-                </TableHead>
-                <TableBody>
-                    {records.map((row) => (
-                        <TableRow key={row.id}>
-                            <TableCell align="center" style={{ width: '1%' }}>
-                                <IconButton onClick={() => onSelect(row)} aria-label="delete">
-                                    <EditIcon />
+        <Grid container spacing={2} className={classes.cardsGrid}>
+            {(records || []).map((row) => {
+                const campaigns = row.useCampaigns !== false;
+                const schedules = row.useSchedules !== false;
+                const internalChat = row.useInternalChat !== false;
+                const externalApi = row.useExternalApi !== false;
+                const kanban = row.useKanban !== false;
+                const openAi = row.useOpenAi !== false;
+                const integrations = row.useIntegrations !== false;
+
+                return (
+                    <Grid key={row.id} item xs={12} sm={6} md={4}>
+                        <Card className={classes.planCard} elevation={0}>
+                            <CardContent>
+                                <div className={classes.titleRow}>
+                                    <Typography variant="subtitle1" className={classes.planName}>
+                                        {row.name || "-"}
+                                    </Typography>
+                                    <Chip
+                                        size="small"
+                                        icon={<MonetizationOnIcon fontSize="small" />}
+                                        className={classes.pricePill}
+                                        label={`${i18n.t("plans.form.money")} ${formatMoneyBRL(row.value)}`}
+                                    />
+                                </div>
+
+                                <div className={classes.metricsRow}>
+                                    <div className={classes.metric}>
+                                        <PeopleOutlineIcon className={classes.metricIcon} fontSize="small" />
+                                        <div>
+                                            <div className={classes.metricLabel}>{i18n.t("plans.form.users")}</div>
+                                            <div className={classes.metricValue}>{row.users ?? "-"}</div>
+                                        </div>
+                                    </div>
+                                    <div className={classes.metric}>
+                                        <LinkIcon className={classes.metricIcon} fontSize="small" />
+                                        <div>
+                                            <div className={classes.metricLabel}>{i18n.t("plans.form.connections")}</div>
+                                            <div className={classes.metricValue}>{row.connections ?? "-"}</div>
+                                        </div>
+                                    </div>
+                                    <div className={classes.metric}>
+                                        <DnsIcon className={classes.metricIcon} fontSize="small" />
+                                        <div>
+                                            <div className={classes.metricLabel}>Filas</div>
+                                            <div className={classes.metricValue}>{row.queues ?? "-"}</div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <Divider style={{ margin: "12px 0" }} />
+
+                                <div className={classes.featuresWrap}>
+                                    {yesNoChip(classes, i18n.t("plans.form.campaigns"), campaigns, LocalOfferIcon)}
+                                    {yesNoChip(classes, i18n.t("plans.form.schedules"), schedules, EventIcon)}
+                                    {yesNoChip(classes, "Chat", internalChat, ForumIcon)}
+                                    {yesNoChip(classes, "API", externalApi, SettingsEthernetIcon)}
+                                    {yesNoChip(classes, "Kanban", kanban, ViewColumnIcon)}
+                                    {yesNoChip(classes, "IA", openAi, EmojiObjectsIcon)}
+                                    {yesNoChip(classes, "Integrações", integrations, DeviceHubIcon)}
+                                </div>
+                            </CardContent>
+                            <div className={classes.actions}>
+                                <IconButton
+                                    className={classes.iconBtn}
+                                    size="small"
+                                    color="primary"
+                                    onClick={() => onSelect(row)}
+                                    aria-label={`Editar plano ${row.name || ""}`}
+                                >
+                                    <EditOutlinedIcon fontSize="small" />
                                 </IconButton>
-                            </TableCell>
-                            <TableCell align="left">{row.name || '-'}</TableCell>
-                            <TableCell align="center">{row.users || '-'}</TableCell>
-                            <TableCell align="center">{row.connections || '-'}</TableCell>
-                            <TableCell align="center">{row.queues || '-'}</TableCell>
-                            <TableCell align="center">{i18n.t("plans.form.money")} {row.value ? row.value.toLocaleString('pt-br', { minimumFractionDigits: 2 }) : '00.00'}</TableCell>
-                            <TableCell align="center">{renderCampaigns(row)}</TableCell>
-                            <TableCell align="center">{renderSchedules(row)}</TableCell>
-                            <TableCell align="center">{renderInternalChat(row)}</TableCell>
-                            <TableCell align="center">{renderExternalApi(row)}</TableCell>
-                            <TableCell align="center">{renderKanban(row)}</TableCell>
-                            <TableCell align="center">{renderOpenAi(row)}</TableCell>
-                            <TableCell align="center">{renderIntegrations(row)}</TableCell>
-                        </TableRow>
-                    ))}
-                </TableBody>
-            </Table>
-        </Paper>
+                                <IconButton
+                                    className={classes.iconBtn}
+                                    size="small"
+                                    onClick={() => onDelete && onDelete(row)}
+                                    aria-label={`Excluir plano ${row.name || ""}`}
+                                    style={{ color: "#d32f2f" }}
+                                >
+                                    <DeleteOutlineIcon fontSize="small" />
+                                </IconButton>
+                            </div>
+                        </Card>
+                    </Grid>
+                )
+            })}
+        </Grid>
     )
 }
 
@@ -528,23 +650,43 @@ export default function PlansManager() {
     }
 
     return (
-        <Paper className={classes.mainPaper} elevation={0}>
-            <Grid spacing={2} container>
-                <Grid xs={12} item>
-                    <PlanManagerForm
-                        initialValue={record}
-                        onDelete={handleOpenDeleteDialog}
-                        onSubmit={handleSubmit}
-                        onCancel={handleCancel}
-                        loading={loading}
+        <Grid spacing={2} container>
+            <Grid xs={12} item>
+                <Card className={classes.softCard} elevation={0}>
+                    <CardHeader
+                        className={classes.planHeader}
+                        title={record?.id ? "Editar plano" : "Criar plano"}
+                        subheader="Configure limites e recursos. Use os cards ao lado para editar rapidamente."
                     />
-                </Grid>
-                <Grid xs={12} item>
-                    <PlansManagerGrid
-                        records={records}
-                        onSelect={handleSelect}
+                    <CardContent>
+                        <PlanManagerForm
+                            initialValue={record}
+                            onDelete={handleOpenDeleteDialog}
+                            onSubmit={handleSubmit}
+                            onCancel={handleCancel}
+                            loading={loading}
+                        />
+                    </CardContent>
+                </Card>
+            </Grid>
+            <Grid xs={12} item>
+                <Card className={classes.softCard} elevation={0}>
+                    <CardHeader
+                        className={classes.planHeader}
+                        title="Planos cadastrados"
+                        subheader={`${Array.isArray(records) ? records.length : 0} item(ns)`}
                     />
-                </Grid>
+                    <CardContent>
+                        <PlansManagerGrid
+                            records={records}
+                            onSelect={handleSelect}
+                            onDelete={(row) => {
+                                handleSelect(row);
+                                handleOpenDeleteDialog();
+                            }}
+                        />
+                    </CardContent>
+                </Card>
             </Grid>
             <ConfirmationModal
                 title="Exclusão de Registro"
@@ -554,6 +696,6 @@ export default function PlansManager() {
             >
                 Deseja realmente excluir esse registro?
             </ConfirmationModal>
-        </Paper>
+        </Grid>
     )
 }

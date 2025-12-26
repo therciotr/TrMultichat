@@ -1,4 +1,7 @@
 import { Router } from "express";
+import fs from "fs";
+import path from "path";
+import multer from "multer";
 import { authMiddleware } from "../../middleware/authMiddleware";
 import { pgQuery } from "../../utils/pgClient";
 import { getLegacyModel } from "../../utils/legacyModel";
@@ -13,6 +16,7 @@ type HelpRow = {
   title?: string;
   description?: string;
   video?: string;
+  link?: string;
   category?: string;
   createdAt?: string;
   updatedAt?: string;
@@ -20,6 +24,37 @@ type HelpRow = {
 
 function normalizeText(v: any): string {
   return String(v ?? "").trim();
+}
+
+// Upload (public/uploads/helps)
+const PUBLIC_DIR = path.join(process.cwd(), "public");
+const UPLOADS_DIR = path.join(PUBLIC_DIR, "uploads");
+const HELPS_UPLOADS_DIR = path.join(UPLOADS_DIR, "helps");
+
+function ensureUploadDirs() {
+  if (!fs.existsSync(PUBLIC_DIR)) fs.mkdirSync(PUBLIC_DIR);
+  if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR);
+  if (!fs.existsSync(HELPS_UPLOADS_DIR)) fs.mkdirSync(HELPS_UPLOADS_DIR);
+}
+
+ensureUploadDirs();
+const storage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, HELPS_UPLOADS_DIR),
+  filename: (_req, file, cb) => {
+    const unique = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    const ext = path.extname(file.originalname || ".png");
+    cb(null, unique + ext);
+  }
+});
+const upload = multer({ storage });
+
+function maybeUploadSingle(fieldName: string) {
+  const handler = upload.single(fieldName);
+  return (req: any, res: any, next: any) => {
+    // Only run multer for multipart requests; otherwise keep JSON body behavior.
+    if (req?.is?.("multipart/form-data")) return handler(req, res, next);
+    return next();
+  };
 }
 
 function quoteIdent(name: string): string {
@@ -117,8 +152,7 @@ async function isAdminOrSuperFromAuth(req: any): Promise<boolean> {
         const isMasterEmail = email === "thercio@trtecnologias.com.br";
         return Boolean(
           plain?.super ||
-            plain?.admin ||
-            String(plain?.profile || "") === "admin" ||
+            String(plain?.profile || "").toLowerCase() === "admin" ||
             isMasterEmail
         );
       }
@@ -130,13 +164,13 @@ async function isAdminOrSuperFromAuth(req: any): Promise<boolean> {
     let rows: any[] | null = null;
     try {
       rows = await pgQuery<any>(
-        'SELECT email, "super" as super, admin, profile FROM "Users" WHERE id = $1 LIMIT 1',
+        'SELECT email, "super" as super, profile FROM "Users" WHERE id = $1 LIMIT 1',
         [userId]
       );
     } catch {
       try {
         rows = await pgQuery<any>(
-          "SELECT email, super, admin, profile FROM users WHERE id = $1 LIMIT 1",
+          "SELECT email, super, profile FROM users WHERE id = $1 LIMIT 1",
           [userId]
         );
       } catch {
@@ -147,7 +181,7 @@ async function isAdminOrSuperFromAuth(req: any): Promise<boolean> {
     const u = Array.isArray(rows) && rows[0];
     const email = String(u?.email || "").toLowerCase();
     const isMasterEmail = email === "thercio@trtecnologias.com.br";
-    return Boolean(u?.super || u?.admin || String(u?.profile || "") === "admin" || isMasterEmail);
+    return Boolean(u?.super || String(u?.profile || "").toLowerCase() === "admin" || isMasterEmail);
   } catch {
     return false;
   }
@@ -188,16 +222,18 @@ router.get("/list", async (_req, res) => {
 });
 
 // POST /helps - cria help
-router.post("/", async (req, res) => {
+router.post("/", maybeUploadSingle("image"), async (req, res) => {
   try {
     const ok = await isAdminOrSuperFromAuth(req);
     if (!ok) return res.status(403).json({ error: true, message: "forbidden" });
 
     const body = req.body || {};
+    const uploadedUrl = req.file ? `/uploads/helps/${req.file.filename}` : "";
     const payload = {
       title: normalizeText(body.title),
       description: normalizeText(body.description),
-      video: normalizeText(body.video)
+      video: normalizeText(body.video),
+      link: normalizeText(body.link) || uploadedUrl
     };
 
     if (!payload.title) {
@@ -215,6 +251,10 @@ router.post("/", async (req, res) => {
     if (hasCategory && category) {
       cols.push("category");
       vals.push(category);
+    }
+    if (colsSet.has("link") && payload.link) {
+      cols.push("link");
+      vals.push(payload.link);
     }
     // Add timestamps if the table has them (Sequelize usually requires these)
     if (colsSet.has("createdat")) {
@@ -240,7 +280,7 @@ router.post("/", async (req, res) => {
 });
 
 // PUT /helps/:id - atualiza help
-router.put("/:id", async (req, res) => {
+router.put("/:id", maybeUploadSingle("image"), async (req, res) => {
   try {
     const ok = await isAdminOrSuperFromAuth(req);
     if (!ok) return res.status(403).json({ error: true, message: "forbidden" });
@@ -251,6 +291,7 @@ router.put("/:id", async (req, res) => {
     }
 
     const body = req.body || {};
+    const uploadedUrl = req.file ? `/uploads/helps/${req.file.filename}` : "";
     const t = await resolveHelpsTable();
     const hasCategory = await resolveHasCategory(t);
     const colsSet = await resolveHelpsColumns(t);
@@ -273,6 +314,15 @@ router.put("/:id", async (req, res) => {
     if (hasCategory && body.category !== undefined) {
       sets.push(`${quoteIdent("category")} = $${params.length + 1}`);
       params.push(normalizeText(body.category));
+    }
+    if (colsSet.has("link")) {
+      // Priority: uploaded file > provided link (can also clear with empty string)
+      const linkValue =
+        uploadedUrl || (body.link !== undefined ? normalizeText(body.link) : undefined);
+      if (linkValue !== undefined) {
+        sets.push(`${quoteIdent("link")} = $${params.length + 1}`);
+        params.push(linkValue);
+      }
     }
 
     if (!sets.length) {

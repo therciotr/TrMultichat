@@ -15,13 +15,7 @@ import {
   InputAdornment,
   InputLabel,
   MenuItem,
-  Paper,
   Select,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableRow,
   TextField,
   Tooltip,
   Typography,
@@ -29,9 +23,13 @@ import {
 import Skeleton from "@material-ui/lab/Skeleton";
 import SearchIcon from "@material-ui/icons/Search";
 import YouTubeIcon from "@material-ui/icons/YouTube";
-import VisibilityIcon from "@material-ui/icons/Visibility";
-import EditIcon from "@material-ui/icons/Edit";
-import DeleteIcon from "@material-ui/icons/Delete";
+import VisibilityOutlinedIcon from "@material-ui/icons/VisibilityOutlined";
+import EditOutlinedIcon from "@material-ui/icons/EditOutlined";
+import DeleteOutlineIcon from "@material-ui/icons/DeleteOutline";
+import PlayCircleFilledWhiteIcon from "@material-ui/icons/PlayCircleFilledWhite";
+import ImageOutlinedIcon from "@material-ui/icons/ImageOutlined";
+import CloudUploadOutlinedIcon from "@material-ui/icons/CloudUploadOutlined";
+import LinkOutlinedIcon from "@material-ui/icons/LinkOutlined";
 import { makeStyles } from "@material-ui/core/styles";
 import { useFormik } from "formik";
 import * as Yup from "yup";
@@ -46,9 +44,24 @@ import useHelps from "../../../hooks/useHelps";
 import { AuthContext } from "../../../context/Auth/AuthContext";
 
 const useStyles = makeStyles((theme) => ({
+  pageIntro: {
+    display: "flex",
+    alignItems: "baseline",
+    justifyContent: "space-between",
+    gap: theme.spacing(2),
+    flexWrap: "wrap",
+  },
   headerSub: { opacity: 0.85, marginTop: theme.spacing(0.5) },
   grid: { alignItems: "stretch" },
   card: { borderRadius: 14 },
+  softCard: {
+    borderRadius: 16,
+    border: `1px solid ${theme.palette.divider}`,
+    background:
+      theme.palette.type === "dark"
+        ? "rgba(255,255,255,0.03)"
+        : "rgba(0,0,0,0.01)",
+  },
   scrollArea: {
     // Evita scroll aninhado (MainContainer já tem overflowY: auto).
     // Isso corrige "scroll travado" especialmente no mobile.
@@ -94,13 +107,107 @@ const useStyles = makeStyles((theme) => ({
       gridTemplateColumns: "1fr",
     },
   },
-  tableContainer: {
-    borderRadius: 12,
-    overflow: "hidden",
-    border: `1px solid ${theme.palette.divider}`,
+  cardsGrid: {
+    marginTop: theme.spacing(1),
   },
-  descCell: {
-    maxWidth: 420,
+  helpCard: {
+    height: "100%",
+    borderRadius: 16,
+    border: `1px solid ${theme.palette.divider}`,
+    overflow: "hidden",
+    transition: "transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease",
+    "&:hover": {
+      transform: "translateY(-1px)",
+      boxShadow: theme.shadows[4],
+      borderColor: theme.palette.primary.main,
+    },
+  },
+  helpCardBody: {
+    padding: theme.spacing(2),
+  },
+  thumb: {
+    position: "relative",
+    width: "100%",
+    height: 140,
+    background: theme.palette.type === "dark" ? "#0f172a" : "#f3f4f6",
+    overflow: "hidden",
+    borderBottom: `1px solid ${theme.palette.divider}`,
+  },
+  thumbImg: {
+    width: "100%",
+    height: "100%",
+    objectFit: "cover",
+    display: "block",
+  },
+  thumbOverlay: {
+    position: "absolute",
+    inset: 0,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background:
+      "linear-gradient(to bottom, rgba(0,0,0,0.10), rgba(0,0,0,0.45))",
+    pointerEvents: "none",
+  },
+  playIcon: {
+    fontSize: 54,
+    color: "rgba(255,255,255,0.92)",
+    filter: "drop-shadow(0 8px 14px rgba(0,0,0,0.35))",
+  },
+  placeholderIcon: {
+    position: "absolute",
+    inset: 0,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    opacity: 0.5,
+  },
+  helpTitleRow: {
+    display: "flex",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: theme.spacing(1),
+  },
+  helpTitle: { fontWeight: 800, lineHeight: 1.2 },
+  helpDesc: {
+    marginTop: theme.spacing(1),
+    opacity: 0.9,
+    display: "-webkit-box",
+    WebkitLineClamp: 3,
+    WebkitBoxOrient: "vertical",
+    overflow: "hidden",
+  },
+  helpMeta: {
+    display: "flex",
+    alignItems: "center",
+    gap: theme.spacing(1),
+    flexWrap: "wrap",
+    marginTop: theme.spacing(1.5),
+  },
+  helpActions: {
+    display: "flex",
+    justifyContent: "flex-end",
+    gap: theme.spacing(0.5),
+    padding: theme.spacing(1.25, 1.5),
+    borderTop: `1px solid ${theme.palette.divider}`,
+    background:
+      theme.palette.type === "dark"
+        ? "rgba(255,255,255,0.02)"
+        : "rgba(0,0,0,0.02)",
+  },
+  iconBtn: {
+    borderRadius: 10,
+  },
+  uploadRow: {
+    display: "flex",
+    gap: theme.spacing(1),
+    alignItems: "center",
+    flexWrap: "wrap",
+    marginTop: theme.spacing(1.5),
+  },
+  fileName: {
+    opacity: 0.75,
+    maxWidth: 260,
     whiteSpace: "nowrap",
     overflow: "hidden",
     textOverflow: "ellipsis",
@@ -115,8 +222,8 @@ const useStyles = makeStyles((theme) => ({
     opacity: 0.35,
     marginBottom: theme.spacing(1),
   },
-  badgeYes: { backgroundColor: "#2e7d32", color: "#fff", fontWeight: 700 },
-  badgeNo: { backgroundColor: "#9e9e9e", color: "#fff", fontWeight: 700 },
+  badgeYes: { backgroundColor: theme.palette.primary.main, color: "#fff", fontWeight: 800 },
+  badgeNo: { backgroundColor: theme.palette.grey[600], color: "#fff", fontWeight: 800 },
 }));
 
 function normalizeText(v) {
@@ -166,6 +273,24 @@ function parseYouTube(inputRaw) {
   return { id: "", error: "URL/ID do YouTube inválido." };
 }
 
+function resolveApiBaseUrl() {
+  const resolvedEnvBase =
+    process.env.REACT_APP_BACKEND_URL || process.env.REACT_APP_API_BASE_URL;
+  if (resolvedEnvBase) return String(resolvedEnvBase).replace(/\/$/, "");
+  if (typeof window !== "undefined" && /app\.trmultichat\.com\.br$/i.test(window.location.host)) {
+    return "https://api.trmultichat.com.br";
+  }
+  return "http://localhost:4004";
+}
+
+function resolveAssetUrl(urlRaw) {
+  const url = normalizeText(urlRaw);
+  if (!url) return "";
+  if (url.startsWith("http://") || url.startsWith("https://")) return url;
+  const base = resolveApiBaseUrl();
+  return base + (url.startsWith("/") ? url : "/" + url);
+}
+
 function HelpListSkeleton() {
   return (
     <div style={{ padding: 16 }}>
@@ -187,6 +312,21 @@ const schema = Yup.object().shape({
       return Boolean(parseYouTube(v).id);
     }),
   category: Yup.string().nullable(),
+  imageLink: Yup.string()
+    .nullable()
+    .test("url", "Link de imagem inválido.", (value) => {
+      const v = normalizeText(value);
+      if (!v) return true;
+      // allow relative (/uploads/...) and absolute URLs
+      if (v.startsWith("/")) return true;
+      try {
+        // eslint-disable-next-line no-new
+        new URL(v);
+        return true;
+      } catch {
+        return false;
+      }
+    }),
 });
 
 export default function HelpsAdmin() {
@@ -196,6 +336,7 @@ export default function HelpsAdmin() {
   const history = useHistory();
 
   const titleRef = useRef(null);
+  const fileInputRef = useRef(null);
   const [records, setRecords] = useState([]);
   const [loadingList, setLoadingList] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -212,8 +353,11 @@ export default function HelpsAdmin() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [categoryUnsupported, setCategoryUnsupported] = useState(false);
+  const [imageFile, setImageFile] = useState(null);
+  const [imagePreviewUrl, setImagePreviewUrl] = useState("");
 
   const isEditing = Boolean(editingItem?.id);
+  const editingImageLink = normalizeText(editingItem?.link);
 
   // Guard simples: rota /admin/helps deve ser só para admin/super (padrão do painel)
   useEffect(() => {
@@ -230,6 +374,7 @@ export default function HelpsAdmin() {
       description: editingItem?.description || "",
       videoUrl: editingItem?.video ? String(editingItem.video) : "",
       category: editingItem?.category || editingItem?.categoria || editingItem?.tag || "",
+      imageLink: editingImageLink || "",
     },
     validationSchema: schema,
     onSubmit: async (values, helpers) => {
@@ -243,9 +388,24 @@ export default function HelpsAdmin() {
           video: videoId || "",
           // Campo opcional: só persiste se o backend suportar (se não, ele será ignorado).
           category: normalizeText(values.category) || undefined,
+          link: normalizeText(values.imageLink) || undefined,
         };
 
         async function persist(payload) {
+          // If image file is provided, we must use multipart/form-data.
+          if (imageFile) {
+            const form = new FormData();
+            Object.entries(payload || {}).forEach(([k, v]) => {
+              if (v === undefined || v === null) return;
+              form.append(k, String(v));
+            });
+            form.append("image", imageFile);
+            if (isEditing) {
+              form.append("id", String(editingItem.id));
+              return await update(Object.assign(form, { id: editingItem.id }));
+            }
+            return await save(form);
+          }
           if (isEditing) return await update({ id: editingItem.id, ...payload });
           return await save(payload);
         }
@@ -278,6 +438,8 @@ export default function HelpsAdmin() {
 
         helpers.resetForm();
         setEditingItem(null);
+        setImageFile(null);
+        setImagePreviewUrl("");
         await reload();
       } catch (e) {
         const status = e?.response?.status;
@@ -294,6 +456,24 @@ export default function HelpsAdmin() {
 
   const videoParsed = useMemo(() => parseYouTube(formik.values.videoUrl), [formik.values.videoUrl]);
   const videoId = videoParsed.id;
+  const imageLink = normalizeText(formik.values.imageLink);
+
+  const setFile = (file) => {
+    try {
+      if (imagePreviewUrl?.startsWith?.("blob:")) URL.revokeObjectURL(imagePreviewUrl);
+    } catch (_) {}
+    if (!file) {
+      setImageFile(null);
+      setImagePreviewUrl("");
+      return;
+    }
+    setImageFile(file);
+    try {
+      setImagePreviewUrl(URL.createObjectURL(file));
+    } catch {
+      setImagePreviewUrl("");
+    }
+  };
 
   const reload = async () => {
     setLoadingList(true);
@@ -342,7 +522,8 @@ export default function HelpsAdmin() {
       const okText =
         !q ||
         String(r.title || "").toLowerCase().includes(q) ||
-        String(r.description || "").toLowerCase().includes(q);
+        String(r.description || "").toLowerCase().includes(q) ||
+        String(r.link || "").toLowerCase().includes(q);
       const okCategory =
         !categoryKey ||
         categoryFilter === "all" ||
@@ -370,12 +551,14 @@ export default function HelpsAdmin() {
 
   const startEdit = (item) => {
     setEditingItem(item);
+    setFile(null);
     setTimeout(() => titleRef.current?.focus?.(), 50);
   };
 
   const resetForm = () => {
     setEditingItem(null);
     formik.resetForm();
+    setFile(null);
     setTimeout(() => titleRef.current?.focus?.(), 50);
   };
 
@@ -422,7 +605,12 @@ export default function HelpsAdmin() {
   return (
     <MainContainer>
       <MainHeader>
-        <Title>Ajuda (Administração)</Title>
+        <div className={classes.pageIntro}>
+          <Title>Ajuda (Administração)</Title>
+          <Typography variant="body2" style={{ opacity: 0.75 }}>
+            {filtered.length} item(ns)
+          </Typography>
+        </div>
       </MainHeader>
 
       <div className={classes.scrollArea}>
@@ -433,7 +621,7 @@ export default function HelpsAdmin() {
         <Grid container spacing={2} className={classes.grid} style={{ marginTop: 8 }}>
           {/* Form */}
           <Grid item xs={12} md={5}>
-            <Card className={classes.card} elevation={3}>
+            <Card className={`${classes.card} ${classes.softCard}`} elevation={0}>
               <CardHeader
                 className={classes.cardHeader}
                 title={isEditing ? "Editar Ajuda" : "Criar Ajuda"}
@@ -503,15 +691,93 @@ export default function HelpsAdmin() {
                     }}
                   />
 
-                  {videoId ? (
-                    <div className={classes.previewWrap} aria-label="Preview do vídeo">
-                      <iframe
-                        className={classes.iframe}
-                        title="Preview do vídeo do YouTube"
-                        src={`https://www.youtube.com/embed/${videoId}`}
-                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                        allowFullScreen
-                      />
+                  <TextField
+                    fullWidth
+                    variant="outlined"
+                    margin="dense"
+                    label="Imagem (link opcional)"
+                    name="imageLink"
+                    value={formik.values.imageLink}
+                    onChange={formik.handleChange}
+                    onBlur={formik.handleBlur}
+                    error={Boolean(formik.touched.imageLink && formik.errors.imageLink)}
+                    helperText={
+                      formik.touched.imageLink && formik.errors.imageLink
+                        ? formik.errors.imageLink
+                        : "Opcional. Use um link (https://...) ou deixe vazio e envie um arquivo."
+                    }
+                    placeholder="https://... ou /uploads/helps/..."
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <LinkOutlinedIcon />
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    style={{ display: "none" }}
+                    onChange={(e) => {
+                      const f = e?.target?.files?.[0] || null;
+                      setFile(f);
+                    }}
+                  />
+                  <div className={classes.uploadRow}>
+                    <ButtonWithSpinner
+                      variant="outlined"
+                      onClick={() => fileInputRef.current?.click?.()}
+                      loading={saving}
+                    >
+                      <CloudUploadOutlinedIcon style={{ marginRight: 8 }} />
+                      Enviar imagem
+                    </ButtonWithSpinner>
+                    {imageFile ? (
+                      <>
+                        <Typography variant="caption" className={classes.fileName}>
+                          {imageFile.name}
+                        </Typography>
+                        <ButtonWithSpinner
+                          variant="text"
+                          onClick={() => {
+                            setFile(null);
+                            try {
+                              if (fileInputRef.current) fileInputRef.current.value = "";
+                            } catch (_) {}
+                          }}
+                          loading={saving}
+                        >
+                          Remover
+                        </ButtonWithSpinner>
+                      </>
+                    ) : (
+                      <Typography variant="caption" className={classes.fileName}>
+                        Nenhum arquivo selecionado
+                      </Typography>
+                    )}
+                  </div>
+
+                  {videoId || imagePreviewUrl || imageLink ? (
+                    <div className={classes.previewWrap} aria-label="Preview do conteúdo">
+                      {videoId ? (
+                        <iframe
+                          className={classes.iframe}
+                          title="Preview do vídeo do YouTube"
+                          src={`https://www.youtube.com/embed/${videoId}`}
+                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                          allowFullScreen
+                        />
+                      ) : (
+                        <img
+                          alt="Preview da imagem"
+                          className={classes.thumbImg}
+                          style={{ height: 240 }}
+                          src={imagePreviewUrl || resolveAssetUrl(imageLink)}
+                        />
+                      )}
                     </div>
                   ) : null}
 
@@ -581,11 +847,11 @@ export default function HelpsAdmin() {
 
           {/* List */}
           <Grid item xs={12} md={7}>
-            <Card className={classes.card} elevation={3}>
+            <Card className={`${classes.card} ${classes.softCard}`} elevation={0}>
               <CardHeader
                 className={classes.cardHeader}
                 title="Conteúdos cadastrados"
-                subheader={`${filtered.length} item(ns)`}
+                subheader="Busque, filtre e gerencie seus cards de ajuda."
               />
               <CardContent>
                 <div className={classes.toolbar}>
@@ -675,65 +941,97 @@ export default function HelpsAdmin() {
                   </div>
                 </div>
               ) : (
-                <Paper className={classes.tableContainer} elevation={0}>
-                  <Table size="small" aria-label="Tabela de conteúdos de ajuda">
-                    <TableHead>
-                      <TableRow>
-                        <TableCell>Título</TableCell>
-                        <TableCell>Descrição</TableCell>
-                        <TableCell align="center">Vídeo</TableCell>
-                        <TableCell align="center">Ações</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {pageItems.map((row) => {
-                        const hasVideo = Boolean(normalizeText(row.video));
-                        return (
-                          <TableRow key={row.id} hover>
-                            <TableCell style={{ fontWeight: 700 }}>{row.title || "-"}</TableCell>
-                            <TableCell className={classes.descCell}>
-                              <Tooltip title={row.description || ""}>
-                                <span>{row.description || "-"}</span>
-                              </Tooltip>
-                            </TableCell>
-                            <TableCell align="center">
-                              <Chip
-                                size="small"
-                                className={hasVideo ? classes.badgeYes : classes.badgeNo}
-                                label={hasVideo ? "Sim" : "Não"}
-                              />
-                            </TableCell>
-                            <TableCell align="center">
+                <>
+                  <Grid container spacing={2} className={classes.cardsGrid}>
+                    {pageItems.map((row) => {
+                      const hasVideo = Boolean(normalizeText(row.video));
+                      const videoThumbId = hasVideo ? parseYouTube(row.video).id || normalizeText(row.video) : "";
+                      const thumbUrl = hasVideo && videoThumbId
+                        ? `https://img.youtube.com/vi/${videoThumbId}/mqdefault.jpg`
+                        : normalizeText(row.link)
+                          ? resolveAssetUrl(row.link)
+                          : "";
+                      const categoryValue = normalizeText(row?.[categoryKey]) || "";
+                      const dateStr = row?.updatedAt || row?.createdAt || "";
+                      const when = dateStr ? new Date(dateStr) : null;
+                      const whenLabel =
+                        when && !Number.isNaN(when.getTime())
+                          ? when.toLocaleDateString("pt-BR")
+                          : "";
+
+                      return (
+                        <Grid item xs={12} sm={6} key={row.id}>
+                          <Card className={classes.helpCard} elevation={0}>
+                            <div className={classes.thumb}>
+                              {thumbUrl ? (
+                                <img className={classes.thumbImg} src={thumbUrl} alt="Capa" />
+                              ) : (
+                                <div className={classes.placeholderIcon}>
+                                  <ImageOutlinedIcon />
+                                </div>
+                              )}
+                              {hasVideo ? (
+                                <div className={classes.thumbOverlay}>
+                                  <PlayCircleFilledWhiteIcon className={classes.playIcon} />
+                                </div>
+                              ) : null}
+                            </div>
+                            <div className={classes.helpCardBody}>
+                              <div className={classes.helpTitleRow}>
+                                <Typography variant="subtitle1" className={classes.helpTitle}>
+                                  {row.title || "-"}
+                                </Typography>
+                                <Chip
+                                  size="small"
+                                  className={hasVideo ? classes.badgeYes : classes.badgeNo}
+                                  label={hasVideo ? "Vídeo" : "Imagem/Texto"}
+                                />
+                              </div>
+
+                              {row.description ? (
+                                <Typography variant="body2" className={classes.helpDesc}>
+                                  {row.description}
+                                </Typography>
+                              ) : (
+                                <Typography variant="body2" className={classes.helpDesc} style={{ opacity: 0.7 }}>
+                                  Sem descrição.
+                                </Typography>
+                              )}
+
+                              <div className={classes.helpMeta}>
+                                {categoryValue ? (
+                                  <Chip size="small" variant="outlined" label={categoryValue} />
+                                ) : null}
+                                {whenLabel ? (
+                                  <Typography variant="caption" style={{ opacity: 0.75 }}>
+                                    Atualizado: {whenLabel}
+                                  </Typography>
+                                ) : null}
+                              </div>
+                            </div>
+
+                            <div className={classes.helpActions}>
                               <Tooltip title="Ver">
-                                <IconButton
-                                  aria-label={`Ver ${row.title}`}
-                                  onClick={() => openView(row)}
-                                >
-                                  <VisibilityIcon />
+                                <IconButton className={classes.iconBtn} aria-label={`Ver ${row.title}`} onClick={() => openView(row)} size="small" color="primary">
+                                  <VisibilityOutlinedIcon fontSize="small" />
                                 </IconButton>
                               </Tooltip>
                               <Tooltip title="Editar">
-                                <IconButton
-                                  aria-label={`Editar ${row.title}`}
-                                  onClick={() => startEdit(row)}
-                                >
-                                  <EditIcon />
+                                <IconButton className={classes.iconBtn} aria-label={`Editar ${row.title}`} onClick={() => startEdit(row)} size="small" color="primary">
+                                  <EditOutlinedIcon fontSize="small" />
                                 </IconButton>
                               </Tooltip>
                               <Tooltip title="Excluir">
-                                <IconButton
-                                  aria-label={`Excluir ${row.title}`}
-                                  onClick={() => askDelete(row)}
-                                >
-                                  <DeleteIcon />
+                                <IconButton className={classes.iconBtn} aria-label={`Excluir ${row.title}`} onClick={() => askDelete(row)} size="small" style={{ color: "#d32f2f" }}>
+                                  <DeleteOutlineIcon fontSize="small" />
                                 </IconButton>
                               </Tooltip>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
+                            </div>
+                          </Card>
+                        </Grid>
+                      );
+                    })}
+                  </Grid>
                   <div
                     style={{
                       display: "flex",
@@ -782,7 +1080,7 @@ export default function HelpsAdmin() {
                       </FormControl>
                     </div>
                   </div>
-                </Paper>
+                </>
               )}
               </CardContent>
             </Card>
