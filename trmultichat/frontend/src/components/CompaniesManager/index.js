@@ -250,6 +250,65 @@ function safeJsonParse(v) {
   }
 }
 
+function normalizeCompanyProfile(rawProfile) {
+  const p = safeJsonParse(rawProfile) || {};
+  if (!p || typeof p !== "object") return { personType: "PJ", pj: {}, pf: {} };
+
+  // Formato novo (que usamos no frontend): { personType, pj, pf }
+  if ((p.personType === "PJ" || p.personType === "PF") && (p.pj || p.pf)) {
+    return {
+      personType: p.personType === "PF" ? "PF" : "PJ",
+      pj: (p.pj && typeof p.pj === "object") ? p.pj : {},
+      pf: (p.pf && typeof p.pf === "object") ? p.pf : {},
+    };
+  }
+
+  // Formato antigo (backend type CompanyProfile): { personType, legalName, tradeName, document, address... }
+  const documentDigits = onlyDigitsMask(p.document || "");
+  const inferredType =
+    p.personType === "PF" || p.personType === "PJ"
+      ? p.personType
+      : documentDigits.length === 11
+        ? "PF"
+        : "PJ";
+
+  const addr = (p.address && typeof p.address === "object") ? p.address : {};
+  const mappedAddress = {
+    cep: maskCEP(addr.zip || ""),
+    logradouro: addr.street || "",
+    numero: addr.number || "",
+    bairro: addr.district || "",
+    cidade: addr.city || "",
+    uf: addr.state || "",
+    complemento: addr.complement || "",
+  };
+
+  if (inferredType === "PF") {
+    return {
+      personType: "PF",
+      pj: {},
+      pf: {
+        cpf: maskCPF(p.document || ""),
+        nomeCompleto: p.legalName || "",
+        dataNascimento: p.birthDate ? String(p.birthDate).slice(0, 10) : "",
+        endereco: mappedAddress,
+      },
+    };
+  }
+
+  return {
+    personType: "PJ",
+    pj: {
+      cnpj: maskCNPJ(p.document || ""),
+      razaoSocial: p.legalName || "",
+      nomeFantasia: p.tradeName || "",
+      dataAbertura: p.foundationDate ? String(p.foundationDate).slice(0, 10) : "",
+      endereco: mappedAddress,
+    },
+    pf: {},
+  };
+}
+
 function buildExtraData(values) {
   const personType = values?.personType === "PF" ? "PF" : "PJ";
   return {
@@ -277,7 +336,7 @@ function buildCompanyPayload(values) {
 
 async function fetchCompanyProfile(companyId) {
   const { data } = await api.get(`/companies/${companyId}/profile`);
-  return data?.profile || {};
+  return normalizeCompanyProfile(data?.profile || {});
 }
 
 async function saveCompanyProfile(companyId, profile) {
@@ -318,13 +377,11 @@ export function CompanyForm(props) {
 
       // profile pode vir de /companies/:id/profile (Settings) ou de algum campo anterior
       const profileRaw = next?.profile || next?.extraData;
-      const profile = safeJsonParse(profileRaw) || {};
-      if (profile && typeof profile === "object") {
-        const pType = profile.personType === "PF" ? "PF" : "PJ";
-        next.personType = pType;
-        if (profile.pj && typeof profile.pj === "object") next.pj = { ...prev.pj, ...profile.pj };
-        if (profile.pf && typeof profile.pf === "object") next.pf = { ...prev.pf, ...profile.pf };
-      }
+      const profile = normalizeCompanyProfile(profileRaw);
+      const pType = profile.personType === "PF" ? "PF" : "PJ";
+      next.personType = pType;
+      if (profile.pj && typeof profile.pj === "object") next.pj = { ...prev.pj, ...profile.pj };
+      if (profile.pf && typeof profile.pf === "object") next.pf = { ...prev.pf, ...profile.pf };
       return {
         ...prev,
         ...next,
