@@ -84,7 +84,7 @@ export async function login({ email, password }: LoginInput): Promise<{ user: Au
       admin: isAdmin,
       profile: String((row as any).profile || (isAdmin ? "admin" : "user"))
     };
-  
+
     const accessToken = jwt.sign(
       { userId: user.id, tenantId: user.tenantId },
       env.JWT_SECRET,

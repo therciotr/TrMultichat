@@ -34,7 +34,11 @@ api.interceptors.request.use((config) => {
   const token = localStorage.getItem("token") || localStorage.getItem("accessToken");
   if (token) {
     config.headers = config.headers || {};
-    config.headers["Authorization"] = `Bearer ${JSON.parse(token) || token}`;
+    let parsed = token;
+    try {
+      parsed = JSON.parse(token);
+    } catch (_) {}
+    config.headers["Authorization"] = `Bearer ${parsed || token}`;
   }
   return config;
 });
@@ -42,7 +46,11 @@ openApi.interceptors.request.use((config) => {
   const token = localStorage.getItem("token") || localStorage.getItem("accessToken");
   if (token) {
     config.headers = config.headers || {};
-    config.headers["Authorization"] = `Bearer ${JSON.parse(token) || token}`;
+    let parsed = token;
+    try {
+      parsed = JSON.parse(token);
+    } catch (_) {}
+    config.headers["Authorization"] = `Bearer ${parsed || token}`;
   }
   return config;
 });

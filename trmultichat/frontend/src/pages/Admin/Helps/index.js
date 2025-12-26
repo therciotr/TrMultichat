@@ -49,6 +49,13 @@ const useStyles = makeStyles((theme) => ({
   headerSub: { opacity: 0.85, marginTop: theme.spacing(0.5) },
   grid: { alignItems: "stretch" },
   card: { borderRadius: 14 },
+  scrollArea: {
+    flex: 1,
+    minHeight: 0,
+    overflowY: "auto",
+    paddingBottom: theme.spacing(2),
+    ...(theme.scrollbarStyles || {}),
+  },
   cardHeader: {
     paddingBottom: theme.spacing(1),
   },
@@ -401,233 +408,233 @@ export default function HelpsAdmin() {
         <Title>Ajuda (Administração)</Title>
       </MainHeader>
 
-      <Typography variant="body2" className={classes.headerSub}>
-        Crie e mantenha conteúdos de ajuda (título, descrição e vídeo do YouTube).
-      </Typography>
+      <div className={classes.scrollArea}>
+        <Typography variant="body2" className={classes.headerSub}>
+          Crie e mantenha conteúdos de ajuda (título, descrição e vídeo do YouTube).
+        </Typography>
 
-      <Grid container spacing={2} className={classes.grid} style={{ marginTop: 8 }}>
-        {/* Form */}
-        <Grid item xs={12} md={5}>
-          <Card className={classes.card} elevation={3}>
-            <CardHeader
-              className={classes.cardHeader}
-              title={isEditing ? "Editar Ajuda" : "Criar Ajuda"}
-              subheader={isEditing ? "Atualize o conteúdo selecionado." : "Cadastre um novo conteúdo de ajuda."}
-            />
-            <CardContent>
-              <form onSubmit={formik.handleSubmit}>
-                <TextField
-                  inputRef={titleRef}
-                  fullWidth
-                  variant="outlined"
-                  margin="dense"
-                  label="Título *"
-                  name="title"
-                  value={formik.values.title}
-                  onChange={formik.handleChange}
-                  onBlur={formik.handleBlur}
-                  error={Boolean(formik.touched.title && formik.errors.title)}
-                  helperText={formik.touched.title && formik.errors.title ? formik.errors.title : " "}
-                  placeholder="Ex.: Como conectar WhatsApp"
-                />
+        <Grid container spacing={2} className={classes.grid} style={{ marginTop: 8 }}>
+          {/* Form */}
+          <Grid item xs={12} md={5}>
+            <Card className={classes.card} elevation={3}>
+              <CardHeader
+                className={classes.cardHeader}
+                title={isEditing ? "Editar Ajuda" : "Criar Ajuda"}
+                subheader={isEditing ? "Atualize o conteúdo selecionado." : "Cadastre um novo conteúdo de ajuda."}
+              />
+              <CardContent>
+                <form onSubmit={formik.handleSubmit}>
+                  <TextField
+                    inputRef={titleRef}
+                    fullWidth
+                    variant="outlined"
+                    margin="dense"
+                    label="Título *"
+                    name="title"
+                    value={formik.values.title}
+                    onChange={formik.handleChange}
+                    onBlur={formik.handleBlur}
+                    error={Boolean(formik.touched.title && formik.errors.title)}
+                    helperText={formik.touched.title && formik.errors.title ? formik.errors.title : " "}
+                    placeholder="Ex.: Como conectar WhatsApp"
+                  />
 
-                <TextField
-                  fullWidth
-                  variant="outlined"
-                  margin="dense"
-                  label="Categoria (opcional)"
-                  name="category"
-                  value={formik.values.category}
-                  onChange={formik.handleChange}
-                  onBlur={formik.handleBlur}
-                  error={Boolean(formik.touched.category && formik.errors.category)}
-                  helperText={
-                    formik.touched.category && formik.errors.category
-                      ? formik.errors.category
-                      : categoryUnsupported
-                        ? "Seu servidor ainda não suporta categoria (campo não será salvo)."
-                        : "Opcional. Será salva apenas se o servidor suportar."
-                  }
-                  placeholder="Ex.: Conexões, Usuários, Atendimento..."
-                />
+                  <TextField
+                    fullWidth
+                    variant="outlined"
+                    margin="dense"
+                    label="Categoria (opcional)"
+                    name="category"
+                    value={formik.values.category}
+                    onChange={formik.handleChange}
+                    onBlur={formik.handleBlur}
+                    error={Boolean(formik.touched.category && formik.errors.category)}
+                    helperText={
+                      formik.touched.category && formik.errors.category
+                        ? formik.errors.category
+                        : categoryUnsupported
+                          ? "Seu servidor ainda não suporta categoria (campo não será salvo)."
+                          : "Opcional. Será salva apenas se o servidor suportar."
+                    }
+                    placeholder="Ex.: Conexões, Usuários, Atendimento..."
+                  />
 
-                <TextField
-                  fullWidth
-                  variant="outlined"
-                  margin="dense"
-                  label="Vídeo (YouTube) – URL ou ID"
-                  name="videoUrl"
-                  value={formik.values.videoUrl}
-                  onChange={formik.handleChange}
-                  onBlur={formik.handleBlur}
-                  error={Boolean(formik.touched.videoUrl && formik.errors.videoUrl)}
-                  helperText={
-                    formik.touched.videoUrl && formik.errors.videoUrl
-                      ? formik.errors.videoUrl
-                      : videoId
-                        ? "Preview disponível abaixo."
-                        : "Cole a URL do YouTube ou apenas o ID do vídeo."
-                  }
-                  placeholder="https://www.youtube.com/watch?v=XXXXXXXXXXX ou XXXXXXXX"
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <YouTubeIcon />
-                      </InputAdornment>
-                    ),
-                  }}
-                />
+                  <TextField
+                    fullWidth
+                    variant="outlined"
+                    margin="dense"
+                    label="Vídeo (YouTube) – URL ou ID"
+                    name="videoUrl"
+                    value={formik.values.videoUrl}
+                    onChange={formik.handleChange}
+                    onBlur={formik.handleBlur}
+                    error={Boolean(formik.touched.videoUrl && formik.errors.videoUrl)}
+                    helperText={
+                      formik.touched.videoUrl && formik.errors.videoUrl
+                        ? formik.errors.videoUrl
+                        : videoId
+                          ? "Preview disponível abaixo."
+                          : "Cole a URL do YouTube ou apenas o ID do vídeo."
+                    }
+                    placeholder="https://www.youtube.com/watch?v=XXXXXXXXXXX ou XXXXXXXX"
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <YouTubeIcon />
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
 
-                {videoId ? (
-                  <div className={classes.previewWrap} aria-label="Preview do vídeo">
-                    <iframe
-                      className={classes.iframe}
-                      title="Preview do vídeo do YouTube"
-                      src={`https://www.youtube.com/embed/${videoId}`}
-                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                      allowFullScreen
-                    />
+                  {videoId ? (
+                    <div className={classes.previewWrap} aria-label="Preview do vídeo">
+                      <iframe
+                        className={classes.iframe}
+                        title="Preview do vídeo do YouTube"
+                        src={`https://www.youtube.com/embed/${videoId}`}
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                        allowFullScreen
+                      />
+                    </div>
+                  ) : null}
+
+                  <TextField
+                    fullWidth
+                    variant="outlined"
+                    margin="dense"
+                    label="Descrição *"
+                    name="description"
+                    value={formik.values.description}
+                    onChange={formik.handleChange}
+                    onBlur={formik.handleBlur}
+                    error={Boolean(formik.touched.description && formik.errors.description)}
+                    helperText={
+                      formik.touched.description && formik.errors.description
+                        ? formik.errors.description
+                        : `${String(formik.values.description || "").length}/1000`
+                    }
+                    placeholder="Descreva o passo a passo..."
+                    multiline
+                    rows={5}
+                  />
+
+                  <div className={classes.formActions}>
+                    {isEditing ? (
+                      <>
+                        <ButtonWithSpinner
+                          type="submit"
+                          variant="contained"
+                          color="primary"
+                          loading={saving}
+                        >
+                          Atualizar
+                        </ButtonWithSpinner>
+                        <ButtonWithSpinner
+                          variant="outlined"
+                          onClick={resetForm}
+                          loading={saving}
+                        >
+                          Cancelar
+                        </ButtonWithSpinner>
+                      </>
+                    ) : (
+                      <>
+                        <ButtonWithSpinner
+                          type="submit"
+                          variant="contained"
+                          color="primary"
+                          loading={saving}
+                        >
+                          Salvar
+                        </ButtonWithSpinner>
+                        <ButtonWithSpinner
+                          variant="outlined"
+                          onClick={() => formik.resetForm()}
+                          loading={saving}
+                        >
+                          Limpar
+                        </ButtonWithSpinner>
+                      </>
+                    )}
                   </div>
-                ) : null}
+                </form>
+              </CardContent>
+            </Card>
+          </Grid>
 
-                <TextField
-                  fullWidth
-                  variant="outlined"
-                  margin="dense"
-                  label="Descrição *"
-                  name="description"
-                  value={formik.values.description}
-                  onChange={formik.handleChange}
-                  onBlur={formik.handleBlur}
-                  error={Boolean(formik.touched.description && formik.errors.description)}
-                  helperText={
-                    formik.touched.description && formik.errors.description
-                      ? formik.errors.description
-                      : `${String(formik.values.description || "").length}/1000`
-                  }
-                  placeholder="Descreva o passo a passo..."
-                  multiline
-                  rows={5}
-                />
+          {/* List */}
+          <Grid item xs={12} md={7}>
+            <Card className={classes.card} elevation={3}>
+              <CardHeader
+                className={classes.cardHeader}
+                title="Conteúdos cadastrados"
+                subheader={`${filtered.length} item(ns)`}
+              />
+              <CardContent>
+                <div className={classes.toolbar}>
+                  <TextField
+                    variant="outlined"
+                    size="small"
+                    label="Buscar"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Título ou descrição"
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <SearchIcon />
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
 
-                <div className={classes.formActions}>
-                  {isEditing ? (
-                    <>
-                      <ButtonWithSpinner
-                        type="submit"
-                        variant="contained"
-                        color="primary"
-                        loading={saving}
-                      >
-                        Atualizar
-                      </ButtonWithSpinner>
-                      <ButtonWithSpinner
-                        variant="outlined"
-                        onClick={resetForm}
-                        loading={saving}
-                      >
-                        Cancelar
-                      </ButtonWithSpinner>
-                    </>
-                  ) : (
-                    <>
-                      <ButtonWithSpinner
-                        type="submit"
-                        variant="contained"
-                        color="primary"
-                        loading={saving}
-                      >
-                        Salvar
-                      </ButtonWithSpinner>
-                      <ButtonWithSpinner
-                        variant="outlined"
-                        onClick={() => formik.resetForm()}
-                        loading={saving}
-                      >
-                        Limpar
-                      </ButtonWithSpinner>
-                    </>
-                  )}
-                </div>
-              </form>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        {/* List */}
-        <Grid item xs={12} md={7}>
-          <Card className={classes.card} elevation={3}>
-            <CardHeader
-              className={classes.cardHeader}
-              title="Conteúdos cadastrados"
-              subheader={`${filtered.length} item(ns)`}
-            />
-            <CardContent>
-              <div className={classes.toolbar}>
-                <TextField
-                  variant="outlined"
-                  size="small"
-                  label="Buscar"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Título ou descrição"
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <SearchIcon />
-                      </InputAdornment>
-                    ),
-                  }}
-                />
-
-                <FormControl variant="outlined" size="small">
-                  <InputLabel id="video-filter-label">Vídeo</InputLabel>
-                  <Select
-                    labelId="video-filter-label"
-                    value={videoFilter}
-                    onChange={(e) => setVideoFilter(e.target.value)}
-                    label="Vídeo"
-                  >
-                    <MenuItem value="all">Todos</MenuItem>
-                    <MenuItem value="with">Com vídeo</MenuItem>
-                    <MenuItem value="without">Sem vídeo</MenuItem>
-                  </Select>
-                </FormControl>
-
-                <FormControl variant="outlined" size="small">
-                  <InputLabel id="sort-label">Ordenação</InputLabel>
-                  <Select
-                    labelId="sort-label"
-                    value={sortBy}
-                    onChange={(e) => setSortBy(e.target.value)}
-                    label="Ordenação"
-                  >
-                    <MenuItem value="recent">Mais recente</MenuItem>
-                    <MenuItem value="az">A–Z</MenuItem>
-                  </Select>
-                </FormControl>
-
-                {categories.length > 0 ? (
                   <FormControl variant="outlined" size="small">
-                    <InputLabel id="category-filter-label">Categoria</InputLabel>
+                    <InputLabel id="video-filter-label">Vídeo</InputLabel>
                     <Select
-                      labelId="category-filter-label"
-                      value={categoryFilter}
-                      onChange={(e) => setCategoryFilter(e.target.value)}
-                      label="Categoria"
+                      labelId="video-filter-label"
+                      value={videoFilter}
+                      onChange={(e) => setVideoFilter(e.target.value)}
+                      label="Vídeo"
                     >
-                      <MenuItem value="all">Todas</MenuItem>
-                      {categories.map((c) => (
-                        <MenuItem key={c} value={c}>
-                          {c}
-                        </MenuItem>
-                      ))}
+                      <MenuItem value="all">Todos</MenuItem>
+                      <MenuItem value="with">Com vídeo</MenuItem>
+                      <MenuItem value="without">Sem vídeo</MenuItem>
                     </Select>
                   </FormControl>
-                ) : (
-                  <div />
-                )}
-              </div>
+
+                  <FormControl variant="outlined" size="small">
+                    <InputLabel id="sort-label">Ordenação</InputLabel>
+                    <Select
+                      labelId="sort-label"
+                      value={sortBy}
+                      onChange={(e) => setSortBy(e.target.value)}
+                      label="Ordenação"
+                    >
+                      <MenuItem value="recent">Mais recente</MenuItem>
+                      <MenuItem value="az">A–Z</MenuItem>
+                    </Select>
+                  </FormControl>
+                  {categories.length > 0 ? (
+                    <FormControl variant="outlined" size="small">
+                      <InputLabel id="category-filter-label">Categoria</InputLabel>
+                      <Select
+                        labelId="category-filter-label"
+                        value={categoryFilter}
+                        onChange={(e) => setCategoryFilter(e.target.value)}
+                        label="Categoria"
+                      >
+                        <MenuItem value="all">Todas</MenuItem>
+                        {categories.map((c) => (
+                          <MenuItem key={c} value={c}>
+                            {c}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  ) : (
+                    <div />
+                  )}
+                </div>
 
               {loadingList ? (
                 <HelpListSkeleton />
@@ -760,10 +767,11 @@ export default function HelpsAdmin() {
                   </div>
                 </Paper>
               )}
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          </Grid>
         </Grid>
-      </Grid>
+      </div>
 
       {/* View dialog */}
       <Dialog open={viewOpen} onClose={() => setViewOpen(false)} maxWidth="md" fullWidth>

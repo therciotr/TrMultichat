@@ -61,6 +61,12 @@ const useAuth = () => {
       if (token) {
         try {
           const { data } = await api.post("/auth/refresh_token");
+          // Mantém localStorage sincronizado com o token renovado.
+          // Caso contrário, os interceptors continuam enviando o token antigo (expira em 15min)
+          // e o usuário recebe 401 "Invalid token" em rotas como /helps.
+          try {
+            localStorage.setItem("token", JSON.stringify(data.token));
+          } catch (_) {}
           api.defaults.headers.Authorization = `Bearer ${data.token}`;
           setIsAuth(true);
           setUser({
