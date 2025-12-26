@@ -49,6 +49,12 @@ remote_script() {
   echo "[VPS] Indo para pasta do projeto..."
   cd /home/deploy/trmultichat/trmultichat
 
+  echo "[VPS] Verificando alterações locais..."
+  if [ -n "$(git status --porcelain)" ]; then
+    echo "[VPS] Aviso: há alterações locais. Fazendo stash (inclui untracked) antes do pull..."
+    git stash push -u -m "autostash before deploy $(date -Iseconds)" >/dev/null 2>&1 || true
+  fi
+
   echo "[VPS] Atualizando código (git pull origin main)..."
   git pull origin main
 
@@ -72,13 +78,8 @@ if [ -n "${VPS_PASSWORD:-}" ]; then
   export SSH_ASKPASS="$(cd "$(dirname "$0")" && pwd)/infrastructure/ssh_askpass.sh"
   export SSH_ASKPASS_REQUIRE=force
   export DISPLAY="${DISPLAY:-:0}"
-
-  if command -v setsid >/dev/null 2>&1; then
-    remote_script | setsid -w ssh "${SSH_OPTS[@]}" -o PreferredAuthentications=password -o PubkeyAuthentication=no "$SSH_TARGET" bash -s
-  else
-    echo "[LOCAL] AVISO: 'setsid' não encontrado; caindo para SSH interativo."
-    remote_script | ssh "${SSH_OPTS[@]}" "$SSH_TARGET" bash -s
-  fi
+  # Nota: em alguns macOS não existe 'setsid'. Esta forma mantém stdin sem TTY, então o SSH usa ASKPASS.
+  ssh "${SSH_OPTS[@]}" -o PreferredAuthentications=password -o PubkeyAuthentication=no "$SSH_TARGET" bash -s < <(remote_script)
 else
   echo "[LOCAL] Conectando via SSH (interativo)..."
   remote_script | ssh "${SSH_OPTS[@]}" "$SSH_TARGET" bash -s
