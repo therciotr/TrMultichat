@@ -110,7 +110,6 @@ const useStyles = makeStyles(theme => ({
         whiteSpace: "nowrap",
         border: 0,
         opacity: 0,
-        pointerEvents: "none",
     },
     attachBtn: {
         minWidth: 0,
@@ -301,33 +300,25 @@ const FilesModal = ({ open, onClose, fileListId, reload }) => {
                                                                 />
                                                             </Grid>     
                                                             <Grid xs={6} md={2} item className={classes.optionActions}>
-                                                                <input
-                                                                    type="file"
-                                                                    onChange={(e) => {
-                                                                        const selectedFile = e.target.files[0];
-                                                                        setFieldValue(`options[${index}].file`, selectedFile);
+                                                                <TrButton
+                                                                    className={classes.attachBtn}
+                                                                    startIcon={<CloudUploadIcon />}
+                                                                    component="label"
+                                                                >
+                                                                    Anexar
+                                                                    <input
+                                                                        type="file"
+                                                                        className={classes.hiddenFileInput}
+                                                                        onChange={(e) => {
+                                                                            const selectedFile = e.target.files[0];
+                                                                            setFieldValue(`options[${index}].file`, selectedFile);
 
-                                                                        // Atualize a lista selectedFileNames para o campo específico
-                                                                        const updatedFileNames = [...selectedFileNames];
-                                                                        updatedFileNames[index] = selectedFile ? selectedFile.name : '';
-                                                                        setSelectedFileNames(updatedFileNames);
-                                                                    }}
-                                                                    className={classes.hiddenFileInput}
-                                                                    name={`options[${index}].file`}
-                                                                    id={`file-upload-${index}`}
-                                                                />
-                                                                <label htmlFor={`file-upload-${index}`} style={{ margin: 0 }}>
-                                                                    <TrButton
-                                                                        className={classes.attachBtn}
-                                                                        startIcon={<CloudUploadIcon />}
-                                                                        onClick={() => {
-                                                                            const el = document.getElementById(`file-upload-${index}`);
-                                                                            if (el) el.click();
+                                                                            const updatedFileNames = [...selectedFileNames];
+                                                                            updatedFileNames[index] = selectedFile ? selectedFile.name : "";
+                                                                            setSelectedFileNames(updatedFileNames);
                                                                         }}
-                                                                    >
-                                                                        Anexar
-                                                                    </TrButton>
-                                                                </label>
+                                                                    />
+                                                                </TrButton>
                                                                 <IconButton
                                                                     size="small"
                                                                     onClick={() => remove(index)}
