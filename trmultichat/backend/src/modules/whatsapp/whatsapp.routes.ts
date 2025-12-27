@@ -5,6 +5,7 @@ import jwt from "jsonwebtoken";
 import env from "../../config/env";
 import { findAllSafe, findByPkSafe, getLegacyModel } from "../../utils/legacyModel";
 import { pgQuery } from "../../utils/pgClient";
+import { getStoredQr } from "../../libs/baileysManager";
 
 const router = Router();
 
@@ -229,7 +230,8 @@ router.get("/", async (req, res) => {
     return res.status(401).json({ error: true, message: "missing tenantId" });
   }
 
-  // IMPORTANT: sessions file is DEV-only. In production it can override real Baileys QR codes stored in DB.
+  // Real Baileys QR codes are stored in `public/whatsapp-sessions.json` (via baileyManager).
+  // Keep the dev file only for DEV_MODE compatibility.
   const sessions = isDevMode() ? readDevSessions() : {};
 
   // Prefer SQL direto (mais robusto em produção)
@@ -242,7 +244,8 @@ router.get("/", async (req, res) => {
     const list = Array.isArray(rows) ? rows : [];
     // Enriquecer com qrcode se existir (para polling/QR modal)
     const enriched = list.map((w: any) => {
-      const sess = sessions[String(w.id)] || {};
+      const stored = getStoredQr(Number(w.id));
+      const sess = stored || sessions[String(w.id)] || {};
       return { ...w, qrcode: sess.qrcode || w.qrcode || "" };
     });
     return res.json(enriched);
@@ -255,7 +258,8 @@ router.get("/", async (req, res) => {
     // session param is ignored in this minimal implementation
     const list = Array.isArray(listDb) ? listDb : [];
     const enriched = list.map((w: any) => {
-      const sess = sessions[String(w.id)] || {};
+      const stored = getStoredQr(Number(w.id));
+      const sess = stored || sessions[String(w.id)] || {};
       return { ...w, qrcode: sess.qrcode || w.qrcode || "" };
     });
     return res.json(enriched);
@@ -283,9 +287,10 @@ router.get("/:id", async (req, res) => {
     return res.status(401).json({ error: true, message: "missing tenantId" });
   }
 
-  // IMPORTANT: sessions file is DEV-only. In production it can override real Baileys QR codes stored in DB.
+  // Real Baileys QR codes are stored in `public/whatsapp-sessions.json`
+  const stored = getStoredQr(id);
   const sessions = isDevMode() ? readDevSessions() : {};
-  const sess = sessions[String(id)] || {};
+  const sess = stored || sessions[String(id)] || {};
 
   try {
     const rows = await queryWhatsappsTable<any>(

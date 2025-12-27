@@ -3,6 +3,8 @@ import fs from "fs";
 import path from "path";
 import jwt from "jsonwebtoken";
 import env from "../../config/env";
+import { getIO } from "../../libs/socket";
+import { getStoredQr, startOrRefreshBaileysSession } from "../../libs/baileysManager";
 
 const router = Router();
 
@@ -135,8 +137,8 @@ function tryRunLegacyWhatsAppSessionController(
 // Endpoints para compatibilidade com UI em produção
 router.get("/:id", (req, res) => {
   const id = Number(req.params.id);
-  const sessions = readSessions();
-  const sess = sessions[String(id)] || {};
+  // Prefer real Baileys session snapshot (if any)
+  const sess = getStoredQr(id) || (readSessions()[String(id)] || {});
   return res.json({
     id,
     status: sess.status || (sess.qrcode ? "qrcode" : "DISCONNECTED"),
@@ -151,22 +153,20 @@ router.post("/:id", (req, res) => {
   const tenantId = extractTenantIdFromAuth(req.headers.authorization as string);
   if (!tenantId) return res.status(401).json({ error: true, message: "missing tenantId" });
 
-  // Try real legacy Baileys session start
-  if (tryRunLegacyWhatsAppSessionController("store", req, res)) return;
+  // Start real Baileys session (QR válido)
+  (async () => {
+    await startOrRefreshBaileysSession({
+      companyId: tenantId,
+      whatsappId: id,
+      emit: (companyId, payload) => {
+        try {
+          const io = getIO();
+          io.emit(`company-${companyId}-whatsappSession`, payload);
+        } catch {}
+      }
+    });
+  })().catch(() => {});
 
-  try {
-    const qrcode = `WA-SESSION:${id}:${Date.now()}`;
-    const sessions = readSessions();
-    sessions[String(id)] = {
-      id,
-      status: "qrcode",
-      qrcode,
-      updatedAt: new Date().toISOString(),
-      retries: 0
-    };
-    writeSessions(sessions);
-    emitSessionUpdate(tenantId, sessions[String(id)]);
-  } catch {}
   return res.json({ ok: true });
 });
 
@@ -175,23 +175,20 @@ router.put("/:id", (req, res) => {
   const tenantId = extractTenantIdFromAuth(req.headers.authorization as string);
   if (!tenantId) return res.status(401).json({ error: true, message: "missing tenantId" });
 
-  // Try real legacy Baileys QR refresh
-  if (tryRunLegacyWhatsAppSessionController("update", req, res)) return;
+  // Refresh QR (Baileys)
+  (async () => {
+    await startOrRefreshBaileysSession({
+      companyId: tenantId,
+      whatsappId: id,
+      emit: (companyId, payload) => {
+        try {
+          const io = getIO();
+          io.emit(`company-${companyId}-whatsappSession`, payload);
+        } catch {}
+      }
+    });
+  })().catch(() => {});
 
-  try {
-    const qrcode = `WA-SESSION:${id}:${Date.now()}`;
-    const sessions = readSessions();
-    const prevRetries = Number((sessions[String(id)] && sessions[String(id)].retries) || 0);
-    sessions[String(id)] = {
-      id,
-      status: "qrcode",
-      qrcode,
-      updatedAt: new Date().toISOString(),
-      retries: prevRetries + 1
-    };
-    writeSessions(sessions);
-    emitSessionUpdate(tenantId, sessions[String(id)]);
-  } catch {}
   return res.json({ ok: true });
 });
 
