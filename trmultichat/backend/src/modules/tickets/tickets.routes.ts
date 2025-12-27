@@ -221,6 +221,34 @@ router.put("/:id", authMiddleware, async (req, res) => {
   return res.json(ticket);
 });
 
+// DELETE /tickets/:id (delete ticket)
+router.delete("/:id", authMiddleware, async (req, res) => {
+  const companyId = tenantIdFromReq(req);
+  const id = Number(req.params.id);
+  if (!companyId) return res.status(401).json({ error: true, message: "missing tenantId" });
+  if (!id) return res.status(400).json({ error: true, message: "invalid id" });
+
+  // ensure ticket belongs to company
+  const exists = await pgQuery<{ id: number }>(
+    `SELECT id FROM "Tickets" WHERE id = $1 AND "companyId" = $2 LIMIT 1`,
+    [id, companyId]
+  );
+  if (!exists?.[0]?.id) return res.status(404).json({ error: true, message: "not found" });
+
+  // cascade-like cleanup (avoid FK issues)
+  await pgQuery(`DELETE FROM "TicketTags" WHERE "ticketId" = $1`, [id]);
+  await pgQuery(`DELETE FROM "TicketNotes" WHERE "ticketId" = $1`, [id]);
+  await pgQuery(`DELETE FROM "Messages" WHERE "ticketId" = $1`, [id]);
+  await pgQuery(`DELETE FROM "Tickets" WHERE id = $1 AND "companyId" = $2`, [id, companyId]);
+
+  try {
+    const io = getIO();
+    io.emit(`company-${companyId}-ticket`, { action: "delete", ticket: { id } });
+  } catch {}
+
+  return res.status(204).end();
+});
+
 export default router;
 
 
