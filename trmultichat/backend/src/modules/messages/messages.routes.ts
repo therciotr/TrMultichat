@@ -3,6 +3,7 @@ import { authMiddleware } from "../../middleware/authMiddleware";
 import { pgQuery } from "../../utils/pgClient";
 import { getIO } from "../../libs/socket";
 import { getSessionSock, startOrRefreshBaileysSession } from "../../libs/baileysManager";
+import path from "path";
 
 const router = Router();
 
@@ -10,9 +11,56 @@ function tenantIdFromReq(req: any): number {
   return Number(req?.tenantId || 0);
 }
 
+function requireLegacyController(moduleRelPath: string): any | null {
+  const candidates = [
+    // running from backend root
+    path.resolve(process.cwd(), moduleRelPath),
+    path.resolve(process.cwd(), "dist", moduleRelPath),
+    // running from compiled JS
+    path.resolve(__dirname, "..", "..", "..", moduleRelPath),
+    path.resolve(__dirname, "..", "..", "..", "..", "dist", moduleRelPath)
+  ];
+  for (const p of candidates) {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const m = require(p);
+      return m?.default || m;
+    } catch {}
+  }
+  return null;
+}
+
+function tryRunLegacyMessageController(action: "store" | "index", req: any, res: any): boolean {
+  try {
+    const ctrl = requireLegacyController("controllers/MessageController");
+    const fn = ctrl && ctrl[action];
+    if (typeof fn !== "function") return false;
+
+    // Legacy expects req.user with companyId/profile and req.params.ticketId
+    const companyId = tenantIdFromReq(req);
+    const userId = Number(req?.userId || 0);
+    if (!companyId || !userId) return false;
+    req.user = { id: userId, companyId, profile: "admin" };
+    req.params = { ...(req.params || {}), ticketId: req.params?.ticketId };
+
+    // Ensure legacy sequelize boot (MessageController uses legacy models/services)
+    try {
+      requireLegacyController("database/index");
+    } catch {}
+
+    Promise.resolve(fn(req, res)).catch(() => {});
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 router.get("/:ticketId", authMiddleware, async (req, res) => {
   const companyId = tenantIdFromReq(req);
   if (!companyId) return res.status(401).json({ error: true, message: "missing tenantId" });
+
+  // Prefer legacy implementation if available (matches UI expectations)
+  if (tryRunLegacyMessageController("index", req, res)) return;
 
   const pageNumber = Number(req.query.pageNumber || 1);
   const limit = 50;
@@ -37,6 +85,9 @@ router.get("/:ticketId", authMiddleware, async (req, res) => {
 router.post("/:ticketId", authMiddleware, async (req, res) => {
   const companyId = tenantIdFromReq(req);
   if (!companyId) return res.status(401).json({ error: true, message: "missing tenantId" });
+
+  // Prefer legacy implementation if available (it uses the real wbot session currently connected)
+  if (tryRunLegacyMessageController("store", req, res)) return;
 
   const ticketId = Number(req.params.ticketId);
   const bodyText = String((req.body as any)?.body || "").trim();
