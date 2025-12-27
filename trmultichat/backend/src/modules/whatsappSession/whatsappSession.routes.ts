@@ -168,13 +168,13 @@ router.get("/:id", (req, res) => {
   });
 });
 
-router.post("/:id", (req, res) => {
+router.post("/:id", async (req, res) => {
   const id = Number(req.params.id);
   const tenantId = extractTenantIdFromAuth(req.headers.authorization as string);
   if (!tenantId) return res.status(401).json({ error: true, message: "missing tenantId" });
 
   // Start real Baileys session (QR válido)
-  (async () => {
+  try {
     await startOrRefreshBaileysSession({
       companyId: tenantId,
       whatsappId: id,
@@ -185,18 +185,19 @@ router.post("/:id", (req, res) => {
         } catch {}
       }
     });
-  })().catch(() => {});
-
-  return res.json({ ok: true });
+    return res.json({ ok: true });
+  } catch (e: any) {
+    return res.status(500).json({ error: true, message: e?.message || "failed to start session" });
+  }
 });
 
-router.put("/:id", (req, res) => {
+router.put("/:id", async (req, res) => {
   const id = Number(req.params.id);
   const tenantId = extractTenantIdFromAuth(req.headers.authorization as string);
   if (!tenantId) return res.status(401).json({ error: true, message: "missing tenantId" });
 
   // Refresh QR (Baileys)
-  (async () => {
+  try {
     await startOrRefreshBaileysSession({
       companyId: tenantId,
       whatsappId: id,
@@ -207,9 +208,10 @@ router.put("/:id", (req, res) => {
         } catch {}
       }
     });
-  })().catch(() => {});
-
-  return res.json({ ok: true });
+    return res.json({ ok: true });
+  } catch (e: any) {
+    return res.status(500).json({ error: true, message: e?.message || "failed to refresh session" });
+  }
 });
 
 export default router;
