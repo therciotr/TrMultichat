@@ -68,6 +68,24 @@ function emitSessionUpdate(tenantId: number, session: any) {
   } catch {}
 }
 
+function requireLegacyController(moduleRelPath: string): any | null {
+  const candidates = [
+    path.resolve(process.cwd(), moduleRelPath),
+    path.resolve(process.cwd(), "dist", moduleRelPath),
+    // when running compiled JS, __dirname is usually `.../dist/modules/...`
+    path.resolve(__dirname, "..", "..", moduleRelPath),
+    path.resolve(__dirname, "..", "..", "..", "dist", moduleRelPath),
+  ];
+  for (const p of candidates) {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const m = require(p);
+      return m?.default || m;
+    } catch {}
+  }
+  return null;
+}
+
 function tryRunLegacyWhatsAppSessionController(
   action: "store" | "update" | "remove",
   req: any,
@@ -75,13 +93,7 @@ function tryRunLegacyWhatsAppSessionController(
 ): boolean {
   try {
     // Load legacy controller (compiled) and call it directly (bypasses legacy isAuth token format).
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const pathMod = require("path");
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const ctrlMod = require(
-      pathMod.resolve(process.cwd(), "dist/controllers/WhatsAppSessionController")
-    );
-    const ctrl = ctrlMod?.default || ctrlMod;
+    const ctrl = requireLegacyController("controllers/WhatsAppSessionController");
     const fn = ctrl && ctrl[action];
     if (typeof fn !== "function") return false;
 

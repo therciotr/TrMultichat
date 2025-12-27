@@ -86,13 +86,22 @@ function tryRunLegacyWhatsAppController(
 ): boolean {
   try {
     // Call legacy controller directly (bypasses legacy isAuth token format).
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const pathMod = require("path");
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const ctrlMod = require(
-      pathMod.resolve(process.cwd(), "dist/controllers/WhatsAppController")
-    );
-    const ctrl = ctrlMod?.default || ctrlMod;
+    const candidates = [
+      path.resolve(process.cwd(), "controllers/WhatsAppController"),
+      path.resolve(process.cwd(), "dist/controllers/WhatsAppController"),
+      path.resolve(__dirname, "..", "..", "controllers/WhatsAppController"),
+      path.resolve(__dirname, "..", "..", "..", "dist", "controllers/WhatsAppController")
+    ];
+    let ctrl: any = null;
+    for (const p of candidates) {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const m = require(p);
+        ctrl = m?.default || m;
+        if (ctrl) break;
+      } catch (_) {}
+    }
+    if (!ctrl) return false;
     const fn = ctrl && ctrl[action];
     if (typeof fn !== "function") return false;
 
