@@ -25,6 +25,8 @@ import BusinessIcon from "@material-ui/icons/Business";
 import SearchIcon from "@material-ui/icons/Search";
 import LaunchIcon from "@material-ui/icons/Launch";
 import EmojiEventsIcon from "@material-ui/icons/EmojiEvents";
+import BlockIcon from "@material-ui/icons/Block";
+import CheckCircleOutlineIcon from "@material-ui/icons/CheckCircleOutline";
 import { TrButton } from "../../../components/ui";
 import MainContainer from "../../../components/MainContainer";
 import Title from "../../../components/Title";
@@ -95,6 +97,8 @@ export default function LicenseManager() {
   const tokenRef = useRef(null);
   const [q, setQ] = useState("");
   const [statusFilter, setStatusFilter] = useState("all"); // all | valid | invalid
+  const [genLoading, setGenLoading] = useState(false);
+  const [accessLoading, setAccessLoading] = useState(false);
 
   const buildRow = (c, info) => {
     const payload = info || {};
@@ -245,6 +249,7 @@ export default function LicenseManager() {
 
   async function generate() {
     if (!companyId) return;
+    setGenLoading(true);
     try {
       const { data } = await api.post(`/companies/${companyId}/license/generate`, {
         subject: gen.subject || `company:${companyId}`,
@@ -257,6 +262,59 @@ export default function LicenseManager() {
       }
     } catch (e) {
       toastError(e);
+    } finally {
+      setGenLoading(false);
+    }
+  }
+
+  async function generateAndActivate() {
+    if (!companyId) return;
+    setGenLoading(true);
+    try {
+      const { data } = await api.post(`/companies/${companyId}/license/generate`, {
+        subject: gen.subject || `company:${companyId}`,
+        plan: gen.plan || "",
+        maxUsers: Number(gen.maxUsers || 0),
+        days: Number(gen.days || 365)
+      });
+      const t = data?.token ? String(data.token) : "";
+      if (!t) throw new Error("token not generated");
+      await api.put(`/companies/${companyId}/license`, { token: t });
+      setToken("");
+      await refreshLicense();
+      await loadLicenses();
+    } catch (e) {
+      toastError(e);
+    } finally {
+      setGenLoading(false);
+    }
+  }
+
+  async function renewAutoFromDueDate() {
+    if (!companyId) return;
+    setGenLoading(true);
+    try {
+      await api.post(`/companies/${companyId}/license/renew`);
+      await refreshLicense();
+      await loadLicenses();
+    } catch (e) {
+      toastError(e);
+    } finally {
+      setGenLoading(false);
+    }
+  }
+
+  async function toggleAccess(enabled) {
+    if (!companyId) return;
+    setAccessLoading(true);
+    try {
+      await api.patch(`/companies/${companyId}/license/access`, { enabled: Boolean(enabled) });
+      await refreshLicense();
+      await loadLicenses();
+    } catch (e) {
+      toastError(e);
+    } finally {
+      setAccessLoading(false);
     }
   }
 
@@ -343,12 +401,40 @@ export default function LicenseManager() {
                     <Typography variant="body2"><b>Plano:</b> {info.plan || "-"}</Typography>
                     <Typography variant="body2"><b>Máx. Usuários:</b> {info.maxUsers || 0}</Typography>
                     <Typography variant="body2"><b>Expira em:</b> {info.exp ? moment.unix(info.exp).format("DD/MM/YYYY") : "-"}</Typography>
+                    <Typography variant="body2"><b>Vencimento (dueDate):</b> {info.dueDate || "-"}</Typography>
+                    <Typography variant="body2">
+                      <b>Acesso:</b>{" "}
+                      {info.accessDisabled ? (
+                        <Chip size="small" className={classes.chipWarn} label="Bloqueado" />
+                      ) : (
+                        <Chip size="small" className={classes.chipOk} label="Liberado" />
+                      )}
+                    </Typography>
                   </div>
                 </>
               ) : (
                 <div>Sem dados.</div>
               )}
             </CardContent>
+            <CardActions style={{ justifyContent: "flex-end" }}>
+              <TrButton
+                variant="outlined"
+                disabled={!companyId || accessLoading}
+                onClick={() => toggleAccess(true)}
+              >
+                <CheckCircleOutlineIcon className={classes.btnIcon} />
+                Liberar acesso
+              </TrButton>
+              <TrButton
+                variant="outlined"
+                disabled={!companyId || accessLoading}
+                onClick={() => toggleAccess(false)}
+                style={{ marginLeft: 8 }}
+              >
+                <BlockIcon className={classes.btnIcon} />
+                Bloquear acesso
+              </TrButton>
+            </CardActions>
           </Card>
         </Grid>
         <Grid item xs={12} md={6}>
@@ -394,7 +480,7 @@ export default function LicenseManager() {
 
         <Grid item xs={12}>
           <Card className={classes.softCard} elevation={0}>
-            <CardHeader title="Gerador de Token" />
+            <CardHeader avatar={<VpnKeyIcon color="primary" />} title="Gerador de Token" subheader="Gere e ative tokens RS256 para empresas (ou renove automaticamente pelo vencimento)." />
             <CardContent>
               <TextField
                 label="Assunto (sub)"
@@ -418,8 +504,17 @@ export default function LicenseManager() {
               </Grid>
             </CardContent>
             <CardActions>
-              <TrButton onClick={generate} disabled={!companyId}>
-                Gerar token
+              <TrButton onClick={generate} disabled={!companyId || genLoading}>
+                <VpnKeyIcon className={classes.btnIcon} />
+                Gerar token (copiar)
+              </TrButton>
+              <TrButton onClick={generateAndActivate} disabled={!companyId || genLoading} style={{ marginLeft: 8 }}>
+                <CheckCircleOutlineIcon className={classes.btnIcon} />
+                Gerar e ativar
+              </TrButton>
+              <TrButton variant="outlined" onClick={renewAutoFromDueDate} disabled={!companyId || genLoading} style={{ marginLeft: 8 }}>
+                <AutorenewIcon className={classes.btnIcon} />
+                Renovar automático (dueDate)
               </TrButton>
             </CardActions>
           </Card>

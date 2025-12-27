@@ -13,6 +13,7 @@ import {
 } from "../../utils/license";
 import { pgQuery } from "../../utils/pgClient";
 import { deleteSettingKey, getSettingValue, setSettingValue } from "../../utils/settingsStore";
+import { renewCompanyLicenseFromDueDate, setCompanyAccessDisabled } from "../../utils/license";
 
 const router = Router();
 
@@ -544,7 +545,27 @@ router.get("/:id/license", async (req, res) => {
     }
     // Strict: exibe status baseado apenas no token da empresa (sem fallback global)
     const check = await validateLicenseForCompanyStrict(id);
-    if (!check.valid) return res.json({ has: check.has, valid: false, error: check.error || "LICENSE_INVALID" });
+
+    // Expor também status baseado em cobrança (dueDate) + bloqueio manual
+    let dueDate: string | null = null;
+    try {
+      const rows = await pgQuery<{ dueDate?: string | null }>('SELECT "dueDate" FROM "Companies" WHERE id = $1 LIMIT 1', [id]);
+      const row = Array.isArray(rows) && rows[0];
+      dueDate = row && (row as any).dueDate ? String((row as any).dueDate).slice(0, 10) : null;
+    } catch {}
+    const accessDisabledRaw = await getSettingValue(id, "accessDisabled");
+    const accessDisabled = ["1", "true", "enabled", "yes"].includes(String(accessDisabledRaw || "").trim().toLowerCase());
+
+    if (!check.valid) {
+      return res.json({
+        has: check.has,
+        valid: false,
+        error: check.error || "LICENSE_INVALID",
+        dueDate,
+        accessDisabled
+      });
+    }
+
     const payload = (check as any).payload || {};
     const data = (payload as any).data || {};
     const exp = (payload as any).exp ? Number((payload as any).exp) : undefined;
@@ -554,7 +575,9 @@ router.get("/:id/license", async (req, res) => {
       subject: (payload as any).sub || "",
       plan: data.plan || "",
       maxUsers: data.maxUsers || 0,
-      exp
+      exp,
+      dueDate,
+      accessDisabled
     });
   } catch (e: any) {
     return res.status(200).json({ has: false, valid: false, error: e?.message || "error" });
@@ -673,6 +696,11 @@ router.post("/", async (req, res) => {
       Number(company.id || 0),
       company.planId ?? planId
     );
+
+    // Auto: tenta gerar licença ao criar empresa (se houver chave privada); se falhar, acesso será controlado por dueDate.
+    try {
+      await renewCompanyLicenseFromDueDate(Number(company.id || 0), dueDate || null);
+    } catch {}
     return res.status(201).json({ ...company, tenantId });
   } catch (e: any) {
     return res
@@ -802,6 +830,36 @@ router.post("/:id/license/generate", async (req, res) => {
   }
 });
 
+// POST /companies/:id/license/renew - renova token usando dueDate/plano atual e salva em Settings (licenseToken)
+router.post("/:id/license/renew", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ error: true, message: "invalid company id" });
+    const rows = await pgQuery<{ dueDate?: string | null }>('SELECT "dueDate" FROM "Companies" WHERE id = $1 LIMIT 1', [id]);
+    const row = Array.isArray(rows) && rows[0];
+    const dueDate = row && (row as any).dueDate ? String((row as any).dueDate).slice(0, 10) : null;
+    const r = await renewCompanyLicenseFromDueDate(id, dueDate);
+    if (!r.ok) return res.status(501).json({ error: true, message: r.reason || "renew failed" });
+    return res.json({ ok: true, companyId: id, dueDate });
+  } catch (e: any) {
+    return res.status(400).json({ error: true, message: e?.message || "renew error" });
+  }
+});
+
+// PATCH /companies/:id/license/access - bloqueia/desbloqueia acesso ao sistema (tickets/login) para a empresa
+router.patch("/:id/license/access", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ error: true, message: "invalid company id" });
+    const enabled = Boolean((req.body as any)?.enabled);
+    const ok = await setCompanyAccessDisabled(id, !enabled);
+    if (!ok) return res.status(500).json({ error: true, message: "could not update access flag" });
+    return res.json({ ok: true, companyId: id, enabled });
+  } catch (e: any) {
+    return res.status(400).json({ error: true, message: e?.message || "access update error" });
+  }
+});
+
 // PUT /companies/:id/mp-access-token - salva Access Token do Mercado Pago
 router.put("/:id/mp-access-token", async (req, res) => {
   try {
@@ -829,6 +887,14 @@ router.get("/licenses", async (_req, res) => {
       const payload = (v as any).payload || {};
       const data = (payload as any).data || {};
       const exp = (payload as any).exp ? Number((payload as any).exp) : undefined;
+      let dueDate: string | null = null;
+      try {
+        const dr = await pgQuery<{ dueDate?: string | null }>('SELECT "dueDate" FROM "Companies" WHERE id = $1 LIMIT 1', [id]);
+        const rr = Array.isArray(dr) && dr[0];
+        dueDate = rr && (rr as any).dueDate ? String((rr as any).dueDate).slice(0, 10) : null;
+      } catch {}
+      const accessDisabledRaw = await getSettingValue(id, "accessDisabled");
+      const accessDisabled = ["1", "true", "enabled", "yes"].includes(String(accessDisabledRaw || "").trim().toLowerCase());
       list.push({
         companyId: id,
         companyName: c.name || `Empresa ${id}`,
@@ -837,7 +903,9 @@ router.get("/licenses", async (_req, res) => {
         subject: (payload as any).sub || "",
         plan: data.plan || "",
         maxUsers: data.maxUsers || 0,
-        exp
+        exp,
+        dueDate,
+        accessDisabled
       });
     }
     return res.json(list);

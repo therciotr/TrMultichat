@@ -235,12 +235,20 @@ router.patch("/admin/:id/manual-settlement", async (req, res) => {
     // Se marcou como pago, também renova token de licença para manter sincronia com pagamento.
     if (markPaid && companyId) {
       try {
-        const compRows = await pgQuery<{ dueDate?: string }>(
-          'SELECT "dueDate" FROM "Companies" WHERE id = $1 LIMIT 1',
-          [companyId]
-        );
+        // 1) Estender dueDate em +30d (mesma regra do webhook)
+        const compRows = await pgQuery<{ dueDate?: string | null }>('SELECT "dueDate" FROM "Companies" WHERE id = $1 LIMIT 1', [companyId]);
         const comp = Array.isArray(compRows) && compRows[0];
-        await renewCompanyLicenseFromDueDate(companyId, comp?.dueDate || null);
+        const current = comp ? (comp as any).dueDate : null;
+        const base = current ? new Date(String(current)) : new Date();
+        if (!Number.isNaN(base.getTime())) {
+          base.setDate(base.getDate() + 30);
+          const nextDue = base.toISOString().split("T")[0];
+          await pgQuery('UPDATE "Companies" SET "dueDate" = $1, "updatedAt" = now() WHERE id = $2', [nextDue, companyId]);
+          // 2) Renovar token (se houver chave privada) - e/ou será válido por dueDate
+          await renewCompanyLicenseFromDueDate(companyId, nextDue);
+        } else {
+          await renewCompanyLicenseFromDueDate(companyId, null);
+        }
       } catch {
         // ignore
       }

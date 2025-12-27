@@ -67,6 +67,33 @@ async function loadCompanyLicenseToken(
   return undefined;
 }
 
+async function isCompanyAccessDisabled(companyId: number): Promise<boolean> {
+  try {
+    const v = await getSettingValue(companyId, "accessDisabled");
+    const s = String(v || "").trim().toLowerCase();
+    return s === "1" || s === "true" || s === "enabled" || s === "yes";
+  } catch {
+    return false;
+  }
+}
+
+async function isCompanyPaidByDueDate(companyId: number): Promise<{ paid: boolean; dueDate?: string | null }> {
+  try {
+    const rows = await pgQuery<{ dueDate?: string | null }>(
+      'SELECT "dueDate" FROM "Companies" WHERE id = $1 LIMIT 1',
+      [companyId]
+    );
+    const row = Array.isArray(rows) && rows[0];
+    const due = row ? (row as any).dueDate : null;
+    if (!due) return { paid: false, dueDate: null };
+    const d = new Date(String(due).slice(0, 10) + "T23:59:59Z");
+    if (Number.isNaN(d.getTime())) return { paid: false, dueDate: String(due) };
+    return { paid: d.getTime() >= Date.now(), dueDate: String(due).slice(0, 10) };
+  } catch {
+    return { paid: false, dueDate: null };
+  }
+}
+
 export async function validateLicenseForCompany(
   companyId: number
 ): Promise<{ ok: boolean; payload?: any; error?: string }> {
@@ -82,6 +109,27 @@ export async function validateLicenseForCompany(
       }
     };
   }
+
+  // Bloqueio manual de acesso (admin)
+  if (await isCompanyAccessDisabled(companyId)) {
+    return { ok: false, error: "ACCESS_DISABLED" };
+  }
+
+  // Se a empresa está paga (dueDate futuro), libera acesso mesmo sem token.
+  // Isso garante sincronia com pagamento quando chave privada/token não estiverem disponíveis.
+  const paidInfo = await isCompanyPaidByDueDate(companyId);
+  if (paidInfo.paid) {
+    return {
+      ok: true,
+      payload: {
+        sub: `company:${companyId}`,
+        aud: process.env.LICENSE_AUD || "trmultichat",
+        iss: process.env.LICENSE_ISS || "TR MULTICHAT",
+        data: { companyId, plan: "PAID", maxUsers: 0, dueDate: paidInfo.dueDate || undefined }
+      }
+    };
+  }
+
   const isProd = (process.env.NODE_ENV || "development") === "production";
   const required =
     String(
@@ -124,6 +172,27 @@ export async function validateLicenseForCompanyStrict(
         iss: process.env.LICENSE_ISS || "TR MULTICHAT",
         exp: Math.floor(Date.now() / 1000) + 10 * 365 * 24 * 60 * 60,
         data: { companyId, plan: "MASTER", maxUsers: 999999 }
+      }
+    };
+  }
+
+  // Bloqueio manual
+  if (await isCompanyAccessDisabled(companyId)) {
+    return { has: true, valid: false, error: "ACCESS_DISABLED" };
+  }
+
+  // Válido por pagamento (dueDate)
+  const paidInfo = await isCompanyPaidByDueDate(companyId);
+  if (paidInfo.paid) {
+    return {
+      has: true,
+      valid: true,
+      payload: {
+        sub: `company:${companyId}`,
+        aud: process.env.LICENSE_AUD || "trmultichat",
+        iss: process.env.LICENSE_ISS || "TR MULTICHAT",
+        exp: Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60,
+        data: { companyId, plan: "PAID", maxUsers: 0, dueDate: paidInfo.dueDate || undefined }
       }
     };
   }
@@ -224,4 +293,8 @@ export async function renewCompanyLicenseFromDueDate(companyId: number, dueDate?
 
   const saved = await setSettingValue(companyId, "licenseToken", (gen as any).token);
   return saved ? { ok: true } : { ok: false, reason: "save-failed" };
+}
+
+export async function setCompanyAccessDisabled(companyId: number, disabled: boolean): Promise<boolean> {
+  return await setSettingValue(companyId, "accessDisabled", disabled ? "true" : "false");
 }
