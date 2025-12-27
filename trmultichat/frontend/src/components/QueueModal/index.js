@@ -213,13 +213,16 @@ const QueueModal = ({ open, onClose, queueId }) => {
           await api.post(`/queue/${queueId}/media-upload`, formData);
         }
       } else {
-        await api.post("/queue", {
-          ...values, schedules, promptId: selectedPrompt ? selectedPrompt : null
+        const { data } = await api.post("/queue", {
+          ...values,
+          schedules,
+          promptId: selectedPrompt ? selectedPrompt : null,
         });
-       if (attachment != null) {
+        const createdId = data?.id;
+        if (attachment != null && createdId) {
           const formData = new FormData();
           formData.append("file", attachment);
-          await api.post(`/queue/${queueId}/media-upload`, formData);
+          await api.post(`/queue/${createdId}/media-upload`, formData);
         }
       }
       toast.success("Queue saved successfully");
