@@ -160,18 +160,18 @@ export async function startOrRefreshBaileysSession(opts: {
 
   // Runtime-safe Baileys exports (GitHub build can vary CJS/ESM exports)
   // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const baileysAny = require("@whiskeysockets/baileys");
+  const baileysRuntime = require("@whiskeysockets/baileys");
   const makeWASocketFn =
-    baileysAny?.makeWASocket || baileysAny?.default?.makeWASocket || baileysAny?.default || makeWASocket;
+    baileysRuntime?.makeWASocket || baileysRuntime?.default?.makeWASocket || baileysRuntime?.default || makeWASocket;
   const useMultiFileAuthStateFn =
-    baileysAny?.useMultiFileAuthState || baileysAny?.default?.useMultiFileAuthState || useMultiFileAuthState;
+    baileysRuntime?.useMultiFileAuthState || baileysRuntime?.default?.useMultiFileAuthState || useMultiFileAuthState;
   const makeCacheableSignalKeyStoreFn =
-    baileysAny?.makeCacheableSignalKeyStore ||
-    baileysAny?.default?.makeCacheableSignalKeyStore ||
+    baileysRuntime?.makeCacheableSignalKeyStore ||
+    baileysRuntime?.default?.makeCacheableSignalKeyStore ||
     makeCacheableSignalKeyStore;
   const fetchLatestBaileysVersionFn =
-    baileysAny?.fetchLatestBaileysVersion ||
-    baileysAny?.default?.fetchLatestBaileysVersion ||
+    baileysRuntime?.fetchLatestBaileysVersion ||
+    baileysRuntime?.default?.fetchLatestBaileysVersion ||
     fetchLatestBaileysVersion;
 
   // restart existing session if any
