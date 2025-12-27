@@ -397,9 +397,10 @@ app.use("/contact-lists", contactListsRoutes);
 app.use("/quick-messages", quickMessagesRoutes);
 app.use("/chats", chatsRoutes);
 app.use("/messages", messagesRoutes);
-// WhatsApp routes: in production we rely on the compiled legacy app (Baileys integration).
-// Only mount the simplified TS routes when the legacy app isn't available.
-if (!compiledApp) {
+// WhatsApp routes: prefer legacy routers (Baileys) when available; fallback to TS routes.
+if (legacyWhatsAppRoutes) {
+  app.use(legacyWhatsAppRoutes);
+} else {
   app.use("/whatsapp", whatsappRoutes);
 }
 app.use("/settings", settingsRoutes);
@@ -407,8 +408,10 @@ app.use("/companies", companiesRoutes);
 app.use("/plans", plansRoutes);
 app.use("/helps", helpsRoutes);
 app.use("/invoices", invoicesRoutes);
-// WhatsApp session routes: in production we rely on the compiled legacy app.
-if (!compiledApp) {
+// WhatsApp session routes: prefer legacy routers (Baileys) when available; fallback to TS routes.
+if (legacyWhatsAppSessionRoutes) {
+  app.use(legacyWhatsAppSessionRoutes);
+} else {
   app.use("/whatsappsession", whatsappSessionRoutes);
 }
 app.use("/payments/mercadopago", mercadoPagoRoutes);
