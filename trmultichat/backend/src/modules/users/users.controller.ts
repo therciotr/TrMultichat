@@ -16,12 +16,41 @@ export async function list(req: Request, res: Response) {
   const offset = (pageNumber - 1) * limit;
   const tenantId = extractTenantIdFromAuth(req.headers.authorization as string);
   const isSuper = await isSuperFromAuth(req);
-  // Non-super users: only see users from their own company and never super users
-  const where =
-    !isSuper && tenantId
-      ? { companyId: tenantId, super: false }
-      : undefined;
-  const users = await findAllSafe("User", { where, offset, limit, order: [["updatedAt", "DESC"]] });
+
+  const isDev = String(process.env.DEV_MODE || env.DEV_MODE || "false").toLowerCase() === "true";
+  if (!tenantId && !isDev) {
+    return res.status(401).json({ error: true, message: "missing tenantId" });
+  }
+
+  const searchParam = String(req.query.searchParam || "").trim().toLowerCase();
+  const where: string[] = [];
+  const params: any[] = [];
+
+  // Escopo: master/super vê tudo; demais só o próprio tenant e nunca super users
+  if (!isSuper && tenantId) {
+    where.push(`"companyId" = $${params.length + 1}`);
+    params.push(tenantId);
+    where.push(`COALESCE("super", false) = false`);
+  }
+
+  if (searchParam) {
+    where.push(`(lower(name) LIKE $${params.length + 1} OR lower(email) LIKE $${params.length + 1})`);
+    params.push(`%${searchParam}%`);
+  }
+
+  params.push(limit);
+  params.push(offset);
+
+  const sql = `
+    SELECT id, name, email, "companyId", profile, "super"
+    FROM "Users"
+    ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
+    ORDER BY "updatedAt" DESC, id DESC
+    LIMIT $${params.length - 1} OFFSET $${params.length}
+  `;
+
+  const rows = await pgQuery<any>(sql, params);
+  const users = Array.isArray(rows) ? rows : [];
   return res.json({ users, hasMore: users.length === limit });
 }
 
@@ -81,17 +110,29 @@ export async function listByCompany(req: Request, res: Response) {
   if (!isSuper || !companyId) {
     companyId = tenantId;
   }
-  // For non-super users we also hide any super users from the list
-  const where: any = companyId ? { companyId } : {};
-  if (!isSuper) {
-    where.super = false;
+  const isDev = String(process.env.DEV_MODE || env.DEV_MODE || "false").toLowerCase() === "true";
+  if (!tenantId && !isDev) {
+    return res.status(401).json({ error: true, message: "missing tenantId" });
   }
-  const users = await findAllSafe("User", {
-    where: Object.keys(where).length ? where : undefined,
-    attributes: ["id", "name", "email", "companyId"],
-    order: [["id", "ASC"]]
-  });
-  return res.json(users);
+
+  const where: string[] = [];
+  const params: any[] = [];
+  if (companyId) {
+    where.push(`"companyId" = $${params.length + 1}`);
+    params.push(companyId);
+  }
+  if (!isSuper) {
+    where.push(`COALESCE("super", false) = false`);
+  }
+
+  const sql = `
+    SELECT id, name, email, "companyId", profile, "super"
+    FROM "Users"
+    ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
+    ORDER BY id ASC
+  `;
+  const rows = await pgQuery<any>(sql, params);
+  return res.json(Array.isArray(rows) ? rows : []);
 }
 
 function extractTenantIdFromAuth(authorization?: string): number {
