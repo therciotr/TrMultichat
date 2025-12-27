@@ -172,10 +172,17 @@ export async function startOrRefreshBaileysSession(opts: {
   ensureDir(authPath);
 
   const { state, saveCreds } = await useMultiFileAuthState(authPath);
-  const { version } = await fetchLatestBaileysVersion();
+  let version: any = undefined;
+  try {
+    const v = await fetchLatestBaileysVersion();
+    version = v?.version;
+  } catch {
+    // VPS pode não ter saída para internet; Baileys consegue operar sem buscar versão "latest".
+    version = undefined;
+  }
 
   const sock = makeWASocket({
-    version,
+    ...(version ? { version } : {}),
     logger,
     printQRInTerminal: false,
     auth: {
