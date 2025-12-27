@@ -189,7 +189,16 @@ const FilesModal = ({ open, onClose, fileListId, reload }) => {
             return null;
         }
 
-        const fileData = { ...values, userId: user.id };
+        // IMPORTANT: do not send raw File objects in JSON payload
+        const cleanOptions = Array.isArray(values?.options)
+          ? values.options.map((o) => ({
+              id: o?.id,
+              name: o?.name,
+              path: o?.path,
+              mediaType: o?.mediaType,
+            }))
+          : [];
+        const fileData = { ...values, options: cleanOptions, userId: user.id };
         
         try {
             if (fileListId) {
