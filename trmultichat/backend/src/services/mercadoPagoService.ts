@@ -1,5 +1,5 @@
 import request from "request";
-import { getLegacyModel } from "../utils/legacyModel";
+import { getSettingValue } from "../utils/settingsStore";
 
 export type MpPixLikeResponse = {
   // valor total em string já normalizada (ex.: "250.00")
@@ -15,20 +15,8 @@ export type MpPixLikeResponse = {
 export async function getCompanyAccessToken(
   companyId: number
 ): Promise<string | undefined> {
-  try {
-    const Setting = getLegacyModel("Setting");
-    if (Setting && typeof Setting.findOne === "function") {
-      const row = await Setting.findOne({
-        where: { companyId, key: "mpAccessToken" }
-      });
-      if (row) {
-        const plain = row?.toJSON ? row.toJSON() : row;
-        if (plain?.value) return String(plain.value);
-      }
-    }
-  } catch {
-    // ignore and fallback to env
-  }
+  const token = await getSettingValue(companyId, "mpAccessToken");
+  if (token) return token;
   return (
     process.env.MERCADOPAGO_ACCESS_TOKEN ||
     process.env.MP_ACCESS_TOKEN ||

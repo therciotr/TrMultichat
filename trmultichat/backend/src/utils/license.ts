@@ -1,7 +1,8 @@
 import fs from "fs";
 import path from "path";
 import jwt from "jsonwebtoken";
-import { getLegacyModel } from "./legacyModel";
+import { pgQuery } from "./pgClient";
+import { getSettingValue, setSettingValue } from "./settingsStore";
 
 function loadPublicKey(): string | undefined {
   const inlinePem = process.env.LICENSE_PUBLIC_KEY;
@@ -42,19 +43,9 @@ function loadPrivateKey(): string | undefined {
 async function loadCompanyLicenseToken(
   companyId: number
 ): Promise<string | undefined> {
-  // Try Setting model key=licenseToken
-  try {
-    const Setting = getLegacyModel("Setting");
-    if (Setting && typeof Setting.findOne === "function") {
-      const row = await Setting.findOne({
-        where: { companyId, key: "licenseToken" }
-      });
-      if (row) {
-        const plain = row?.toJSON ? row.toJSON() : row;
-        if (plain?.value) return String(plain.value);
-      }
-    }
-  } catch {}
+  // Primeiro tenta Settings por companyId (robusto em produção)
+  const byCompany = await getSettingValue(companyId, "licenseToken");
+  if (byCompany) return byCompany;
   // Fallback to global
   if (process.env.LICENSE_TOKEN) return process.env.LICENSE_TOKEN.trim();
   const licenseFile = process.env.LICENSE_FILE || "/run/secrets/license.json";
@@ -79,6 +70,18 @@ async function loadCompanyLicenseToken(
 export async function validateLicenseForCompany(
   companyId: number
 ): Promise<{ ok: boolean; payload?: any; error?: string }> {
+  const masterCompanyId = Number(process.env.MASTER_COMPANY_ID || 1);
+  if (companyId === masterCompanyId) {
+    return {
+      ok: true,
+      payload: {
+        sub: `company:${companyId}`,
+        aud: process.env.LICENSE_AUD || "trmultichat",
+        iss: process.env.LICENSE_ISS || "TR MULTICHAT",
+        data: { companyId, plan: "MASTER", maxUsers: 999999 }
+      }
+    };
+  }
   const isProd = (process.env.NODE_ENV || "development") === "production";
   const required =
     String(
@@ -104,24 +107,26 @@ export async function validateLicenseForCompany(
 export async function loadCompanyLicenseTokenOnlySetting(
   companyId: number
 ): Promise<string | undefined> {
-  try {
-    const Setting = getLegacyModel("Setting");
-    if (Setting && typeof Setting.findOne === "function") {
-      const row = await Setting.findOne({
-        where: { companyId, key: "licenseToken" }
-      });
-      if (row) {
-        const plain = row?.toJSON ? row.toJSON() : row;
-        if (plain?.value) return String(plain.value);
-      }
-    }
-  } catch {}
-  return undefined;
+  return await getSettingValue(companyId, "licenseToken");
 }
 
 export async function validateLicenseForCompanyStrict(
   companyId: number
 ): Promise<{ has: boolean; valid: boolean; payload?: any; error?: string }> {
+  const masterCompanyId = Number(process.env.MASTER_COMPANY_ID || 1);
+  if (companyId === masterCompanyId) {
+    return {
+      has: true,
+      valid: true,
+      payload: {
+        sub: `company:${companyId}`,
+        aud: process.env.LICENSE_AUD || "trmultichat",
+        iss: process.env.LICENSE_ISS || "TR MULTICHAT",
+        exp: Math.floor(Date.now() / 1000) + 10 * 365 * 24 * 60 * 60,
+        data: { companyId, plan: "MASTER", maxUsers: 999999 }
+      }
+    };
+  }
   const pub = loadPublicKey();
   const token = await loadCompanyLicenseTokenOnlySetting(companyId);
   if (!token) return { has: false, valid: false, error: "LICENSE_MISSING" };
@@ -169,4 +174,54 @@ export function generateLicenseToken(input: {
     expiresIn: input.expiresInSeconds
   });
   return { ok: true, token };
+}
+
+export async function renewCompanyLicenseFromDueDate(companyId: number, dueDate?: string | null): Promise<{ ok: boolean; reason?: string }> {
+  const masterCompanyId = Number(process.env.MASTER_COMPANY_ID || 1);
+  if (companyId === masterCompanyId) return { ok: true, reason: "master-exempt" };
+
+  const priv = loadPrivateKey();
+  if (!priv) return { ok: false, reason: "PRIVATE_KEY_NOT_AVAILABLE" };
+
+  // calcular expiração baseada no dueDate (YYYY-MM-DD). fallback: 30 dias.
+  let expiresInSeconds = 30 * 24 * 60 * 60;
+  try {
+    if (dueDate) {
+      const d = new Date(String(dueDate).slice(0, 10) + "T23:59:59Z");
+      const now = Date.now();
+      if (!Number.isNaN(d.getTime())) {
+        const diff = Math.floor((d.getTime() - now) / 1000);
+        expiresInSeconds = Math.max(60, Math.min(diff, 365 * 24 * 60 * 60));
+      }
+    }
+  } catch {}
+
+  // plano e maxUsers a partir do plano atual
+  let planName = "";
+  let maxUsers = 0;
+  try {
+    const compRows = await pgQuery<{ planId?: number }>('SELECT "planId" FROM "Companies" WHERE id = $1 LIMIT 1', [companyId]);
+    const comp = Array.isArray(compRows) && compRows[0];
+    const planId = comp ? Number((comp as any).planId || 0) : 0;
+    if (planId) {
+      const planRows = await pgQuery<{ name?: string; users?: number }>('SELECT name, users FROM "Plans" WHERE id = $1 LIMIT 1', [planId]);
+      const plan = Array.isArray(planRows) && planRows[0];
+      if (plan) {
+        planName = String((plan as any).name || "");
+        maxUsers = Number((plan as any).users || 0);
+      }
+    }
+  } catch {}
+
+  const gen = generateLicenseToken({
+    subject: `company:${companyId}`,
+    companyId,
+    plan: planName,
+    maxUsers,
+    expiresInSeconds
+  });
+  if (!gen.ok) return { ok: false, reason: (gen as any).error || "generate-failed" };
+
+  const saved = await setSettingValue(companyId, "licenseToken", (gen as any).token);
+  return saved ? { ok: true } : { ok: false, reason: "save-failed" };
 }

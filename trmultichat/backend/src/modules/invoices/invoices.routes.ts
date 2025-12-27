@@ -2,6 +2,7 @@ import { Router } from "express";
 import { authMiddleware } from "../../middleware/authMiddleware";
 import { findAllSafe } from "../../utils/legacyModel";
 import { pgQuery } from "../../utils/pgClient";
+import { renewCompanyLicenseFromDueDate } from "../../utils/license";
 
 const router = Router();
 
@@ -231,6 +232,19 @@ router.patch("/admin/:id/manual-settlement", async (req, res) => {
       params
     );
     const row = Array.isArray(rows) && rows[0];
+    // Se marcou como pago, também renova token de licença para manter sincronia com pagamento.
+    if (markPaid && companyId) {
+      try {
+        const compRows = await pgQuery<{ dueDate?: string }>(
+          'SELECT "dueDate" FROM "Companies" WHERE id = $1 LIMIT 1',
+          [companyId]
+        );
+        const comp = Array.isArray(compRows) && compRows[0];
+        await renewCompanyLicenseFromDueDate(companyId, comp?.dueDate || null);
+      } catch {
+        // ignore
+      }
+    }
     return res.json(row || { ok: true, status: nextStatus, value: newValue });
   } catch (e: any) {
     return res.status(400).json({ error: true, message: e?.message || "manual settlement error" });

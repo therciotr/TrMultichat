@@ -12,6 +12,7 @@ import {
   validateLicenseForCompanyStrict
 } from "../../utils/license";
 import { pgQuery } from "../../utils/pgClient";
+import { deleteSettingKey, getSettingValue, setSettingValue } from "../../utils/settingsStore";
 
 const router = Router();
 
@@ -538,25 +539,7 @@ router.get("/:id/license", async (req, res) => {
     const del = String((req.query as any)?.delete || "").trim();
     const act = String((req.query as any)?.action || "").trim().toLowerCase();
     if (del === "1" || act === "delete") {
-      const Setting = getLegacyModel("Setting");
-      if (!Setting) return res.status(501).json({ error: true, message: "settings not available" });
-      let removed = false;
-      if (typeof Setting.destroy === "function") {
-        try {
-          const d = await Setting.destroy({ where: { companyId: id, key: "licenseToken" } });
-          removed = d > 0;
-        } catch {}
-      }
-      if (!removed && typeof Setting.findOne === "function") {
-        const row = await Setting.findOne({ where: { companyId: id, key: "licenseToken" } });
-        if (row && typeof row.update === "function") {
-          await row.update({ value: "" });
-          removed = true;
-        }
-      }
-      if (!removed && typeof Setting.create === "function") {
-        await Setting.create({ companyId: id, key: "licenseToken", value: "" });
-      }
+      await deleteSettingKey(id, "licenseToken");
       return res.json({ ok: true });
     }
     // Strict: exibe status baseado apenas no token da empresa (sem fallback global)
@@ -712,39 +695,14 @@ router.put("/:id/license", async (req, res) => {
     } else if (req.query && (req.query as any).token !== undefined) {
       token = (req.query as any).token;
     }
-    const Setting = getLegacyModel("Setting");
-    if (!Setting || (typeof Setting.findOne !== "function" && typeof Setting.destroy !== "function")) {
-      return res.status(501).json({ error: true, message: "settings not available" });
-    }
     // Se token vazio, interpretar como remoção (fallback à falta de DELETE em alguns ambientes)
     if (typeof token === "string" && token.trim() === "") {
-      try {
-        let removed = false;
-        if (typeof Setting.destroy === "function") {
-          const del = await Setting.destroy({ where: { companyId: id, key: "licenseToken" } });
-          removed = del > 0;
-        }
-        if (!removed && typeof Setting.findOne === "function") {
-          const row = await Setting.findOne({ where: { companyId: id, key: "licenseToken" } });
-          if (row && typeof row.update === "function") {
-            await row.update({ value: "" });
-            removed = true;
-          }
-        }
-        if (!removed && typeof Setting.create === "function") {
-          // garante ausência de token criando registro vazio
-          await Setting.create({ companyId: id, key: "licenseToken", value: "" });
-        }
-      } catch {}
+      await deleteSettingKey(id, "licenseToken");
       return res.json({ ok: true, deleted: true });
     }
     if (!token || typeof token !== "string") return res.status(400).json({ error: true, message: "token is required" });
-    let row = await Setting.findOne({ where: { companyId: id, key: "licenseToken" } });
-    if (row) {
-      await row.update({ value: token });
-    } else if (typeof Setting.create === "function") {
-      row = await Setting.create({ companyId: id, key: "licenseToken", value: token });
-    }
+    const ok = await setSettingValue(id, "licenseToken", token);
+    if (!ok) return res.status(500).json({ error: true, message: "could not save licenseToken" });
     return res.json({ ok: true });
   } catch (e: any) {
     return res.status(400).json({ error: true, message: e?.message || "license save error" });
@@ -755,29 +713,7 @@ router.put("/:id/license", async (req, res) => {
 router.delete("/:id/license", async (req, res) => {
   try {
     const id = Number(req.params.id);
-    const Setting = getLegacyModel("Setting");
-    if (!Setting) {
-      return res.status(501).json({ error: true, message: "settings not available" });
-    }
-    let ok = false;
-    if (typeof Setting.destroy === "function") {
-      try {
-        await Setting.destroy({ where: { companyId: id, key: "licenseToken" } });
-        ok = true;
-      } catch (_) {
-        ok = false;
-      }
-    }
-    if (!ok && typeof Setting.findOne === "function") {
-      const row = await Setting.findOne({ where: { companyId: id, key: "licenseToken" } });
-      if (row && typeof row.update === "function") {
-        await row.update({ value: "" });
-      }
-      // se ainda não existir, cria vazio para garantir remoção efetiva
-      if (!row && typeof Setting.create === "function") {
-        await Setting.create({ companyId: id, key: "licenseToken", value: "" });
-      }
-    }
+    await deleteSettingKey(id, "licenseToken");
     return res.status(204).end();
   } catch (e: any) {
     return res.status(400).json({ error: true, message: e?.message || "license delete error" });
@@ -788,27 +724,7 @@ router.delete("/:id/license", async (req, res) => {
 router.post("/:id/license/delete", async (req, res) => {
   try {
     const id = Number(req.params.id);
-    const Setting = getLegacyModel("Setting");
-    if (!Setting) {
-      return res.status(501).json({ error: true, message: "settings not available" });
-    }
-    let removed = false;
-    if (typeof Setting.destroy === "function") {
-      try {
-        const del = await Setting.destroy({ where: { companyId: id, key: "licenseToken" } });
-        removed = del > 0;
-      } catch (_) {}
-    }
-    if (!removed && typeof Setting.findOne === "function") {
-      const row = await Setting.findOne({ where: { companyId: id, key: "licenseToken" } });
-      if (row && typeof row.update === "function") {
-        await row.update({ value: "" });
-        removed = true;
-      }
-    }
-    if (!removed && typeof Setting.create === "function") {
-      await Setting.create({ companyId: id, key: "licenseToken", value: "" });
-    }
+    await deleteSettingKey(id, "licenseToken");
     return res.json({ ok: true });
   } catch (e: any) {
     return res.status(400).json({ error: true, message: e?.message || "license delete error" });
@@ -819,27 +735,7 @@ router.post("/:id/license/delete", async (req, res) => {
 router.get("/:id/license/delete", async (req, res) => {
   try {
     const id = Number(req.params.id);
-    const Setting = getLegacyModel("Setting");
-    if (!Setting) {
-      return res.status(501).json({ error: true, message: "settings not available" });
-    }
-    let removed = false;
-    if (typeof Setting.destroy === "function") {
-      try {
-        const del = await Setting.destroy({ where: { companyId: id, key: "licenseToken" } });
-        removed = del > 0;
-      } catch (_) {}
-    }
-    if (!removed && typeof Setting.findOne === "function") {
-      const row = await Setting.findOne({ where: { companyId: id, key: "licenseToken" } });
-      if (row && typeof row.update === "function") {
-        await row.update({ value: "" });
-        removed = true;
-      }
-    }
-    if (!removed && typeof Setting.create === "function") {
-      await Setting.create({ companyId: id, key: "licenseToken", value: "" });
-    }
+    await deleteSettingKey(id, "licenseToken");
     return res.json({ ok: true });
   } catch (e: any) {
     return res.status(400).json({ error: true, message: e?.message || "license delete error" });
@@ -868,27 +764,7 @@ router.get("/license/remove", async (req, res) => {
   try {
     const id = Number((req.query as any)?.companyId || 0);
     if (!id) return res.status(400).json({ error: true, message: "companyId is required" });
-    const Setting = getLegacyModel("Setting");
-    if (!Setting) {
-      return res.status(501).json({ error: true, message: "settings not available" });
-    }
-    let removed = false;
-    if (typeof Setting.destroy === "function") {
-      try {
-        const del = await Setting.destroy({ where: { companyId: id, key: "licenseToken" } });
-        removed = del > 0;
-      } catch (_) {}
-    }
-    if (!removed && typeof Setting.findOne === "function") {
-      const row = await Setting.findOne({ where: { companyId: id, key: "licenseToken" } });
-      if (row && typeof row.update === "function") {
-        await row.update({ value: "" });
-        removed = true;
-      }
-    }
-    if (!removed && typeof Setting.create === "function") {
-      await Setting.create({ companyId: id, key: "licenseToken", value: "" });
-    }
+    await deleteSettingKey(id, "licenseToken");
     return res.json({ ok: true, companyId: id });
   } catch (e: any) {
     return res.status(400).json({ error: true, message: e?.message || "license delete error" });
@@ -899,23 +775,6 @@ router.get("/license/remove", async (req, res) => {
 router.post("/:id/license/delete", async (req, res) => {
   try {
     const id = Number(req.params.id);
-    const Setting = getLegacyModel("Setting");
-    if (!Setting) {
-      return res.status(501).json({ error: true, message: "settings not available" });
-    }
-    if (typeof Setting.destroy === "function") {
-      try {
-        await Setting.destroy({ where: { companyId: id, key: "licenseToken" } });
-        return res.json({ ok: true });
-      } catch {}
-    }
-    if (typeof Setting.findOne === "function") {
-      const row = await Setting.findOne({ where: { companyId: id, key: "licenseToken" } });
-      if (row && typeof row.update === "function") {
-        await row.update({ value: "" });
-        return res.json({ ok: true });
-      }
-    }
     return res.json({ ok: true });
   } catch (e: any) {
     return res.status(400).json({ error: true, message: e?.message || "license delete error" });
@@ -949,16 +808,8 @@ router.put("/:id/mp-access-token", async (req, res) => {
     const id = Number(req.params.id);
     const { token } = req.body || {};
     if (!token || typeof token !== "string") return res.status(400).json({ error: true, message: "token is required" });
-    const Setting = getLegacyModel("Setting");
-    if (!Setting || typeof Setting.findOne !== "function") {
-      return res.status(501).json({ error: true, message: "settings not available" });
-    }
-    let row = await Setting.findOne({ where: { companyId: id, key: "mpAccessToken" } });
-    if (row) {
-      await row.update({ value: token });
-    } else if (typeof Setting.create === "function") {
-      row = await Setting.create({ companyId: id, key: "mpAccessToken", value: token });
-    }
+    const ok = await setSettingValue(id, "mpAccessToken", token);
+    if (!ok) return res.status(500).json({ error: true, message: "could not save mpAccessToken" });
     return res.json({ ok: true });
   } catch (e: any) {
     return res.status(400).json({ error: true, message: e?.message || "mp token save error" });
@@ -968,12 +819,9 @@ router.put("/:id/mp-access-token", async (req, res) => {
 // GET /companies/licenses - lista empresas com status da licença
 router.get("/licenses", async (_req, res) => {
   try {
-    const Company = getLegacyModel("Company");
-    if (!Company || typeof Company.findAll !== "function") {
-      return res.json([]);
-    }
-    const rows = await Company.findAll();
-    const companies = Array.isArray(rows) ? rows.map((r: any) => (r?.toJSON ? r.toJSON() : r)) : [];
+    const companies = await pgQuery<{ id: number; name: string }>(
+      'SELECT id, name FROM "Companies" WHERE status IS DISTINCT FROM false ORDER BY id ASC'
+    );
     const list: any[] = [];
     for (const c of companies) {
       const id = Number(c.id);

@@ -4,6 +4,7 @@ import request from "request";
 import { getCompanyAccessToken } from "../../services/mercadoPagoService";
 import { authMiddleware } from "../../middleware/authMiddleware";
 import { pgQuery } from "../../utils/pgClient";
+import { renewCompanyLicenseFromDueDate } from "../../utils/license";
 
 const router = Router();
 
@@ -42,6 +43,15 @@ async function markInvoicePaidAndExtendDueDate(params: {
     }
   } catch {
     nextDue = undefined;
+  }
+
+  // Sincronizar licença (token) com pagamento: gera/renova token com base no dueDate
+  try {
+    if (companyId && nextDue) {
+      await renewCompanyLicenseFromDueDate(companyId, nextDue);
+    }
+  } catch {
+    // não bloquear webhook por falha de licença
   }
 
   // Emit socket event para o frontend fechar o modal
