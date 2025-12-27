@@ -27,6 +27,7 @@ import Typography from "@material-ui/core/Typography";
 import DeleteOutlineIcon from "@material-ui/icons/DeleteOutline";
 import AttachFileIcon from "@material-ui/icons/AttachFile";
 import AddCircleOutlineIcon from "@material-ui/icons/AddCircleOutline";
+import CloudUploadIcon from "@material-ui/icons/CloudUpload";
 
 import { green } from "@material-ui/core/colors";
 
@@ -97,6 +98,24 @@ const useStyles = makeStyles(theme => ({
         fontSize: 12,
         color: theme.palette.text.secondary,
         wordBreak: "break-word",
+    },
+    hiddenFileInput: {
+        position: "absolute",
+        width: 1,
+        height: 1,
+        padding: 0,
+        margin: -1,
+        overflow: "hidden",
+        clip: "rect(0, 0, 0, 0)",
+        whiteSpace: "nowrap",
+        border: 0,
+        opacity: 0,
+        pointerEvents: "none",
+    },
+    attachBtn: {
+        minWidth: 0,
+        padding: "6px 10px",
+        borderRadius: 10,
     },
 }));
 
@@ -293,20 +312,22 @@ const FilesModal = ({ open, onClose, fileListId, reload }) => {
                                                                         updatedFileNames[index] = selectedFile ? selectedFile.name : '';
                                                                         setSelectedFileNames(updatedFileNames);
                                                                     }}
-                                                                    style={{ display: 'none' }}
+                                                                    className={classes.hiddenFileInput}
                                                                     name={`options[${index}].file`}
                                                                     id={`file-upload-${index}`}
                                                                 />
-                                                                <IconButton
-                                                                    component="span"
-                                                                    onClick={() => {
-                                                                        const el = document.getElementById(`file-upload-${index}`);
-                                                                        if (el) el.click();
-                                                                    }}
-                                                                    title="Anexar arquivo"
-                                                                >
-                                                                    <AttachFileIcon />
-                                                                </IconButton>
+                                                                <label htmlFor={`file-upload-${index}`} style={{ margin: 0 }}>
+                                                                    <TrButton
+                                                                        className={classes.attachBtn}
+                                                                        startIcon={<CloudUploadIcon />}
+                                                                        onClick={() => {
+                                                                            const el = document.getElementById(`file-upload-${index}`);
+                                                                            if (el) el.click();
+                                                                        }}
+                                                                    >
+                                                                        Anexar
+                                                                    </TrButton>
+                                                                </label>
                                                                 <IconButton
                                                                     size="small"
                                                                     onClick={() => remove(index)}
