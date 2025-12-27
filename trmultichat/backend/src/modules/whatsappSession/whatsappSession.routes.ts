@@ -46,6 +46,18 @@ function extractTenantIdFromAuth(authorization?: string): number {
   }
 }
 
+function extractUserIdFromAuth(authorization?: string): number {
+  try {
+    const parts = (authorization || "").split(" ");
+    const bearer = parts.length === 2 && parts[0] === "Bearer" ? parts[1] : undefined;
+    if (!bearer) return 0;
+    const payload = jwt.verify(bearer, env.JWT_SECRET) as { userId?: number };
+    return Number((payload as any)?.userId || 0);
+  } catch {
+    return 0;
+  }
+}
+
 function emitSessionUpdate(tenantId: number, session: any) {
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -56,7 +68,39 @@ function emitSessionUpdate(tenantId: number, session: any) {
   } catch {}
 }
 
-// Endpoints para compatibilidade com UI em produção (gera QR dummy + persiste em arquivo)
+function tryRunLegacyWhatsAppSessionController(
+  action: "store" | "update" | "remove",
+  req: any,
+  res: any
+): boolean {
+  try {
+    // Load legacy controller (compiled) and call it directly (bypasses legacy isAuth token format).
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const pathMod = require("path");
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const ctrlMod = require(
+      pathMod.resolve(process.cwd(), "dist/controllers/WhatsAppSessionController")
+    );
+    const ctrl = ctrlMod?.default || ctrlMod;
+    const fn = ctrl && ctrl[action];
+    if (typeof fn !== "function") return false;
+
+    const tenantId = extractTenantIdFromAuth(req.headers.authorization as string);
+    const userId = extractUserIdFromAuth(req.headers.authorization as string);
+    if (!tenantId || !userId) return false;
+
+    // Legacy expects req.params.whatsappId and req.user.companyId
+    req.params = { ...(req.params || {}), whatsappId: req.params?.id || req.params?.whatsappId };
+    req.user = { id: userId, profile: "admin", companyId: tenantId };
+    // Call legacy controller (async) but don't await here; it will write to res.
+    Promise.resolve(fn(req, res)).catch(() => {});
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Endpoints para compatibilidade com UI em produção
 router.get("/:id", (req, res) => {
   const id = Number(req.params.id);
   const sessions = readSessions();
@@ -74,6 +118,9 @@ router.post("/:id", (req, res) => {
   const id = Number(req.params.id);
   const tenantId = extractTenantIdFromAuth(req.headers.authorization as string);
   if (!tenantId) return res.status(401).json({ error: true, message: "missing tenantId" });
+
+  // Try real legacy Baileys session start
+  if (tryRunLegacyWhatsAppSessionController("store", req, res)) return;
 
   try {
     const qrcode = `WA-SESSION:${id}:${Date.now()}`;
@@ -95,6 +142,9 @@ router.put("/:id", (req, res) => {
   const id = Number(req.params.id);
   const tenantId = extractTenantIdFromAuth(req.headers.authorization as string);
   if (!tenantId) return res.status(401).json({ error: true, message: "missing tenantId" });
+
+  // Try real legacy Baileys QR refresh
+  if (tryRunLegacyWhatsAppSessionController("update", req, res)) return;
 
   try {
     const qrcode = `WA-SESSION:${id}:${Date.now()}`;

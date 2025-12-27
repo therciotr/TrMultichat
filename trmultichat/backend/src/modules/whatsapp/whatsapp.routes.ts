@@ -67,6 +67,53 @@ function extractTenantIdFromAuth(authorization?: string): number {
   }
 }
 
+function extractUserIdFromAuth(authorization?: string): number {
+  try {
+    const parts = (authorization || "").split(" ");
+    const bearer = parts.length === 2 && parts[0] === "Bearer" ? parts[1] : undefined;
+    if (!bearer) return 0;
+    const payload = jwt.verify(bearer, env.JWT_SECRET) as { userId?: number };
+    return Number((payload as any)?.userId || 0);
+  } catch {
+    return 0;
+  }
+}
+
+function tryRunLegacyWhatsAppController(
+  action: "index" | "show",
+  req: any,
+  res: any
+): boolean {
+  try {
+    // Call legacy controller directly (bypasses legacy isAuth token format).
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const pathMod = require("path");
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const ctrlMod = require(
+      pathMod.resolve(process.cwd(), "dist/controllers/WhatsAppController")
+    );
+    const ctrl = ctrlMod?.default || ctrlMod;
+    const fn = ctrl && ctrl[action];
+    if (typeof fn !== "function") return false;
+
+    const tenantId = extractTenantIdFromAuth(req.headers.authorization as string);
+    const userId = extractUserIdFromAuth(req.headers.authorization as string);
+    if (!tenantId || !userId) return false;
+
+    // Legacy expects req.user.companyId and params.whatsappId
+    req.user = { id: userId, profile: "admin", companyId: tenantId };
+    req.query = { ...(req.query || {}), session: req.query?.session ?? 0 };
+    if (action === "show") {
+      req.params = { ...(req.params || {}), whatsappId: req.params?.id || req.params?.whatsappId };
+    }
+
+    Promise.resolve(fn(req, res)).catch(() => {});
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function queryWhatsappsTable<T>(
   sqlOrBuilder: string | ((table: string) => string),
   params: any[]
@@ -134,6 +181,9 @@ function emitSocket(tenantId: number, event: string, payload: any) {
 }
 
 router.get("/", async (req, res) => {
+  // Prefer legacy listing (includes real status/session fields when available)
+  if (tryRunLegacyWhatsAppController("index", req, res)) return;
+
   const tenantId = extractTenantIdFromAuth(req.headers.authorization as string);
   const companyId = Number(req.query.companyId || tenantId || 0);
   const session = Number(req.query.session || 0);
@@ -179,6 +229,9 @@ router.get("/", async (req, res) => {
 });
 
 router.get("/:id", async (req, res) => {
+  // Prefer legacy show (returns real qrcode/status when available)
+  if (tryRunLegacyWhatsAppController("show", req, res)) return;
+
   const id = Number(req.params.id);
   if (isDevMode()) {
     const rec = readDevWhats().find((w) => Number(w.id) === id);
