@@ -42,6 +42,7 @@ export async function login(req: Request, res: Response) {
   if (isDev) {
     company = {
       id: result.user.tenantId,
+      name: "DEV",
       dueDate: new Date(Date.now() + 365 * 24 * 3600 * 1000)
     };
     settings = [];
@@ -60,8 +61,13 @@ export async function login(req: Request, res: Response) {
   // admin/profile information já vem calculada de forma correta no result.user (via AuthService.login)
   const isAdmin = Boolean(result.user.admin);
   const profile = String(result.user.profile || (isAdmin ? "admin" : "user"));
-  // Em bancos antigos o campo "super" não existia; aqui consideramos super se for admin do tenant 1
-  const isSuper = Boolean(isAdmin && result.user.tenantId === 1);
+  // Super (master): por companyId e/ou e-mail do dono (configurável)
+  const masterCompanyId = Number(process.env.MASTER_COMPANY_ID || 1);
+  const masterEmail = String(process.env.ADMIN_EMAIL || "thercio@trtecnologias.com.br")
+    .toLowerCase()
+    .trim();
+  const isMasterEmail = String(result.user.email || "").toLowerCase().trim() === masterEmail;
+  const isSuper = Boolean(isAdmin && (result.user.tenantId === masterCompanyId || isMasterEmail));
 
   const legacy = {
     token: result.accessToken,
@@ -75,7 +81,9 @@ export async function login(req: Request, res: Response) {
       super: isSuper,
       company: {
         id: result.user.tenantId,
-        dueDate: company?.dueDate || new Date(Date.now() + 365 * 24 * 3600 * 1000),
+        name: company?.name || "",
+        // Em produção, não inventa vencimento: se não existir no banco, mantém null/undefined
+        dueDate: isDev ? (company?.dueDate || new Date(Date.now() + 365 * 24 * 3600 * 1000)) : (company?.dueDate || null),
         settings: settingsArr
       }
     },
@@ -319,6 +327,7 @@ export async function refreshLegacy(req: Request, res: Response) {
     if (isDev) {
       company = {
         id: user.companyId,
+        name: "DEV",
         dueDate: new Date(Date.now() + 365 * 24 * 3600 * 1000)
       };
       settings = [];
@@ -342,7 +351,12 @@ export async function refreshLegacy(req: Request, res: Response) {
     const profile = String(
       (user as any).profile || (isAdmin ? "admin" : "user")
     );
-    const isSuper = Boolean((user as any).super);
+    const masterCompanyId = Number(process.env.MASTER_COMPANY_ID || 1);
+    const masterEmail = String(process.env.ADMIN_EMAIL || "thercio@trtecnologias.com.br")
+      .toLowerCase()
+      .trim();
+    const email = String((user as any).email || "").toLowerCase().trim();
+    const isSuper = Boolean((user as any).super) || Number((user as any).companyId || 0) === masterCompanyId || email === masterEmail;
     return res.json({
       token: newToken,
       user: {
@@ -355,7 +369,8 @@ export async function refreshLegacy(req: Request, res: Response) {
         super: isSuper,
         company: {
           id: user.companyId,
-          dueDate: company?.dueDate || new Date(Date.now() + 365 * 24 * 3600 * 1000),
+          name: company?.name || "",
+          dueDate: isDev ? (company?.dueDate || new Date(Date.now() + 365 * 24 * 3600 * 1000)) : (company?.dueDate || null),
           settings: settingsArr
         }
       }

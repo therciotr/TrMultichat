@@ -391,7 +391,7 @@ const LoggedInLayout = ({ children, themeToggle }) => {
             className={classes.title}
           >
             {/* {greaterThenSm && user?.profile === "admin" && getDateAndDifDays(user?.company?.dueDate).difData < 7 ? ( */}
-            {greaterThenSm && user?.profile === "admin" && user?.company?.dueDate ? (
+            {greaterThenSm && user?.profile === "admin" && user?.company?.dueDate && !user?.super ? (
               <>
                 Olá <b>{user.name}</b>, Bem vindo a <b>{user?.company?.name}</b>! (Ativo até {dateToClient(user?.company?.dueDate)})
               </>

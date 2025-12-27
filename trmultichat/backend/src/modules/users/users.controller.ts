@@ -155,19 +155,25 @@ async function isSuperFromAuth(req: Request): Promise<boolean> {
     if (!bearer) return false;
     const payload = jwt.verify(bearer, appEnv.JWT_SECRET) as { userId?: number; id?: number; tenantId?: number };
     const masterCompanyId = Number(process.env.MASTER_COMPANY_ID || 1);
+    const masterEmail = String(process.env.ADMIN_EMAIL || "thercio@trtecnologias.com.br")
+      .toLowerCase()
+      .trim();
+    const masterUserId = Number(process.env.MASTER_USER_ID || 1);
     // Se o token já carrega tenantId, e for master, já considera super (evita depender de DB/modelo)
     if (Number((payload as any)?.tenantId || 0) === masterCompanyId) return true;
     const uid = Number((payload as any)?.userId || (payload as any)?.id || 0);
     if (!uid) return false;
+    // Fallback forte: o primeiro usuário do sistema costuma ser o master (seed)
+    if (uid === masterUserId) return true;
     const rows = await pgQuery<{ email?: string; super?: boolean; companyId?: number }>(
       'SELECT email, "super", "companyId" FROM "Users" WHERE id = $1 LIMIT 1',
       [uid]
     );
     const u = Array.isArray(rows) && rows[0];
     if (!u) return false;
-    const email = String((u as any).email || "").toLowerCase();
+    const email = String((u as any).email || "").toLowerCase().trim();
     const isMasterCompany = Number((u as any).companyId || 0) === masterCompanyId;
-    const isMasterEmail = email === "thercio@trtecnologias.com.br";
+    const isMasterEmail = email === masterEmail;
     return Boolean((u as any).super) || isMasterCompany || isMasterEmail;
   } catch {
     return false;
