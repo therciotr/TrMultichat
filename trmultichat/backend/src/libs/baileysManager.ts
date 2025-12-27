@@ -181,17 +181,30 @@ export async function startOrRefreshBaileysSession(opts: {
     version = undefined;
   }
 
-  const sock = makeWASocket({
+  // Baileys (GitHub) pode variar a API; tentamos as 2 formas de passar auth.
+  const sockOptsBase: any = {
     ...(version ? { version } : {}),
     logger,
     printQRInTerminal: false,
-    auth: {
-      creds: state.creds,
-      keys: makeCacheableSignalKeyStore(state.keys, logger)
-    },
     msgRetryCounterCache,
     generateHighQualityLinkPreview: true
-  });
+  };
+  let sock: any;
+  try {
+    sock = makeWASocket({
+      ...sockOptsBase,
+      auth: {
+        creds: (state as any).creds,
+        keys: makeCacheableSignalKeyStore((state as any).keys, logger)
+      }
+    });
+  } catch (e: any) {
+    // fallback (algumas versões esperam `auth: state`)
+    sock = makeWASocket({
+      ...sockOptsBase,
+      auth: state as any
+    });
+  }
 
   // Some Baileys builds export makeInMemoryStore as default-only; require it to be safe.
   // eslint-disable-next-line @typescript-eslint/no-var-requires
