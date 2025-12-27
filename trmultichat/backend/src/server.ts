@@ -69,29 +69,35 @@ const compiledApp: any = (() => {
   }
 })();
 
-// Prefer legacy WhatsApp session routes (real Baileys integration) when available.
-// Our simplified TS whatsappSession routes are only a fallback for environments without legacy dist.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const legacyWhatsAppSessionRoutes: any = (() => {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const m = require(path.resolve(process.cwd(), "dist/routes/whatsappSessionRoutes"));
-    return m?.default || m;
-  } catch {
-    return null;
-  }
-})();
+function loadLegacyDistRouter(moduleRelPath: string): any | null {
+  // NOTE: depending on how PM2 starts the process, `process.cwd()` may be project root OR `dist/`.
+  // We try multiple candidates to reliably locate the compiled legacy router.
+  const candidates = [
+    path.resolve(process.cwd(), moduleRelPath),
+    path.resolve(process.cwd(), "dist", moduleRelPath),
+    path.resolve(__dirname, moduleRelPath),
+    path.resolve(__dirname, "..", moduleRelPath),
+    path.resolve(__dirname, "routes", path.basename(moduleRelPath)),
+    path.resolve(__dirname, "..", "dist", moduleRelPath),
+  ];
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const legacyWhatsAppRoutes: any = (() => {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const m = require(path.resolve(process.cwd(), "dist/routes/whatsappRoutes"));
-    return m?.default || m;
-  } catch {
-    return null;
+  for (const p of candidates) {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const m = require(p);
+      const router = m?.default || m;
+      if (router) return router;
+    } catch (_) {}
   }
-})();
+  return null;
+}
+
+// Prefer legacy WhatsApp routes (real Baileys integration) when available.
+// Our simplified TS routes are only a fallback for environments without legacy dist.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const legacyWhatsAppSessionRoutes: any = loadLegacyDistRouter("routes/whatsappSessionRoutes");
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const legacyWhatsAppRoutes: any = loadLegacyDistRouter("routes/whatsappRoutes");
 
 // Global middlewares
 app.use(express.json());
