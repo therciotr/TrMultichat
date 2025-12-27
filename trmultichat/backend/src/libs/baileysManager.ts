@@ -11,6 +11,7 @@ import {
 } from "@whiskeysockets/baileys";
 import { pgQuery } from "../utils/pgClient";
 import { ingestBaileysMessage } from "./ticketIngest";
+import { getIO } from "./socket";
 
 type SessionSnapshot = {
   id: number;
@@ -82,6 +83,23 @@ async function updateWhatsAppStatus(companyId: number, whatsappId: number, statu
   } catch {}
 }
 
+async function listWhatsappsBasic(): Promise<Array<{ id: number; companyId: number }>> {
+  const candidates = ['"Whatsapps"', '"WhatsApps"', "whatsapps", "whatsApps"];
+  for (const table of candidates) {
+    try {
+      const rows = await pgQuery<{ id: number; companyId: number }>(
+        `SELECT id, "companyId" as "companyId" FROM ${table} ORDER BY id ASC`,
+        []
+      );
+      return Array.isArray(rows) ? rows : [];
+    } catch (e: any) {
+      const msg = String(e?.message || "");
+      if (!/relation .* does not exist/i.test(msg)) throw e;
+    }
+  }
+  return [];
+}
+
 const logger = P({ level: process.env.NODE_ENV === "production" ? "warn" : "info" });
 const msgRetryCounterCache = new NodeCache();
 
@@ -96,6 +114,26 @@ const sessions = new Map<number, ManagedSession>();
 export function getStoredQr(whatsappId: number): SessionSnapshot | null {
   const all = readSessionsFile();
   return all[String(whatsappId)] || null;
+}
+
+export async function startAllBaileysSessions(): Promise<void> {
+  const rows = await listWhatsappsBasic();
+  for (const r of rows) {
+    const companyId = Number((r as any).companyId || 0);
+    const whatsappId = Number((r as any).id || 0);
+    if (!companyId || !whatsappId) continue;
+    // fire and forget (do not block startup)
+    startOrRefreshBaileysSession({
+      companyId,
+      whatsappId,
+      emit: (cId, payload) => {
+        try {
+          const io = getIO();
+          io.emit(`company-${cId}-whatsappSession`, payload);
+        } catch {}
+      }
+    }).catch(() => {});
+  }
 }
 
 export async function startOrRefreshBaileysSession(opts: {
