@@ -39,6 +39,7 @@ import fs from "fs";
 import path from "path";
 import { createSubscriptionPreference } from "./services/mercadoPagoService";
 import { getSequelize } from "./utils/legacyModel";
+import { initIO } from "./libs/socket";
 
 // Create a fresh app so we can register our routes first
 const app: express.Express = express();
@@ -941,9 +942,6 @@ server.listen(env.PORT, async () => {
 
   // Initialize socket
   try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const socketLib = require("./libs/socket");
-    const initIO = socketLib.initIO || socketLib.default || socketLib;
     initIO(server);
   } catch (e) {
     logger.warn("Socket initialization skipped", e);
