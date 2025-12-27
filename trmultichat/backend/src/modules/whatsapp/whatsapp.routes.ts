@@ -116,7 +116,31 @@ function tryRunLegacyWhatsAppController(
       req.params = { ...(req.params || {}), whatsappId: req.params?.id || req.params?.whatsappId };
     }
 
-    Promise.resolve(fn(req, res)).catch(() => {});
+    // Ensure legacy Sequelize models are initialized before invoking legacy services.
+    try {
+      const bootCandidates = [
+        path.resolve(process.cwd(), "database/index"),
+        path.resolve(process.cwd(), "dist/database/index"),
+        path.resolve(__dirname, "..", "..", "database/index"),
+        path.resolve(__dirname, "..", "..", "..", "dist", "database/index")
+      ];
+      for (const p of bootCandidates) {
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-var-requires
+          require(p);
+          break;
+        } catch (_) {}
+      }
+    } catch (_) {}
+
+    try {
+      Promise.resolve(fn(req, res)).catch(() => {});
+    } catch (e: any) {
+      return res.status(500).json({
+        error: true,
+        message: e?.message || "legacy whatsapp integration failed"
+      });
+    }
     return true;
   } catch {
     return false;

@@ -86,6 +86,18 @@ function requireLegacyController(moduleRelPath: string): any | null {
   return null;
 }
 
+let legacyDbBooted = false;
+function ensureLegacyDbBoot(): void {
+  if (legacyDbBooted) return;
+  try {
+    // Initialize legacy Sequelize models (required by Baileys session services)
+    requireLegacyController("database/index");
+    legacyDbBooted = true;
+  } catch {
+    // ignore
+  }
+}
+
 function tryRunLegacyWhatsAppSessionController(
   action: "store" | "update" | "remove",
   req: any,
@@ -104,8 +116,16 @@ function tryRunLegacyWhatsAppSessionController(
     // Legacy expects req.params.whatsappId and req.user.companyId
     req.params = { ...(req.params || {}), whatsappId: req.params?.id || req.params?.whatsappId };
     req.user = { id: userId, profile: "admin", companyId: tenantId };
+    ensureLegacyDbBoot();
     // Call legacy controller (async) but don't await here; it will write to res.
-    Promise.resolve(fn(req, res)).catch(() => {});
+    try {
+      Promise.resolve(fn(req, res)).catch(() => {});
+    } catch (e: any) {
+      return res.status(500).json({
+        error: true,
+        message: e?.message || "legacy whatsapp session integration failed"
+      });
+    }
     return true;
   } catch {
     return false;
