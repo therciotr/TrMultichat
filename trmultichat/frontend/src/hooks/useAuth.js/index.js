@@ -35,18 +35,45 @@ const useAuth = () => {
     },
     async (error) => {
       const originalRequest = error.config;
-      if (error?.response?.status === 403 && !originalRequest._retry) {
+      if (
+        (error?.response?.status === 401 || error?.response?.status === 403) &&
+        !originalRequest._retry
+      ) {
         originalRequest._retry = true;
 
-        const { data } = await api.post("/auth/refresh_token");
-        if (data) {
-          localStorage.setItem("token", JSON.stringify(data.token));
-          api.defaults.headers.Authorization = `Bearer ${data.token}`;
-        }
-        return api(originalRequest);
+        // 1) Prefer refreshToken (7d)
+        try {
+          const storedRefresh = localStorage.getItem("refreshToken");
+          if (storedRefresh) {
+            let refreshToken = storedRefresh;
+            try {
+              refreshToken = JSON.parse(storedRefresh);
+            } catch (_) {}
+            const { data } = await api.post("/auth/refresh", { refreshToken });
+            if (data?.accessToken) {
+              localStorage.setItem("token", JSON.stringify(data.accessToken));
+              if (data.refreshToken) {
+                localStorage.setItem("refreshToken", JSON.stringify(data.refreshToken));
+              }
+              api.defaults.headers.Authorization = `Bearer ${data.accessToken}`;
+              return api(originalRequest);
+            }
+          }
+        } catch (_) {}
+
+        // 2) Legacy fallback (works only while access token still valid)
+        try {
+          const { data } = await api.post("/auth/refresh_token");
+          if (data?.token) {
+            localStorage.setItem("token", JSON.stringify(data.token));
+            api.defaults.headers.Authorization = `Bearer ${data.token}`;
+            return api(originalRequest);
+          }
+        } catch (_) {}
       }
       if (error?.response?.status === 401) {
         localStorage.removeItem("token");
+        localStorage.removeItem("refreshToken");
         localStorage.removeItem("companyId");
         api.defaults.headers.Authorization = undefined;
         setIsAuth(false);
@@ -60,14 +87,40 @@ const useAuth = () => {
     (async () => {
       if (token) {
         try {
-          const { data } = await api.post("/auth/refresh_token");
+          let data;
+          try {
+            const res = await api.post("/auth/refresh_token");
+            data = res?.data;
+          } catch (e) {
+            const storedRefresh = localStorage.getItem("refreshToken");
+            if (storedRefresh) {
+              let refreshToken = storedRefresh;
+              try {
+                refreshToken = JSON.parse(storedRefresh);
+              } catch (_) {}
+              const refreshed = await api.post("/auth/refresh", { refreshToken });
+              if (refreshed?.data?.accessToken) {
+                localStorage.setItem("token", JSON.stringify(refreshed.data.accessToken));
+                if (refreshed.data.refreshToken) {
+                  localStorage.setItem("refreshToken", JSON.stringify(refreshed.data.refreshToken));
+                }
+                api.defaults.headers.Authorization = `Bearer ${refreshed.data.accessToken}`;
+                const res2 = await api.post("/auth/refresh_token");
+                data = res2?.data;
+              } else {
+                throw e;
+              }
+            } else {
+              throw e;
+            }
+          }
           // Mantém localStorage sincronizado com o token renovado.
           // Caso contrário, os interceptors continuam enviando o token antigo (expira em 15min)
           // e o usuário recebe 401 "Invalid token" em rotas como /helps.
           try {
-            localStorage.setItem("token", JSON.stringify(data.token));
+            if (data?.token) localStorage.setItem("token", JSON.stringify(data.token));
           } catch (_) {}
-          api.defaults.headers.Authorization = `Bearer ${data.token}`;
+          if (data?.token) api.defaults.headers.Authorization = `Bearer ${data.token}`;
           setIsAuth(true);
           setUser({
             ...data.user,
@@ -136,6 +189,9 @@ const useAuth = () => {
       // Além disso, se não há dueDate válido, não bloqueia (evita "Invalid date").
       if (isSuper || !dueDateValid) {
         localStorage.setItem("token", JSON.stringify(data.token));
+        if (data.refreshToken) {
+          localStorage.setItem("refreshToken", JSON.stringify(data.refreshToken));
+        }
         localStorage.setItem("companyId", companyId);
         localStorage.setItem("userId", id);
         if (dueDateValid) {
@@ -182,6 +238,7 @@ Entre em contato com o Suporte para mais informações! `);
       setIsAuth(false);
       setUser({});
       localStorage.removeItem("token");
+      localStorage.removeItem("refreshToken");
       localStorage.removeItem("companyId");
       localStorage.removeItem("userId");
       localStorage.removeItem("cshow");
