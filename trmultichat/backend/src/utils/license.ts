@@ -1,8 +1,29 @@
 import fs from "fs";
 import path from "path";
 import jwt from "jsonwebtoken";
+import { generateKeyPairSync } from "crypto";
 import { pgQuery } from "./pgClient";
 import { getSettingValue, setSettingValue } from "./settingsStore";
+
+function ensureLocalRsaKeypair(): boolean {
+  try {
+    const privatePath = path.resolve(process.cwd(), "private.pem");
+    const publicPath = path.resolve(process.cwd(), "certs", "public.pem");
+    if (fs.existsSync(privatePath) && fs.existsSync(publicPath)) return true;
+    fs.mkdirSync(path.dirname(publicPath), { recursive: true });
+    const { privateKey, publicKey } = generateKeyPairSync("rsa", {
+      modulusLength: 2048,
+      publicKeyEncoding: { type: "spki", format: "pem" },
+      privateKeyEncoding: { type: "pkcs1", format: "pem" }
+    });
+    // Nunca commitar esses arquivos; são gerados no servidor.
+    fs.writeFileSync(privatePath, privateKey, { encoding: "utf8", mode: 0o600 });
+    fs.writeFileSync(publicPath, publicKey, { encoding: "utf8", mode: 0o644 });
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 function loadPublicKey(): string | undefined {
   const inlinePem = process.env.LICENSE_PUBLIC_KEY;
@@ -19,6 +40,11 @@ function loadPublicKey(): string | undefined {
       return fs.readFileSync(path.resolve(p), "utf8");
     } catch {}
   }
+  // Fallback: chave local no servidor
+  try {
+    const local = path.resolve(process.cwd(), "certs", "public.pem");
+    if (fs.existsSync(local)) return fs.readFileSync(local, "utf8");
+  } catch {}
   return undefined;
 }
 
@@ -37,6 +63,14 @@ function loadPrivateKey(): string | undefined {
       return fs.readFileSync(path.resolve(p), "utf8");
     } catch {}
   }
+  // Fallback: chave local no servidor (gera se não existir)
+  try {
+    const local = path.resolve(process.cwd(), "private.pem");
+    if (!fs.existsSync(local)) {
+      ensureLocalRsaKeypair();
+    }
+    if (fs.existsSync(local)) return fs.readFileSync(local, "utf8");
+  } catch {}
   return undefined;
 }
 
@@ -77,6 +111,22 @@ async function isCompanyAccessDisabled(companyId: number): Promise<boolean> {
   }
 }
 
+function toDateOnly(v: any): string | null {
+  if (!v) return null;
+  try {
+    if (v instanceof Date && !Number.isNaN(v.getTime())) {
+      return v.toISOString().slice(0, 10);
+    }
+    const s = String(v);
+    // Se já está no formato ISO
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+    // Tenta parse
+    const d = new Date(s);
+    if (!Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+  } catch {}
+  return null;
+}
+
 async function isCompanyPaidByDueDate(companyId: number): Promise<{ paid: boolean; dueDate?: string | null }> {
   try {
     const rows = await pgQuery<{ dueDate?: string | null }>(
@@ -84,11 +134,39 @@ async function isCompanyPaidByDueDate(companyId: number): Promise<{ paid: boolea
       [companyId]
     );
     const row = Array.isArray(rows) && rows[0];
-    const due = row ? (row as any).dueDate : null;
+    const dueRaw = row ? (row as any).dueDate : null;
+    const due = toDateOnly(dueRaw);
     if (!due) return { paid: false, dueDate: null };
-    const d = new Date(String(due).slice(0, 10) + "T23:59:59Z");
-    if (Number.isNaN(d.getTime())) return { paid: false, dueDate: String(due) };
-    return { paid: d.getTime() >= Date.now(), dueDate: String(due).slice(0, 10) };
+    const d = new Date(`${due}T23:59:59Z`);
+    if (Number.isNaN(d.getTime())) return { paid: false, dueDate: due };
+    if (d.getTime() >= Date.now()) return { paid: true, dueDate: due };
+
+    // Fallback: se o dueDate estiver vencido mas existir fatura paga recente, sincroniza.
+    try {
+      const invRows = await pgQuery<{ updatedAt: Date | string; paidAt?: Date | string | null }>(
+        'SELECT "updatedAt", "paidAt" FROM "Invoices" WHERE "companyId" = $1 AND lower(status) = \'paid\' ORDER BY COALESCE("paidAt","updatedAt") DESC, "updatedAt" DESC LIMIT 1',
+        [companyId]
+      );
+      const inv = Array.isArray(invRows) && invRows[0];
+      if (inv) {
+        const baseRaw = (inv as any).paidAt || (inv as any).updatedAt;
+        const base = baseRaw instanceof Date ? baseRaw : new Date(String(baseRaw));
+        if (!Number.isNaN(base.getTime())) {
+          const paidUntil = new Date(base.getTime());
+          paidUntil.setDate(paidUntil.getDate() + 30);
+          if (paidUntil.getTime() >= Date.now()) {
+            const nextDue = paidUntil.toISOString().slice(0, 10);
+            // tentar corrigir Companies.dueDate para refletir pagamento
+            try {
+              await pgQuery('UPDATE "Companies" SET "dueDate" = $1, "updatedAt" = now() WHERE id = $2', [nextDue, companyId]);
+            } catch {}
+            return { paid: true, dueDate: nextDue };
+          }
+        }
+      }
+    } catch {}
+
+    return { paid: false, dueDate: due };
   } catch {
     return { paid: false, dueDate: null };
   }

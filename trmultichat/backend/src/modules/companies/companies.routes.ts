@@ -282,6 +282,49 @@ router.get("/safe", async (_req, res) => {
   }
 });
 
+// GET /companies/licenses - lista empresas com status da licença
+// Importante: precisa ficar ANTES de /companies/:id (senão vira "invalid company id")
+router.get("/licenses", async (_req, res) => {
+  try {
+    const companies = await pgQuery<{ id: number; name: string; dueDate?: any }>(
+      'SELECT id, name, "dueDate" FROM "Companies" WHERE status IS DISTINCT FROM false ORDER BY id ASC'
+    );
+    const list: any[] = [];
+    for (const c of companies || []) {
+      const id = Number((c as any).id);
+      const v = await validateLicenseForCompanyStrict(id);
+      const payload = (v as any).payload || {};
+      const data = (payload as any).data || {};
+      const exp = (payload as any).exp ? Number((payload as any).exp) : undefined;
+      const dueRaw = (c as any).dueDate;
+      const dueDate =
+        dueRaw instanceof Date
+          ? dueRaw.toISOString().slice(0, 10)
+          : dueRaw
+            ? String(dueRaw).slice(0, 10)
+            : null;
+      const accessDisabledRaw = await getSettingValue(id, "accessDisabled");
+      const accessDisabled = ["1", "true", "enabled", "yes"].includes(String(accessDisabledRaw || "").trim().toLowerCase());
+
+      list.push({
+        companyId: id,
+        companyName: (c as any).name || `Empresa ${id}`,
+        has: v.has,
+        valid: v.valid,
+        subject: (payload as any).sub || "",
+        plan: data.plan || "",
+        maxUsers: data.maxUsers || 0,
+        exp,
+        dueDate,
+        accessDisabled
+      });
+    }
+    return res.json(list);
+  } catch {
+    return res.status(200).json([]);
+  }
+});
+
 // GET /companies/:id - detalhes (usa Postgres direto para evitar problemas de ORM legado)
 router.get("/:id", async (req, res) => {
   try {
