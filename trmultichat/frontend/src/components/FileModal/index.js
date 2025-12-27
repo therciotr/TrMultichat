@@ -117,6 +117,22 @@ const useStyles = makeStyles(theme => ({
         padding: "6px 10px",
         borderRadius: 10,
     },
+    attachWrap: {
+        position: "relative",
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+    },
+    attachInputOverlay: {
+        position: "absolute",
+        inset: 0,
+        width: "100%",
+        height: "100%",
+        opacity: 0,
+        cursor: "pointer",
+        // keep it clickable in all browsers
+        zIndex: 2,
+    },
 }));
 
 const FileListSchema = Yup.object().shape({
@@ -335,20 +351,7 @@ const FilesModal = ({ open, onClose, fileListId, reload }) => {
                                                                 />
                                                             </Grid>     
                                                             <Grid xs={6} md={2} item className={classes.optionActions}>
-                                                                <input
-                                                                    id={`file-upload-${index}`}
-                                                                    type="file"
-                                                                    style={{ display: "none" }}
-                                                                    onChange={(e) => {
-                                                                        const selectedFile = e.target.files && e.target.files[0];
-                                                                        setFieldValue(`options[${index}].file`, selectedFile);
-
-                                                                        const updatedFileNames = [...selectedFileNames];
-                                                                        updatedFileNames[index] = selectedFile ? selectedFile.name : "";
-                                                                        setSelectedFileNames(updatedFileNames);
-                                                                    }}
-                                                                />
-                                                                <label htmlFor={`file-upload-${index}`} style={{ margin: 0 }}>
+                                                                <span className={classes.attachWrap}>
                                                                     <TrButton
                                                                         className={classes.attachBtn}
                                                                         startIcon={<CloudUploadIcon />}
@@ -356,7 +359,29 @@ const FilesModal = ({ open, onClose, fileListId, reload }) => {
                                                                     >
                                                                         Anexar
                                                                     </TrButton>
-                                                                </label>
+                                                                    <input
+                                                                        type="file"
+                                                                        className={classes.attachInputOverlay}
+                                                                        onClick={(e) => {
+                                                                            // allow re-selecting the same file
+                                                                            e.currentTarget.value = null;
+                                                                        }}
+                                                                        onChange={(e) => {
+                                                                            const selectedFile =
+                                                                                e.target.files && e.target.files[0];
+                                                                            setFieldValue(
+                                                                                `options[${index}].file`,
+                                                                                selectedFile
+                                                                            );
+
+                                                                            const updatedFileNames = [...selectedFileNames];
+                                                                            updatedFileNames[index] = selectedFile
+                                                                                ? selectedFile.name
+                                                                                : "";
+                                                                            setSelectedFileNames(updatedFileNames);
+                                                                        }}
+                                                                    />
+                                                                </span>
                                                                 <IconButton
                                                                     size="small"
                                                                     onClick={() => remove(index)}
