@@ -28,6 +28,7 @@ import DeleteOutlineIcon from "@material-ui/icons/DeleteOutline";
 import AttachFileIcon from "@material-ui/icons/AttachFile";
 import AddCircleOutlineIcon from "@material-ui/icons/AddCircleOutline";
 import CloudUploadIcon from "@material-ui/icons/CloudUpload";
+import OpenInNewIcon from "@material-ui/icons/OpenInNew";
 
 import { green } from "@material-ui/core/colors";
 
@@ -195,11 +196,11 @@ const FilesModal = ({ open, onClose, fileListId, reload }) => {
                 const { data } = await api.put(`/files/${fileListId}`, fileData)
                 if (data.options.length > 0)
 
-                    uploadFiles(data.options, values.options, fileListId)
+                    await uploadFiles(data.options, values.options, fileListId)
             } else {
                 const { data } = await api.post("/files", fileData);
                 if (data.options.length > 0)
-                    uploadFiles(data.options, values.options, data.id)
+                    await uploadFiles(data.options, values.options, data.id)
             }
             toast.success(i18n.t("fileModal.success"));
             if (typeof reload == 'function') {
@@ -209,6 +210,16 @@ const FilesModal = ({ open, onClose, fileListId, reload }) => {
             toastError(err);
         }
         handleClose();
+    };
+
+    const getUploadedUrl = (filename) => {
+        try {
+            const base = (api && api.defaults && api.defaults.baseURL) ? api.defaults.baseURL : "";
+            if (!filename) return "";
+            return `${String(base).replace(/\\/+$/, "")}/uploads/files/${filename}`;
+        } catch (_) {
+            return "";
+        }
     };
 
     return (
@@ -338,6 +349,20 @@ const FilesModal = ({ open, onClose, fileListId, reload }) => {
                                                                             background: "rgba(11, 76, 70, 0.06)",
                                                                             color: "var(--tr-primary)",
                                                                         }}
+                                                                        onClick={() => {
+                                                                            const url = getUploadedUrl(info?.path);
+                                                                            if (url) window.open(url, "_blank", "noopener,noreferrer");
+                                                                        }}
+                                                                        clickable={Boolean(info?.path)}
+                                                                        deleteIcon={info?.path ? <OpenInNewIcon /> : undefined}
+                                                                        onDelete={
+                                                                            info?.path
+                                                                                ? () => {
+                                                                                    const url = getUploadedUrl(info?.path);
+                                                                                    if (url) window.open(url, "_blank", "noopener,noreferrer");
+                                                                                }
+                                                                                : undefined
+                                                                        }
                                                                     />
                                                                 ) : (
                                                                     <span style={{ opacity: 0.65 }}>
