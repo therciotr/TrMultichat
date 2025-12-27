@@ -17,6 +17,8 @@ import Select from "@material-ui/core/Select";
 import InputLabel from "@material-ui/core/InputLabel";
 import MenuItem from "@material-ui/core/MenuItem";
 import FormControl from "@material-ui/core/FormControl";
+import BusinessIcon from "@material-ui/icons/Business";
+import InputAdornment from "@material-ui/core/InputAdornment";
 
 import { i18n } from "../../translate/i18n";
 
@@ -82,6 +84,7 @@ const UserModal = ({ open, onClose, userId }) => {
 	const [selectedQueueIds, setSelectedQueueIds] = useState([]);
 	const [whatsappId, setWhatsappId] = useState(false);
 	const { loading, whatsApps } = useWhatsApps();
+	const [companiesById, setCompaniesById] = useState({});
 
 	useEffect(() => {
 		const fetchUser = async () => {
@@ -101,6 +104,21 @@ const UserModal = ({ open, onClose, userId }) => {
 
 		fetchUser();
 	}, [userId, open]);
+
+	useEffect(() => {
+		(async () => {
+			try {
+				const { data } = await api.get("/companies");
+				const map = {};
+				(Array.isArray(data) ? data : []).forEach((c) => {
+					if (c && c.id !== undefined) map[c.id] = c;
+				});
+				setCompaniesById(map);
+			} catch {
+				setCompaniesById({});
+			}
+		})();
+	}, []);
 
 	const handleClose = () => {
 		onClose();
@@ -150,6 +168,23 @@ const UserModal = ({ open, onClose, userId }) => {
 					{({ touched, errors, isSubmitting }) => (
 						<Form>
 							<DialogContent dividers>
+								<Field
+									as={TextField}
+									label="Empresa"
+									name="companyId"
+									variant="outlined"
+									margin="dense"
+									fullWidth
+									disabled
+									value={companiesById?.[user?.companyId]?.name || (user?.companyId ? `Empresa ${user.companyId}` : "-")}
+									InputProps={{
+										startAdornment: (
+											<InputAdornment position="start">
+												<BusinessIcon fontSize="small" />
+											</InputAdornment>
+										),
+									}}
+								/>
 								<div className={classes.multFieldLine}>
 									<Field
 										as={TextField}

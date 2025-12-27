@@ -360,6 +360,15 @@ const Users = () => {
 
                               <div className={classes.metaRow}>
                                 <div className={classes.metaItem}>
+                                  <BusinessIcon fontSize="small" style={{ opacity: 0.85 }} />
+                                  <div>
+                                    <div className={classes.metaLabel}>Empresa</div>
+                                    <div className={classes.metaValue}>
+                                      {companiesById?.[user.companyId]?.name || `Empresa ${user.companyId || "-"}`}
+                                    </div>
+                                  </div>
+                                </div>
+                                <div className={classes.metaItem}>
                                   <EmailIcon fontSize="small" style={{ opacity: 0.85 }} />
                                   <div>
                                     <div className={classes.metaLabel}>E-mail</div>

@@ -153,16 +153,19 @@ async function isSuperFromAuth(req: Request): Promise<boolean> {
     const parts = auth.split(" ");
     const bearer = parts.length === 2 && parts[0] === "Bearer" ? parts[1] : undefined;
     if (!bearer) return false;
-    const payload = jwt.verify(bearer, appEnv.JWT_SECRET) as { userId?: number };
-    if (!payload?.userId) return false;
+    const payload = jwt.verify(bearer, appEnv.JWT_SECRET) as { userId?: number; id?: number; tenantId?: number };
+    const masterCompanyId = Number(process.env.MASTER_COMPANY_ID || 1);
+    // Se o token já carrega tenantId, e for master, já considera super (evita depender de DB/modelo)
+    if (Number((payload as any)?.tenantId || 0) === masterCompanyId) return true;
+    const uid = Number((payload as any)?.userId || (payload as any)?.id || 0);
+    if (!uid) return false;
     const rows = await pgQuery<{ email?: string; super?: boolean; companyId?: number }>(
       'SELECT email, "super", "companyId" FROM "Users" WHERE id = $1 LIMIT 1',
-      [Number(payload.userId)]
+      [uid]
     );
     const u = Array.isArray(rows) && rows[0];
     if (!u) return false;
     const email = String((u as any).email || "").toLowerCase();
-    const masterCompanyId = Number(process.env.MASTER_COMPANY_ID || 1);
     const isMasterCompany = Number((u as any).companyId || 0) === masterCompanyId;
     const isMasterEmail = email === "thercio@trtecnologias.com.br";
     return Boolean((u as any).super) || isMasterCompany || isMasterEmail;
@@ -177,10 +180,8 @@ function extractUserIdFromAuth(authorization?: string): number {
     const bearer =
       parts.length === 2 && parts[0] === "Bearer" ? parts[1] : undefined;
     if (!bearer) return 0;
-    const payload = jwt.verify(bearer, appEnv.JWT_SECRET) as {
-      userId?: number;
-    };
-    return Number(payload?.userId || 0);
+    const payload = jwt.verify(bearer, appEnv.JWT_SECRET) as { userId?: number; id?: number };
+    return Number((payload as any)?.userId || (payload as any)?.id || 0);
   } catch {
     return 0;
   }
@@ -199,9 +200,10 @@ export async function update(req: Request, res: Response) {
     const instance = await User.findByPk(id);
     if (!instance) return res.status(404).json({ error: true, message: "not found" });
     const tenantId = extractTenantIdFromAuth(req.headers.authorization as string) || 0;
+    const isSuper = await isSuperFromAuth(req);
     const current = instance?.toJSON ? instance.toJSON() : instance;
     // If different company, respond with current data (no-op) to avoid legacy 400
-    if (tenantId && Number(current?.companyId || 0) !== tenantId) {
+    if (!isSuper && tenantId && Number(current?.companyId || 0) !== tenantId) {
       return res.json(current);
     }
     const body = req.body || {};
@@ -248,8 +250,9 @@ export async function updatePassword(req: Request, res: Response) {
     const instance = await User.findByPk(id);
     if (!instance) return res.status(404).json({ error: true, message: "not found" });
     const tenantId = extractTenantIdFromAuth(req.headers.authorization as string) || 0;
+    const isSuper = await isSuperFromAuth(req);
     const current = instance?.toJSON ? instance.toJSON() : instance;
-    if (tenantId && Number(current?.companyId || 0) !== tenantId) {
+    if (!isSuper && tenantId && Number(current?.companyId || 0) !== tenantId) {
       return res.status(403).json({ error: true, message: "forbidden" });
     }
     const body = req.body || {};
@@ -276,6 +279,7 @@ export async function updatePasswordRaw(req: Request, res: Response) {
     const id = Number(req.params.id);
     const tenantId = extractTenantIdFromAuth(req.headers.authorization as string) || 0;
     if (!id || !tenantId) return res.status(400).json({ error: true, message: "invalid request" });
+    const isSuper = await isSuperFromAuth(req);
     const body = req.body || {};
     const newPassword = String(body.password || "");
     if (!newPassword || newPassword.length < 4) {
@@ -290,7 +294,7 @@ export async function updatePasswordRaw(req: Request, res: Response) {
     const row: any = Array.isArray(rows) && (rows as any[])[0];
     if (!row) return res.status(404).json({ error: true, message: "not found" });
     const cid = Number(row.companyId || row.company_id || 0);
-    if (cid !== tenantId) return res.status(403).json({ error: true, message: "forbidden" });
+    if (!isSuper && cid !== tenantId) return res.status(403).json({ error: true, message: "forbidden" });
     await sequelize.query('UPDATE "Users" SET "passwordHash" = :hash, "updatedAt" = NOW() WHERE id = :id', {
       replacements: { id, hash }
     });
