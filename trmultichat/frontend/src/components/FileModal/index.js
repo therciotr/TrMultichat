@@ -127,6 +127,15 @@ const FileListSchema = Yup.object().shape({
         .required("Obrigatório")
 });
 
+function hasAnySelectedFile(options) {
+    try {
+        if (!Array.isArray(options)) return false;
+        return options.some((o) => Boolean(o?.file));
+    } catch (_) {
+        return false;
+    }
+}
+
 const FilesModal = ({ open, onClose, fileListId, reload }) => {
     const classes = useStyles();
     const { user } = useContext(AuthContext);
@@ -200,6 +209,12 @@ const FilesModal = ({ open, onClose, fileListId, reload }) => {
           : [];
         const fileData = { ...values, options: cleanOptions, userId: user.id };
         
+        // require at least one file selected to avoid "saved but no real attachment"
+        if (!hasAnySelectedFile(values?.options)) {
+            toast.error("Selecione um arquivo para anexar antes de salvar.");
+            return;
+        }
+
         try {
             if (fileListId) {
                 const { data } = await api.put(`/files/${fileListId}`, fileData)
