@@ -82,6 +82,17 @@ const legacyWhatsAppSessionRoutes: any = (() => {
   }
 })();
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const legacyWhatsAppRoutes: any = (() => {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const m = require(path.resolve(process.cwd(), "dist/routes/whatsappRoutes"));
+    return m?.default || m;
+  } catch {
+    return null;
+  }
+})();
+
 // Global middlewares
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -380,7 +391,13 @@ app.use("/contact-lists", contactListsRoutes);
 app.use("/quick-messages", quickMessagesRoutes);
 app.use("/chats", chatsRoutes);
 app.use("/messages", messagesRoutes);
-app.use("/whatsapp", whatsappRoutes);
+// WhatsApp routes: prefer legacy (real Baileys) when present.
+if (legacyWhatsAppRoutes) {
+  // legacy router already defines `/whatsapp`
+  app.use(legacyWhatsAppRoutes);
+} else {
+  app.use("/whatsapp", whatsappRoutes);
+}
 app.use("/settings", settingsRoutes);
 app.use("/companies", companiesRoutes);
 app.use("/plans", plansRoutes);
