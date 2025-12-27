@@ -2,7 +2,7 @@ import { Router } from "express";
 import { authMiddleware } from "../../middleware/authMiddleware";
 import { pgQuery } from "../../utils/pgClient";
 import { getIO } from "../../libs/socket";
-import { getSessionSock, startOrRefreshBaileysSession } from "../../libs/baileysManager";
+import { getSessionSock, listSessionIds, startOrRefreshBaileysSession } from "../../libs/baileysManager";
 import path from "path";
 
 const router = Router();
@@ -134,7 +134,8 @@ router.post("/:ticketId", authMiddleware, async (req, res) => {
   if (!sock) {
     return res.status(409).json({
       error: true,
-      message: "whatsapp session not ready yet, retry in a few seconds"
+      message: "whatsapp session not ready yet, retry in a few seconds",
+      debug: { whatsappId, knownSessions: listSessionIds() }
     });
   }
 

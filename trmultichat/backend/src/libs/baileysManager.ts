@@ -127,6 +127,10 @@ export function getSessionSock(whatsappId: number): any | null {
   return s?.sock || null;
 }
 
+export function listSessionIds(): number[] {
+  return Array.from(sessions.keys());
+}
+
 export async function startAllBaileysSessions(): Promise<void> {
   const rows = await listWhatsappsBasic();
   for (const r of rows) {
