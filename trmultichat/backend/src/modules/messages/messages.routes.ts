@@ -12,13 +12,20 @@ function tenantIdFromReq(req: any): number {
 }
 
 function requireLegacyController(moduleRelPath: string): any | null {
+  const cwd = process.cwd();
   const candidates = [
     // running from backend root
-    path.resolve(process.cwd(), moduleRelPath),
-    path.resolve(process.cwd(), "dist", moduleRelPath),
-    // running from compiled JS
+    path.resolve(cwd, moduleRelPath),
+    path.resolve(cwd, "dist", moduleRelPath),
+    // running from monorepo root
+    path.resolve(cwd, "backend", moduleRelPath),
+    path.resolve(cwd, "backend", "dist", moduleRelPath),
+    path.resolve(cwd, "trmultichat", "backend", moduleRelPath),
+    path.resolve(cwd, "trmultichat", "backend", "dist", moduleRelPath),
+    // running from compiled JS (dist/modules/messages)
     path.resolve(__dirname, "..", "..", "..", moduleRelPath),
-    path.resolve(__dirname, "..", "..", "..", "..", "dist", moduleRelPath)
+    path.resolve(__dirname, "..", "..", "..", "..", "dist", moduleRelPath),
+    path.resolve(__dirname, "..", "..", "..", "..", "..", "backend", "dist", moduleRelPath)
   ];
   for (const p of candidates) {
     try {
