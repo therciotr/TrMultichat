@@ -10,6 +10,7 @@ import {
   useMultiFileAuthState
 } from "@whiskeysockets/baileys";
 import { pgQuery } from "../utils/pgClient";
+import { ingestBaileysMessage } from "./ticketIngest";
 
 type SessionSnapshot = {
   id: number;
@@ -136,6 +137,16 @@ export async function startOrRefreshBaileysSession(opts: {
   sessions.set(whatsappId, managed);
 
   sock.ev.on("creds.update", saveCreds);
+
+  sock.ev.on("messages.upsert", async (upsert: any) => {
+    try {
+      const msgs = Array.isArray(upsert?.messages) ? upsert.messages : [];
+      for (const m of msgs) {
+        // Only ingest real messages that belong to this whatsapp session
+        await ingestBaileysMessage({ companyId, whatsappId, msg: m });
+      }
+    } catch {}
+  });
 
   sock.ev.on("connection.update", async (u: any) => {
     const connection = u?.connection;
