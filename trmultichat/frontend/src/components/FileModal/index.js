@@ -362,10 +362,6 @@ const FilesModal = ({ open, onClose, fileListId, reload }) => {
                                                                     <input
                                                                         type="file"
                                                                         className={classes.attachInputOverlay}
-                                                                        onClick={(e) => {
-                                                                            // allow re-selecting the same file
-                                                                            e.currentTarget.value = null;
-                                                                        }}
                                                                         onChange={(e) => {
                                                                             const selectedFile =
                                                                                 e.target.files && e.target.files[0];
@@ -379,6 +375,11 @@ const FilesModal = ({ open, onClose, fileListId, reload }) => {
                                                                                 ? selectedFile.name
                                                                                 : "";
                                                                             setSelectedFileNames(updatedFileNames);
+                                                                            if (selectedFile?.name) {
+                                                                                toast.info(`Arquivo selecionado: ${selectedFile.name}`);
+                                                                            }
+                                                                            // allow selecting the same file again later
+                                                                            try { e.target.value = ""; } catch (_) {}
                                                                         }}
                                                                     />
                                                                 </span>
