@@ -69,6 +69,19 @@ const compiledApp: any = (() => {
   }
 })();
 
+// Prefer legacy WhatsApp session routes (real Baileys integration) when available.
+// Our simplified TS whatsappSession routes are only a fallback for environments without legacy dist.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const legacyWhatsAppSessionRoutes: any = (() => {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const m = require(path.resolve(process.cwd(), "dist/routes/whatsappSessionRoutes"));
+    return m?.default || m;
+  } catch {
+    return null;
+  }
+})();
+
 // Global middlewares
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -373,7 +386,14 @@ app.use("/companies", companiesRoutes);
 app.use("/plans", plansRoutes);
 app.use("/helps", helpsRoutes);
 app.use("/invoices", invoicesRoutes);
-app.use("/whatsappsession", whatsappSessionRoutes);
+// WhatsApp session routes: prefer legacy (real Baileys) when present.
+if (legacyWhatsAppSessionRoutes) {
+  // legacy router already defines `/whatsappsession/:whatsappId`
+  app.use(legacyWhatsAppSessionRoutes);
+} else {
+  // fallback (DEV/limited environments)
+  app.use("/whatsappsession", whatsappSessionRoutes);
+}
 app.use("/payments/mercadopago", mercadoPagoRoutes);
 
 // Admin password reset helper (requires admin bearer)
