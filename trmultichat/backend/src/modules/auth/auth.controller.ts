@@ -13,6 +13,27 @@ import bcrypt from "bcryptjs";
 import { sendPasswordResetMail } from "../../utils/mailer";
 import { pgQuery } from "../../utils/pgClient";
 
+async function loadCompanyRow(companyId: number): Promise<{ id: number; name?: string; dueDate?: any } | null> {
+  const candidates = ['"Companies"', "companies"];
+  let lastErr: any = null;
+  for (const table of candidates) {
+    try {
+      const rows = await pgQuery<{ id: number; name?: string; dueDate?: any }>(
+        `SELECT id, name, "dueDate" as "dueDate" FROM ${table} WHERE id = $1 LIMIT 1`,
+        [companyId]
+      );
+      const row = Array.isArray(rows) && rows[0];
+      return row || null;
+    } catch (e: any) {
+      lastErr = e;
+      const msg = String(e?.message || "");
+      if (!/relation .* does not exist/i.test(msg)) throw e;
+    }
+  }
+  if (lastErr) throw lastErr;
+  return null;
+}
+
 export async function login(req: Request, res: Response) {
   const { email, password } = req.body || {};
   if (!email || !password) {
@@ -47,8 +68,8 @@ export async function login(req: Request, res: Response) {
     };
     settings = [];
   } else {
-    // Usa helpers seguros que tratam modelos não inicializados
-    company = await findByPkSafe("Company", result.user.tenantId);
+    // Carrega empresa via Postgres direto (mais confiável que modelos legacy)
+    company = await loadCompanyRow(result.user.tenantId);
     settings = await findAllSafe("Setting", {
       where: { companyId: result.user.tenantId }
     });
@@ -332,7 +353,7 @@ export async function refreshLegacy(req: Request, res: Response) {
       };
       settings = [];
     } else {
-      company = await findByPkSafe("Company", user.companyId);
+      company = await loadCompanyRow(user.companyId);
       settings = await findAllSafe("Setting", {
         where: { companyId: user.companyId }
       });

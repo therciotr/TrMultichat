@@ -277,8 +277,10 @@ const Users = () => {
     return acc;
   }, {});
 
-  const companyIds = Object.keys(grouped)
-    .map((k) => Number(k))
+  const userCompanyIds = Object.keys(grouped).map((k) => Number(k));
+  const knownCompanyIds = Object.keys(companiesById).map((k) => Number(k));
+  const companyIds = (searchParam ? userCompanyIds : Array.from(new Set([...knownCompanyIds, ...userCompanyIds])))
+    .filter((n) => Number.isFinite(n))
     .sort((a, b) => a - b);
 
   return (

@@ -41,15 +41,15 @@ export async function list(req: Request, res: Response) {
   params.push(limit);
   params.push(offset);
 
-  const sql = `
+  const sql = (table: string) => `
     SELECT id, name, email, "companyId", profile, "super"
-    FROM "Users"
+    FROM ${table}
     ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
     ORDER BY "updatedAt" DESC, id DESC
     LIMIT $${params.length - 1} OFFSET $${params.length}
   `;
 
-  const rows = await pgQuery<any>(sql, params);
+  const rows = await queryUsersTable<any>(sql, params);
   const users = Array.isArray(rows) ? rows : [];
   return res.json({ users, hasMore: users.length === limit });
 }
@@ -57,14 +57,14 @@ export async function list(req: Request, res: Response) {
 export async function find(req: Request, res: Response) {
   const id = Number(req.params.id);
   // Lê usuário diretamente do Postgres para evitar problemas com modelos legacy não inicializados
-  const rows = await pgQuery<{
+  const rows = await queryUsersTable<{
     id: number;
     name: string;
     email: string;
     companyId: number;
     profile?: string;
     super?: boolean;
-  }>('SELECT id, name, email, "companyId", profile, "super" FROM "Users" WHERE id = $1 LIMIT 1', [id]);
+  }>((table) => `SELECT id, name, email, "companyId", profile, "super" FROM ${table} WHERE id = $1 LIMIT 1`, [id]);
   const user = Array.isArray(rows) && rows[0];
   if (!user) {
     if (String(process.env.DEV_MODE || env.DEV_MODE || "false").toLowerCase() === "true") {
@@ -125,13 +125,13 @@ export async function listByCompany(req: Request, res: Response) {
     where.push(`COALESCE("super", false) = false`);
   }
 
-  const sql = `
+  const sql = (table: string) => `
     SELECT id, name, email, "companyId", profile, "super"
-    FROM "Users"
+    FROM ${table}
     ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
     ORDER BY id ASC
   `;
-  const rows = await pgQuery<any>(sql, params);
+  const rows = await queryUsersTable<any>(sql, params);
   return res.json(Array.isArray(rows) ? rows : []);
 }
 
@@ -165,11 +165,11 @@ async function isSuperFromAuth(req: Request): Promise<boolean> {
     if (!uid) return false;
     // Fallback forte: o primeiro usuário do sistema costuma ser o master (seed)
     if (uid === masterUserId) return true;
-    const rows = await pgQuery<{ email?: string; super?: boolean; companyId?: number }>(
-      'SELECT email, "super", "companyId" FROM "Users" WHERE id = $1 LIMIT 1',
+    const userRows = await queryUsersTable<{ email?: string; super?: boolean; companyId?: number }>(
+      (table) => `SELECT email, "super", "companyId" FROM ${table} WHERE id = $1 LIMIT 1`,
       [uid]
     );
-    const u = Array.isArray(rows) && rows[0];
+    const u = Array.isArray(userRows) && userRows[0];
     if (!u) return false;
     const email = String((u as any).email || "").toLowerCase().trim();
     const isMasterCompany = Number((u as any).companyId || 0) === masterCompanyId;
@@ -242,6 +242,119 @@ export async function update(req: Request, res: Response) {
   } catch (e: any) {
     return res.status(400).json({ error: true, message: e?.message || "update error" });
   }
+}
+
+export async function create(req: Request, res: Response) {
+  try {
+    const tenantId = extractTenantIdFromAuth(req.headers.authorization as string) || 0;
+    const isSuper = await isSuperFromAuth(req);
+    const isDev = String(process.env.DEV_MODE || env.DEV_MODE || "false").toLowerCase() === "true";
+    if (!tenantId && !isDev) {
+      return res.status(401).json({ error: true, message: "missing tenantId" });
+    }
+
+    const body = req.body || {};
+    const name = String(body.name || "").trim();
+    const email = String(body.email || "").trim().toLowerCase();
+    const password = String(body.password || "");
+    const profile = String(body.profile || "user").trim();
+    let companyId = Number(body.companyId || body.tenantId || tenantId || 0);
+
+    if (!name || !email || !password) {
+      return res.status(400).json({ error: true, message: "name, email and password are required" });
+    }
+
+    if (!isSuper) {
+      companyId = tenantId;
+    }
+    if (!companyId) {
+      return res.status(400).json({ error: true, message: "companyId is required" });
+    }
+
+    // email unique
+    const exists = await queryUsersTable<{ id: number }>(
+      (table) => `SELECT id FROM ${table} WHERE lower(email)=lower($1) LIMIT 1`,
+      [email]
+    );
+    if (Array.isArray(exists) && exists[0]?.id) {
+      return res.status(409).json({ error: true, message: "email already exists" });
+    }
+
+    const hash = bcrypt.hashSync(password, 10);
+    const now = new Date();
+    const inserted = await queryUsersTable<any>(
+      (table) => `
+        INSERT INTO ${table} (name, email, "companyId", profile, "passwordHash", password, super, "createdAt", "updatedAt")
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+        RETURNING id, name, email, "companyId", profile, "super"
+      `,
+      [name, email, companyId, profile, hash, hash, false, now, now]
+    );
+    const user = Array.isArray(inserted) && inserted[0];
+    return res.status(201).json(user || { ok: true });
+  } catch (e: any) {
+    return res.status(400).json({ error: true, message: e?.message || "create error" });
+  }
+}
+
+export async function remove(req: Request, res: Response) {
+  try {
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ error: true, message: "invalid user id" });
+    const tenantId = extractTenantIdFromAuth(req.headers.authorization as string) || 0;
+    const isSuper = await isSuperFromAuth(req);
+    const masterUserId = Number(process.env.MASTER_USER_ID || 1);
+    if (id === masterUserId) {
+      return res.status(403).json({ error: true, message: "cannot delete master user" });
+    }
+
+    const rows = await queryUsersTable<any>(
+      (table) => `SELECT id, "companyId", COALESCE("super", false) as super FROM ${table} WHERE id = $1 LIMIT 1`,
+      [id]
+    );
+    const target = Array.isArray(rows) && rows[0];
+    if (!target) return res.status(404).json({ error: true, message: "not found" });
+    if (!isSuper) {
+      if (tenantId && Number(target.companyId || 0) !== tenantId) {
+        return res.status(403).json({ error: true, message: "forbidden" });
+      }
+      if (Boolean(target.super)) {
+        return res.status(403).json({ error: true, message: "forbidden" });
+      }
+    }
+
+    await queryUsersTable<any>(
+      (table) => `DELETE FROM ${table} WHERE id = $1`,
+      [id]
+    );
+    return res.status(200).json({ ok: true });
+  } catch (e: any) {
+    return res.status(400).json({ error: true, message: e?.message || "delete error" });
+  }
+}
+
+async function queryUsersTable<T>(
+  sqlOrBuilder: string | ((table: string) => string),
+  params: any[]
+): Promise<T[]> {
+  const candidates = ['"Users"', "users"];
+  let lastErr: any = null;
+  for (const table of candidates) {
+    try {
+      const sql = typeof sqlOrBuilder === "function" ? sqlOrBuilder(table) : sqlOrBuilder.replace(/\\b\"Users\"\\b/g, table);
+      const rows = await pgQuery<T>(sql, params);
+      return Array.isArray(rows) ? rows : [];
+    } catch (e: any) {
+      lastErr = e;
+      const msg = String(e?.message || "");
+      // só tenta fallback quando a tabela não existe
+      if (!/relation .* does not exist/i.test(msg)) {
+        throw e;
+      }
+    }
+  }
+  if (lastErr) throw lastErr;
+  return [];
 }
 
 export async function updatePassword(req: Request, res: Response) {
