@@ -76,9 +76,11 @@ const UserModal = ({ open, onClose, userId }) => {
 		email: "",
 		password: "",
 		profile: "user",
+		companyId: "",
 	};
 
 	const { user: loggedInUser } = useContext(AuthContext);
+	const isSuper = Boolean(loggedInUser?.super) || Number(loggedInUser?.companyId || 0) === 1;
 
 	const [user, setUser] = useState(initialState);
 	const [selectedQueueIds, setSelectedQueueIds] = useState([]);
@@ -106,6 +108,18 @@ const UserModal = ({ open, onClose, userId }) => {
 	}, [userId, open]);
 
 	useEffect(() => {
+		// Modo criação: pré-seleciona a empresa do usuário logado.
+		// Para super/master, mantém selecionável; para os demais, apenas fixa e envia no payload.
+		if (!open) return;
+		if (userId) return;
+		setUser(prev => ({
+			...prev,
+			companyId: prev?.companyId || loggedInUser?.companyId || "",
+		}));
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [open, userId, loggedInUser?.companyId]);
+
+	useEffect(() => {
 		(async () => {
 			try {
 				const { data } = await api.get("/companies");
@@ -126,7 +140,14 @@ const UserModal = ({ open, onClose, userId }) => {
 	};
 
 	const handleSaveUser = async values => {
-		const userData = { ...values, whatsappId, queueIds: selectedQueueIds };
+		const effectiveCompanyId =
+			values?.companyId || loggedInUser?.companyId || user?.companyId || "";
+		const userData = {
+			...values,
+			companyId: effectiveCompanyId,
+			whatsappId,
+			queueIds: selectedQueueIds,
+		};
 		try {
 			if (userId) {
 				await api.put(`/users/${userId}`, userData);
@@ -168,23 +189,50 @@ const UserModal = ({ open, onClose, userId }) => {
 					{({ touched, errors, isSubmitting }) => (
 						<Form>
 							<DialogContent dividers>
-								<Field
-									as={TextField}
-									label="Empresa"
-									name="companyId"
-									variant="outlined"
-									margin="dense"
-									fullWidth
-									disabled
-									value={companiesById?.[user?.companyId]?.name || (user?.companyId ? `Empresa ${user.companyId}` : "-")}
-									InputProps={{
-										startAdornment: (
-											<InputAdornment position="start">
-												<BusinessIcon fontSize="small" />
-											</InputAdornment>
-										),
-									}}
-								/>
+								{!userId && isSuper ? (
+									<FormControl variant="outlined" margin="dense" fullWidth>
+										<InputLabel id="company-selection-label">Empresa</InputLabel>
+										<Field
+											as={Select}
+											labelId="company-selection-label"
+											id="company-selection"
+											name="companyId"
+											label="Empresa"
+											required
+											startAdornment={
+												<InputAdornment position="start">
+													<BusinessIcon fontSize="small" />
+												</InputAdornment>
+											}
+										>
+											{Object.values(companiesById).map((c) => (
+												<MenuItem key={c.id} value={c.id}>
+													{c.name}
+												</MenuItem>
+											))}
+										</Field>
+									</FormControl>
+								) : (
+									<TextField
+										label="Empresa"
+										variant="outlined"
+										margin="dense"
+										fullWidth
+										disabled
+										value={
+											companiesById?.[user?.companyId]?.name ||
+											companiesById?.[loggedInUser?.companyId]?.name ||
+											(user?.companyId ? `Empresa ${user.companyId}` : loggedInUser?.companyId ? `Empresa ${loggedInUser.companyId}` : "-")
+										}
+										InputProps={{
+											startAdornment: (
+												<InputAdornment position="start">
+													<BusinessIcon fontSize="small" />
+												</InputAdornment>
+											),
+										}}
+									/>
+								)}
 								<div className={classes.multFieldLine}>
 									<Field
 										as={TextField}
