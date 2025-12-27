@@ -9,6 +9,7 @@ import { errorMiddleware } from "./middleware/errorMiddleware";
 import authRoutes from "./modules/auth/auth.routes";
 import brandingRoutes from "./modules/branding/branding.routes";
 import contactsRoutes from "./modules/contacts/contacts.routes";
+import ticketsRoutes from "./modules/tickets/tickets.routes";
 import usersRoutes from "./modules/users/users.routes";
 import queueRoutes from "./modules/queue/queue.routes";
 import queueIntegrationRoutes from "./modules/queueIntegration/queueIntegration.routes";
@@ -384,6 +385,7 @@ app.post("/subscription", async (req, res) => {
 app.use("/", express.static(require("path").join(process.cwd(), "public")));
 app.use("/branding", brandingRoutes);
 app.use("/contacts", contactsRoutes);
+app.use("/tickets", ticketsRoutes);
 app.use("/users", usersRoutes);
 app.use("/queue", queueRoutes);
 app.use("/queueIntegration", queueIntegrationRoutes);

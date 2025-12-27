@@ -6,6 +6,7 @@ import {
   DisconnectReason,
   fetchLatestBaileysVersion,
   makeCacheableSignalKeyStore,
+  makeInMemoryStore,
   makeWASocket,
   useMultiFileAuthState
 } from "@whiskeysockets/baileys";
@@ -105,6 +106,7 @@ const msgRetryCounterCache = new NodeCache();
 
 type ManagedSession = {
   sock: any;
+  store?: any;
   companyId: number;
   retries: number;
 };
@@ -114,6 +116,11 @@ const sessions = new Map<number, ManagedSession>();
 export function getStoredQr(whatsappId: number): SessionSnapshot | null {
   const all = readSessionsFile();
   return all[String(whatsappId)] || null;
+}
+
+export function getSessionStore(whatsappId: number): any | null {
+  const s = sessions.get(whatsappId);
+  return s?.store || null;
 }
 
 export async function startAllBaileysSessions(): Promise<void> {
@@ -171,7 +178,10 @@ export async function startOrRefreshBaileysSession(opts: {
     generateHighQualityLinkPreview: true
   });
 
-  const managed: ManagedSession = { sock, companyId, retries: 0 };
+  const store = makeInMemoryStore({ logger });
+  store.bind(sock.ev);
+
+  const managed: ManagedSession = { sock, store, companyId, retries: 0 };
   sessions.set(whatsappId, managed);
 
   sock.ev.on("creds.update", saveCreds);
