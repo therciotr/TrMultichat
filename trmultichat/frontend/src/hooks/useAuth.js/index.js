@@ -120,20 +120,21 @@ const useAuth = () => {
       }
 
       moment.locale('pt-br');
-      const dueDate = data.user.company.dueDate;
-      const hoje = moment(moment()).format("DD/MM/yyyy");
-      const vencimento = moment(dueDate).format("DD/MM/yyyy");
+      const dueDate = data?.user?.company?.dueDate;
+      const isSuper = Boolean(data?.user?.super);
+      const dueDateValid = Boolean(dueDate && moment(dueDate).isValid());
 
-      var diff = moment(dueDate).diff(moment(moment()).format());
-
-      var before = moment(moment().format()).isBefore(dueDate);
-      var dias = moment.duration(diff).asDays();
-
-      if (before === true) {
+      // Regra: usuário master/super nunca deve ser bloqueado por vencimento no frontend.
+      // Além disso, se não há dueDate válido, não bloqueia (evita "Invalid date").
+      if (isSuper || !dueDateValid) {
         localStorage.setItem("token", JSON.stringify(data.token));
         localStorage.setItem("companyId", companyId);
         localStorage.setItem("userId", id);
-        localStorage.setItem("companyDueDate", vencimento);
+        if (dueDateValid) {
+          localStorage.setItem("companyDueDate", moment(dueDate).format("DD/MM/yyyy"));
+        } else {
+          localStorage.removeItem("companyDueDate");
+        }
         api.defaults.headers.Authorization = `Bearer ${data.token}`;
         setUser({
           ...data.user,
@@ -141,12 +142,18 @@ const useAuth = () => {
         });
         setIsAuth(true);
         toast.success(i18n.t("auth.toasts.success"));
-        if (Math.round(dias) < 5) {
-          toast.warn(`Sua assinatura vence em ${Math.round(dias)} ${Math.round(dias) === 1 ? 'dia' : 'dias'} `);
+        // Aviso de vencimento só faz sentido quando existe dueDate válido e não é super
+        if (dueDateValid && !isSuper) {
+          const diff = moment(dueDate).diff(moment(moment()).format());
+          const dias = moment.duration(diff).asDays();
+          if (Math.round(dias) < 5) {
+            toast.warn(`Sua assinatura vence em ${Math.round(dias)} ${Math.round(dias) === 1 ? 'dia' : 'dias'} `);
+          }
         }
         history.push("/");
         setLoading(false);
       } else {
+        const vencimento = dueDateValid ? moment(dueDate).format("DD/MM/yyyy") : "—";
         toastError(`Opss! Sua assinatura venceu ${vencimento}.
 Entre em contato com o Suporte para mais informações! `);
         setLoading(false);
