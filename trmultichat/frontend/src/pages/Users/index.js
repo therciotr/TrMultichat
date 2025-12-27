@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useReducer } from "react";
+import React, { useState, useEffect, useReducer, useContext } from "react";
 import { toast } from "react-toastify";
 
 import { makeStyles } from "@material-ui/core/styles";
@@ -34,6 +34,7 @@ import UserModal from "../../components/UserModal";
 import ConfirmationModal from "../../components/ConfirmationModal";
 import toastError from "../../errors/toastError";
 import { socketConnection } from "../../services/socket";
+import { AuthContext } from "../../context/Auth/AuthContext";
 
 const reducer = (state, action) => {
   if (action.type === "LOAD_USERS") {
@@ -155,6 +156,11 @@ const useStyles = makeStyles((theme) => ({
 
 const Users = () => {
   const classes = useStyles();
+  const { user: loggedInUser } = useContext(AuthContext);
+  const isSuper = Boolean(loggedInUser?.super);
+  const currentCompanyId = Number(
+    loggedInUser?.companyId || localStorage.getItem("companyId") || 0
+  );
 
   const [loading, setLoading] = useState(false);
   const [pageNumber, setPageNumber] = useState(1);
@@ -279,9 +285,14 @@ const Users = () => {
 
   const userCompanyIds = Object.keys(grouped).map((k) => Number(k));
   const knownCompanyIds = Object.keys(companiesById).map((k) => Number(k));
-  const companyIds = (searchParam ? userCompanyIds : Array.from(new Set([...knownCompanyIds, ...userCompanyIds])))
-    .filter((n) => Number.isFinite(n))
-    .sort((a, b) => a - b);
+  const companyIds = !isSuper && currentCompanyId
+    ? [currentCompanyId]
+    : (searchParam
+        ? userCompanyIds
+        : Array.from(new Set([...knownCompanyIds, ...userCompanyIds]))
+      )
+        .filter((n) => Number.isFinite(n))
+        .sort((a, b) => a - b);
 
   return (
     <MainContainer>
