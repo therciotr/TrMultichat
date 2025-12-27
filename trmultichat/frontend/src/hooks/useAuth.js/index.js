@@ -184,10 +184,11 @@ const useAuth = () => {
       const dueDate = data?.user?.company?.dueDate;
       const isSuper = Boolean(data?.user?.super);
       const dueDateValid = Boolean(dueDate && moment(dueDate).isValid());
+      const isActiveByDueDate = dueDateValid ? moment().isBefore(dueDate) : true;
 
       // Regra: usuário master/super nunca deve ser bloqueado por vencimento no frontend.
       // Além disso, se não há dueDate válido, não bloqueia (evita "Invalid date").
-      if (isSuper || !dueDateValid) {
+      if (isSuper || !dueDateValid || isActiveByDueDate) {
         localStorage.setItem("token", JSON.stringify(data.token));
         if (data.refreshToken) {
           localStorage.setItem("refreshToken", JSON.stringify(data.refreshToken));
