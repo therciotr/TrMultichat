@@ -229,7 +229,8 @@ router.get("/", async (req, res) => {
     return res.status(401).json({ error: true, message: "missing tenantId" });
   }
 
-  const sessions = readDevSessions();
+  // IMPORTANT: sessions file is DEV-only. In production it can override real Baileys QR codes stored in DB.
+  const sessions = isDevMode() ? readDevSessions() : {};
 
   // Prefer SQL direto (mais robusto em produção)
   try {
@@ -282,7 +283,8 @@ router.get("/:id", async (req, res) => {
     return res.status(401).json({ error: true, message: "missing tenantId" });
   }
 
-  const sessions = readDevSessions();
+  // IMPORTANT: sessions file is DEV-only. In production it can override real Baileys QR codes stored in DB.
+  const sessions = isDevMode() ? readDevSessions() : {};
   const sess = sessions[String(id)] || {};
 
   try {
