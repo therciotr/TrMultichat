@@ -371,6 +371,17 @@ export async function refreshLegacy(req: Request, res: Response) {
       ? settings.map((s: any) => ({ key: s.key, value: String(s.value) }))
       : [];
 
+    const isAdmin = Boolean((user as any).admin);
+    const profile = String(
+      (user as any).profile || (isAdmin ? "admin" : "user")
+    );
+    const masterCompanyId = Number(process.env.MASTER_COMPANY_ID || 1);
+    const masterEmail = String(process.env.ADMIN_EMAIL || "thercio@trtecnologias.com.br")
+      .toLowerCase()
+      .trim();
+    const email = String((user as any).email || "").toLowerCase().trim();
+    const isSuper = Boolean((user as any).super) || Number((user as any).companyId || 0) === masterCompanyId || email === masterEmail;
+
     const newToken = jwt.sign(
       {
         userId: user.id,
@@ -382,17 +393,6 @@ export async function refreshLegacy(req: Request, res: Response) {
       env.JWT_SECRET,
       { expiresIn: "15m" }
     );
-
-    const isAdmin = Boolean((user as any).admin);
-    const profile = String(
-      (user as any).profile || (isAdmin ? "admin" : "user")
-    );
-    const masterCompanyId = Number(process.env.MASTER_COMPANY_ID || 1);
-    const masterEmail = String(process.env.ADMIN_EMAIL || "thercio@trtecnologias.com.br")
-      .toLowerCase()
-      .trim();
-    const email = String((user as any).email || "").toLowerCase().trim();
-    const isSuper = Boolean((user as any).super) || Number((user as any).companyId || 0) === masterCompanyId || email === masterEmail;
     return res.json({
       token: newToken,
       user: {
