@@ -216,7 +216,7 @@ const FilesModal = ({ open, onClose, fileListId, reload }) => {
         try {
             const base = (api && api.defaults && api.defaults.baseURL) ? api.defaults.baseURL : "";
             if (!filename) return "";
-            return `${String(base).replace(/\\/+$/, "")}/uploads/files/${filename}`;
+            return `${String(base).replace(/\/+$/, "")}/uploads/files/${filename}`;
         } catch (_) {
             return "";
         }
