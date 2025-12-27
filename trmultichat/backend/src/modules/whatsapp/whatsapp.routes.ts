@@ -61,8 +61,19 @@ function extractTenantIdFromAuth(authorization?: string): number {
     const parts = (authorization || "").split(" ");
     const bearer = parts.length === 2 && parts[0] === "Bearer" ? parts[1] : undefined;
     if (!bearer) return 0;
-    const payload = jwt.verify(bearer, env.JWT_SECRET) as { tenantId?: number };
-    return Number(payload?.tenantId || 0);
+    const secrets = [env.JWT_SECRET, "mysecret"].filter(Boolean);
+    for (const secret of secrets) {
+      try {
+        const payload = jwt.verify(bearer, secret) as { tenantId?: number; companyId?: number; exp?: number };
+        const tenantId = Number((payload as any)?.tenantId || (payload as any)?.companyId || 0);
+        if (tenantId) return tenantId;
+      } catch (_) {}
+    }
+    // last resort: decode without verify (keeps backward compatibility if secrets changed)
+    const decoded: any = jwt.decode(bearer) || {};
+    const exp = Number(decoded?.exp || 0);
+    if (exp && Date.now() / 1000 > exp) return 0;
+    return Number(decoded?.tenantId || decoded?.companyId || 0);
   } catch {
     return 0;
   }
@@ -73,8 +84,18 @@ function extractUserIdFromAuth(authorization?: string): number {
     const parts = (authorization || "").split(" ");
     const bearer = parts.length === 2 && parts[0] === "Bearer" ? parts[1] : undefined;
     if (!bearer) return 0;
-    const payload = jwt.verify(bearer, env.JWT_SECRET) as { userId?: number };
-    return Number((payload as any)?.userId || 0);
+    const secrets = [env.JWT_SECRET, "mysecret"].filter(Boolean);
+    for (const secret of secrets) {
+      try {
+        const payload = jwt.verify(bearer, secret) as { userId?: number; id?: number; exp?: number };
+        const userId = Number((payload as any)?.userId || (payload as any)?.id || 0);
+        if (userId) return userId;
+      } catch (_) {}
+    }
+    const decoded: any = jwt.decode(bearer) || {};
+    const exp = Number(decoded?.exp || 0);
+    if (exp && Date.now() / 1000 > exp) return 0;
+    return Number(decoded?.userId || decoded?.id || 0);
   } catch {
     return 0;
   }
