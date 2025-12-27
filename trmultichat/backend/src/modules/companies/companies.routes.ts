@@ -46,6 +46,77 @@ type CompanyProfile = {
   notes?: string;
 };
 
+async function getCompanyProfileFromSettings(companyId: number): Promise<any> {
+  // Primeiro tenta Postgres direto (robusto em produção)
+  try {
+    const rows = await pgQuery<{ value: string }>(
+      'SELECT value FROM "Settings" WHERE "companyId" = $1 AND "key" = $2 LIMIT 1',
+      [companyId, "companyProfile"]
+    );
+    const row = Array.isArray(rows) && rows[0];
+    if (!row || row.value === undefined || row.value === null) return {};
+    try {
+      return JSON.parse(String(row.value));
+    } catch {
+      return {};
+    }
+  } catch {
+    // fallback: algumas instalações podem ter tabela/colunas com outra capitalização
+    try {
+      const rows2 = await pgQuery<{ value: string }>(
+        'SELECT value FROM settings WHERE "companyId" = $1 AND key = $2 LIMIT 1',
+        [companyId, "companyProfile"]
+      );
+      const row2 = Array.isArray(rows2) && rows2[0];
+      if (!row2 || row2.value === undefined || row2.value === null) return {};
+      try {
+        return JSON.parse(String(row2.value));
+      } catch {
+        return {};
+      }
+    } catch {
+      return null; // sinaliza que pgQuery falhou de vez
+    }
+  }
+}
+
+async function saveCompanyProfileToSettings(companyId: number, profile: any): Promise<boolean> {
+  const value = JSON.stringify(profile || {});
+
+  // Postgres direto (preferencial)
+  try {
+    const updated = await pgQuery<{ id: number }>(
+      'UPDATE "Settings" SET value = $1, "updatedAt" = now() WHERE "companyId" = $2 AND "key" = $3 RETURNING id',
+      [value, companyId, "companyProfile"]
+    );
+    const okUpdate = Array.isArray(updated) && updated.length > 0;
+    if (okUpdate) return true;
+
+    await pgQuery(
+      'INSERT INTO "Settings" ("key","value","companyId","createdAt","updatedAt") VALUES ($1,$2,$3,now(),now())',
+      ["companyProfile", value, companyId]
+    );
+    return true;
+  } catch {
+    // fallback lower-case
+    try {
+      const updated2 = await pgQuery<{ id: number }>(
+        'UPDATE settings SET value = $1, "updatedAt" = now() WHERE "companyId" = $2 AND key = $3 RETURNING id',
+        [value, companyId, "companyProfile"]
+      );
+      const okUpdate2 = Array.isArray(updated2) && updated2.length > 0;
+      if (okUpdate2) return true;
+      await pgQuery(
+        'INSERT INTO settings (key,value,"companyId","createdAt","updatedAt") VALUES ($1,$2,$3,now(),now())',
+        ["companyProfile", value, companyId]
+      );
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
+
 async function ensureInitialInvoicesForCompany(
   companyId: number,
   planId?: number | null
@@ -407,9 +478,15 @@ router.get("/:id/profile", async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!id) return res.status(400).json({ error: true, message: "invalid company id" });
+    const pgProfile = await getCompanyProfileFromSettings(id);
+    if (pgProfile !== null) {
+      return res.json({ companyId: id, profile: (pgProfile || {}) as CompanyProfile });
+    }
+
+    // Fallback legado (se pgQuery indisponível por algum motivo)
     const Setting = getLegacyModel("Setting");
     if (!Setting || typeof Setting.findOne !== "function") {
-      return res.status(501).json({ error: true, message: "settings not available" });
+      return res.json({ companyId: id, profile: {} as CompanyProfile });
     }
     const row = await Setting.findOne({ where: { companyId: id, key: "companyProfile" } });
     if (!row) return res.json({ companyId: id, profile: {} as CompanyProfile });
@@ -431,11 +508,15 @@ router.put("/:id/profile", async (req, res) => {
   try {
     const id = Number(req.params.id);
     if (!id) return res.status(400).json({ error: true, message: "invalid company id" });
+    const profile = (req.body && (req.body.profile as CompanyProfile)) || {};
+    const ok = await saveCompanyProfileToSettings(id, profile);
+    if (ok) return res.json({ ok: true, companyId: id, profile });
+
+    // Fallback legado (se pgQuery falhar)
     const Setting = getLegacyModel("Setting");
     if (!Setting || typeof Setting.findOne !== "function") {
       return res.status(501).json({ error: true, message: "settings not available" });
     }
-    const profile = (req.body && (req.body.profile as CompanyProfile)) || {};
     const value = JSON.stringify(profile || {});
     let row = await Setting.findOne({ where: { companyId: id, key: "companyProfile" } });
     if (row) {
