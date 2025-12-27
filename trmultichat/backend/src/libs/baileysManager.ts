@@ -191,19 +191,36 @@ export async function startOrRefreshBaileysSession(opts: {
   };
   let sock: any;
   try {
+    // some versions use `authState` instead of `auth`
     sock = makeWASocket({
       ...sockOptsBase,
-      auth: {
+      authState: {
         creds: (state as any).creds,
         keys: makeCacheableSignalKeyStore((state as any).keys, logger)
       }
-    });
-  } catch (e: any) {
-    // fallback (algumas versões esperam `auth: state`)
-    sock = makeWASocket({
-      ...sockOptsBase,
-      auth: state as any
-    });
+    } as any);
+  } catch (e1: any) {
+    try {
+      sock = makeWASocket({
+        ...sockOptsBase,
+        auth: {
+          creds: (state as any).creds,
+          keys: makeCacheableSignalKeyStore((state as any).keys, logger)
+        }
+      } as any);
+    } catch (e2: any) {
+      try {
+        sock = makeWASocket({
+          ...sockOptsBase,
+          authState: state as any
+        } as any);
+      } catch (e3: any) {
+        sock = makeWASocket({
+          ...sockOptsBase,
+          auth: state as any
+        } as any);
+      }
+    }
   }
 
   // Some Baileys builds export makeInMemoryStore as default-only; require it to be safe.
