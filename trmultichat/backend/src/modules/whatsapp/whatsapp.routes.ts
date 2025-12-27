@@ -146,6 +146,8 @@ router.get("/", async (req, res) => {
     return res.status(401).json({ error: true, message: "missing tenantId" });
   }
 
+  const sessions = readDevSessions();
+
   // Prefer SQL direto (mais robusto em produção)
   try {
     const rows = await queryWhatsappsTable<any>(
@@ -153,7 +155,13 @@ router.get("/", async (req, res) => {
         `SELECT * FROM ${table} WHERE "companyId" = $1 ORDER BY id ASC`,
       [companyId]
     );
-    return res.json(Array.isArray(rows) ? rows : []);
+    const list = Array.isArray(rows) ? rows : [];
+    // Enriquecer com qrcode se existir (para polling/QR modal)
+    const enriched = list.map((w: any) => {
+      const sess = sessions[String(w.id)] || {};
+      return { ...w, qrcode: sess.qrcode || w.qrcode || "" };
+    });
+    return res.json(enriched);
   } catch (_) {
     // Legacy: try to read from DB
     const listDb = await findAllSafe("Whatsapp", {
@@ -161,7 +169,12 @@ router.get("/", async (req, res) => {
       order: [["id", "ASC"]],
     });
     // session param is ignored in this minimal implementation
-    return res.json(listDb);
+    const list = Array.isArray(listDb) ? listDb : [];
+    const enriched = list.map((w: any) => {
+      const sess = sessions[String(w.id)] || {};
+      return { ...w, qrcode: sess.qrcode || w.qrcode || "" };
+    });
+    return res.json(enriched);
   }
 });
 
@@ -183,6 +196,9 @@ router.get("/:id", async (req, res) => {
     return res.status(401).json({ error: true, message: "missing tenantId" });
   }
 
+  const sessions = readDevSessions();
+  const sess = sessions[String(id)] || {};
+
   try {
     const rows = await queryWhatsappsTable<any>(
       (table) => `SELECT * FROM ${table} WHERE id = $1 AND "companyId" = $2 LIMIT 1`,
@@ -190,11 +206,11 @@ router.get("/:id", async (req, res) => {
     );
     const rec = rows && rows[0];
     if (!rec) return res.status(404).json({ error: true, message: "not found" });
-    return res.json(rec);
+    return res.json({ ...rec, qrcode: sess.qrcode || rec.qrcode || "" });
   } catch (_) {
     const record = await findByPkSafe("Whatsapp", id);
     if (!record) return res.status(404).json({ error: true, message: "not found" });
-    return res.json(record);
+    return res.json({ ...record, qrcode: sess.qrcode || record.qrcode || "" });
   }
 });
 
