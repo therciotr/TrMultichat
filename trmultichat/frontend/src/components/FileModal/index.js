@@ -22,6 +22,7 @@ import {
     TextField
 } from "@material-ui/core";
 import IconButton from "@material-ui/core/IconButton";
+import Chip from "@material-ui/core/Chip";
 import Typography from "@material-ui/core/Typography";
 import DeleteOutlineIcon from "@material-ui/icons/DeleteOutline";
 import AttachFileIcon from "@material-ui/icons/AttachFile";
@@ -133,6 +134,12 @@ const FilesModal = ({ open, onClose, fileListId, reload }) => {
             toastError(err);
         }
     }, [fileListId, open]);
+
+    useEffect(() => {
+        if (open) {
+            setSelectedFileNames([]);
+        }
+    }, [open]);
 
     const handleClose = () => {
         setFileList(initialState);
@@ -290,11 +297,16 @@ const FilesModal = ({ open, onClose, fileListId, reload }) => {
                                                                     name={`options[${index}].file`}
                                                                     id={`file-upload-${index}`}
                                                                 />
-                                                                <label htmlFor={`file-upload-${index}`}>
-                                                                    <IconButton component="span">
-                                                                        <AttachFileIcon />
-                                                                    </IconButton>
-                                                                </label>
+                                                                <IconButton
+                                                                    component="span"
+                                                                    onClick={() => {
+                                                                        const el = document.getElementById(`file-upload-${index}`);
+                                                                        if (el) el.click();
+                                                                    }}
+                                                                    title="Anexar arquivo"
+                                                                >
+                                                                    <AttachFileIcon />
+                                                                </IconButton>
                                                                 <IconButton
                                                                     size="small"
                                                                     onClick={() => remove(index)}
@@ -303,7 +315,23 @@ const FilesModal = ({ open, onClose, fileListId, reload }) => {
                                                                 </IconButton>    
                                                             </Grid>
                                                             <Grid xs={12} md={12} item className={classes.fileName}>
-                                                                {info.path ? info.path : (selectedFileNames[index] || "")}
+                                                                {(selectedFileNames[index] || info?.path) ? (
+                                                                    <Chip
+                                                                        size="small"
+                                                                        icon={<AttachFileIcon />}
+                                                                        label={selectedFileNames[index] || info.path}
+                                                                        style={{
+                                                                            maxWidth: "100%",
+                                                                            justifyContent: "flex-start",
+                                                                            background: "rgba(11, 76, 70, 0.06)",
+                                                                            color: "var(--tr-primary)",
+                                                                        }}
+                                                                    />
+                                                                ) : (
+                                                                    <span style={{ opacity: 0.65 }}>
+                                                                        Nenhum arquivo selecionado
+                                                                    </span>
+                                                                )}
                                                             </Grid> 
                                                         </Grid>                                                    
                                                 </div>                     
