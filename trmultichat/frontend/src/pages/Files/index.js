@@ -8,14 +8,10 @@ import React, {
 import { toast } from "react-toastify";
 
 import { makeStyles } from "@material-ui/core/styles";
+import { Box, Chip, Grid, Tooltip, Typography } from "@material-ui/core";
 import Paper from "@material-ui/core/Paper";
 // removed Button import after migrating to TrButton
 import { TrButton } from "../../components/ui";
-import Table from "@material-ui/core/Table";
-import TableBody from "@material-ui/core/TableBody";
-import TableCell from "@material-ui/core/TableCell";
-import TableHead from "@material-ui/core/TableHead";
-import TableRow from "@material-ui/core/TableRow";
 import IconButton from "@material-ui/core/IconButton";
 import SearchIcon from "@material-ui/icons/Search";
 import TextField from "@material-ui/core/TextField";
@@ -23,6 +19,7 @@ import InputAdornment from "@material-ui/core/InputAdornment";
 
 import DeleteOutlineIcon from "@material-ui/icons/DeleteOutline";
 import EditIcon from "@material-ui/icons/Edit";
+import AttachFileIcon from "@material-ui/icons/AttachFile";
 
 import MainContainer from "../../components/MainContainer";
 import MainHeader from "../../components/MainHeader";
@@ -31,7 +28,6 @@ import Title from "../../components/Title";
 
 import api from "../../services/api";
 import { i18n } from "../../translate/i18n";
-import TableRowSkeleton from "../../components/TableRowSkeleton";
 import FileModal from "../../components/FileModal";
 import ConfirmationModal from "../../components/ConfirmationModal";
 import toastError from "../../errors/toastError";
@@ -67,7 +63,7 @@ const reducer = (state, action) => {
         }
     }
 
-    if (action.type === "DELETE_TAG") {
+    if (action.type === "DELETE_FILE") {
         const fileListId = action.payload;
 
         const fileListIndex = state.findIndex((s) => s.id === fileListId);
@@ -85,9 +81,57 @@ const reducer = (state, action) => {
 const useStyles = makeStyles((theme) => ({
     mainPaper: {
         flex: 1,
-        padding: theme.spacing(1),
-        overflowY: "scroll",
+        padding: theme.spacing(2),
+        overflowY: "auto",
         ...theme.scrollbarStyles,
+    },
+    headerRow: {
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: theme.spacing(1),
+    },
+    card: {
+        padding: theme.spacing(2),
+        borderRadius: 14,
+        border: "1px solid rgba(11, 76, 70, 0.18)",
+        background:
+            "linear-gradient(180deg, rgba(11, 76, 70, 0.045), rgba(255,255,255,1) 42%)",
+        height: "100%",
+        display: "flex",
+        flexDirection: "column",
+        gap: theme.spacing(1.25),
+        minWidth: 0,
+        cursor: "pointer",
+    },
+    cardTitle: {
+        fontWeight: 800,
+        color: "var(--tr-primary)",
+        minWidth: 0,
+    },
+    cardActions: {
+        display: "flex",
+        alignItems: "center",
+        gap: 4,
+        flexShrink: 0,
+    },
+    metaRow: {
+        display: "flex",
+        alignItems: "center",
+        flexWrap: "wrap",
+        gap: theme.spacing(1),
+    },
+    clamp2: {
+        display: "-webkit-box",
+        WebkitBoxOrient: "vertical",
+        WebkitLineClamp: 2,
+        overflow: "hidden",
+        wordBreak: "break-word",
+    },
+    emptyState: {
+        padding: theme.spacing(4),
+        textAlign: "center",
+        color: theme.palette.text.secondary,
     },
 }));
 
@@ -137,11 +181,11 @@ const FileLists = () => {
 
         socket.on(`company-${user.companyId}-file`, (data) => {
             if (data.action === "update" || data.action === "create") {
-                dispatch({ type: "UPDATE_FILES", payload: data.files });
+                dispatch({ type: "UPDATE_FILES", payload: data.files || data.file || data.record });
             }
 
             if (data.action === "delete") {
-                dispatch({ type: "DELETE_USER", payload: +data.fileId });
+                dispatch({ type: "DELETE_FILE", payload: +data.fileId });
             }
         });
 
@@ -197,12 +241,18 @@ const FileLists = () => {
         }
     };
 
+    const getOptionsCount = (fileList) => {
+        const opts = fileList?.options;
+        if (Array.isArray(opts)) return opts.length;
+        return 0;
+    };
+
     return (
         <MainContainer>
             <ConfirmationModal
                 title={deletingFileList && `${i18n.t("files.confirmationModal.deleteTitle")}`}
                 open={confirmModalOpen}
-                onClose={setConfirmModalOpen}
+                onClose={() => setConfirmModalOpen(false)}
                 onConfirm={() => handleDeleteFileList(deletingFileList.id)}
             >
                 {i18n.t("files.confirmationModal.deleteMessage")}
@@ -240,43 +290,93 @@ const FileLists = () => {
                 variant="outlined"
                 onScroll={handleScroll}
             >
-        <Table size="small">
-          <TableHead style={{ backgroundColor: 'rgba(11, 76, 70, 0.06)' }}>
-                        <TableRow>
-              <TableCell align="center" style={{ color: 'var(--tr-primary)', fontWeight: 600 }}>{i18n.t("files.table.name")}</TableCell>
-                            <TableCell align="center">
-                                {i18n.t("files.table.actions")}
-                            </TableCell>
-                        </TableRow>
-                    </TableHead>
-                    <TableBody>
-                        <>
-                            {files.map((fileList) => (
-                                <TableRow key={fileList.id}>
-                                    <TableCell align="center">
-                                        {fileList.name}
-                                    </TableCell>
-                                    <TableCell align="center">
-                                        <IconButton size="small" onClick={() => handleEditFileList(fileList)}>
-                                            <EditIcon />
-                                        </IconButton>
+                {loading && (
+                    <Box className={classes.emptyState}>
+                        <Typography variant="body2">Carregando arquivos...</Typography>
+                    </Box>
+                )}
 
-                                        <IconButton
-                                            size="small"
-                                            onClick={(e) => {
-                                                setConfirmModalOpen(true);
-                                                setDeletingFileList(fileList);
-                                            }}
-                                        >
-                                            <DeleteOutlineIcon />
-                                        </IconButton>
-                                    </TableCell>
-                                </TableRow>
-                            ))}
-                            {loading && <TableRowSkeleton columns={4} />}
-                        </>
-                    </TableBody>
-                </Table>
+                {!loading && files.length === 0 && (
+                    <Box className={classes.emptyState}>
+                        <Typography variant="h6" style={{ fontWeight: 800, color: "var(--tr-primary)" }}>
+                            Nenhum arquivo cadastrado
+                        </Typography>
+                        <Typography variant="body2" style={{ marginTop: 8 }}>
+                            Clique em <b>Adicionar</b> para criar sua primeira lista de arquivos.
+                        </Typography>
+                        <Box style={{ marginTop: 16, display: "flex", justifyContent: "center" }}>
+                            <TrButton onClick={handleOpenFileListModal}>
+                                {i18n.t("files.buttons.add")}
+                            </TrButton>
+                        </Box>
+                    </Box>
+                )}
+
+                {!loading && files.length > 0 && (
+                    <Grid container spacing={2}>
+                        {files.map((fileList) => {
+                            const optionsCount = getOptionsCount(fileList);
+                            return (
+                                <Grid key={fileList.id} item xs={12} sm={6} md={4} lg={3}>
+                                    <Paper
+                                        className={classes.card}
+                                        variant="outlined"
+                                        onClick={() => handleEditFileList(fileList)}
+                                    >
+                                        <div className={classes.headerRow}>
+                                            <Box style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                                                <AttachFileIcon style={{ color: "var(--tr-primary)" }} />
+                                                <Typography className={classes.cardTitle} variant="subtitle1" noWrap>
+                                                    {fileList.name}
+                                                </Typography>
+                                            </Box>
+                                            <div className={classes.cardActions} onClick={(e) => e.stopPropagation()}>
+                                                <Tooltip title="Editar">
+                                                    <IconButton size="small" onClick={() => handleEditFileList(fileList)}>
+                                                        <EditIcon />
+                                                    </IconButton>
+                                                </Tooltip>
+                                                <Tooltip title="Excluir">
+                                                    <IconButton
+                                                        size="small"
+                                                        onClick={() => {
+                                                            setConfirmModalOpen(true);
+                                                            setDeletingFileList(fileList);
+                                                        }}
+                                                    >
+                                                        <DeleteOutlineIcon />
+                                                    </IconButton>
+                                                </Tooltip>
+                                            </div>
+                                        </div>
+
+                                        <div className={classes.metaRow}>
+                                            <Chip
+                                                size="small"
+                                                label={`Itens: ${optionsCount}`}
+                                                style={{
+                                                    background: "rgba(11, 76, 70, 0.08)",
+                                                    color: "var(--tr-primary)",
+                                                    fontWeight: 700,
+                                                }}
+                                            />
+                                            <Chip size="small" label={`ID: ${fileList.id}`} />
+                                        </div>
+
+                                        <Box style={{ marginTop: 4 }}>
+                                            <Typography variant="caption" color="textSecondary" style={{ fontWeight: 700 }}>
+                                                Mensagem
+                                            </Typography>
+                                            <Typography variant="body2" className={classes.clamp2}>
+                                                {fileList.message || "-"}
+                                            </Typography>
+                                        </Box>
+                                    </Paper>
+                                </Grid>
+                            );
+                        })}
+                    </Grid>
+                )}
             </Paper>
         </MainContainer>
     );

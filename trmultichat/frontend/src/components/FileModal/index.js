@@ -11,7 +11,6 @@ import { toast } from "react-toastify";
 
 import {
     Box,
-    Button,
     CircularProgress,
     Dialog,
     DialogActions,
@@ -26,6 +25,7 @@ import IconButton from "@material-ui/core/IconButton";
 import Typography from "@material-ui/core/Typography";
 import DeleteOutlineIcon from "@material-ui/icons/DeleteOutline";
 import AttachFileIcon from "@material-ui/icons/AttachFile";
+import AddCircleOutlineIcon from "@material-ui/icons/AddCircleOutline";
 
 import { green } from "@material-ui/core/colors";
 
@@ -34,6 +34,7 @@ import { i18n } from "../../translate/i18n";
 import api from "../../services/api";
 import toastError from "../../errors/toastError";
 import { AuthContext } from "../../context/Auth/AuthContext";
+import { TrButton } from "../ui";
 
 const useStyles = makeStyles(theme => ({
     root: {
@@ -72,11 +73,29 @@ const useStyles = makeStyles(theme => ({
     },
     formControl: {
         margin: theme.spacing(1),
-        minWidth: 2000,
+        minWidth: 120,
     },
     colorAdorment: {
         width: 20,
         height: 20,
+    },
+    optionRow: {
+        width: "100%",
+        padding: theme.spacing(1),
+        borderRadius: 12,
+        border: "1px solid rgba(11, 76, 70, 0.14)",
+        background: "rgba(11, 76, 70, 0.03)",
+    },
+    optionActions: {
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "flex-end",
+        gap: 6,
+    },
+    fileName: {
+        fontSize: 12,
+        color: theme.palette.text.secondary,
+        wordBreak: "break-word",
     },
 }));
 
@@ -91,7 +110,6 @@ const FileListSchema = Yup.object().shape({
 const FilesModal = ({ open, onClose, fileListId, reload }) => {
     const classes = useStyles();
     const { user } = useContext(AuthContext);
-    const [ files, setFiles ] = useState([]);
     const [selectedFileNames, setSelectedFileNames] = useState([]);
 
 
@@ -118,7 +136,6 @@ const FilesModal = ({ open, onClose, fileListId, reload }) => {
 
     const handleClose = () => {
         setFileList(initialState);
-        setFiles([]);
         onClose();
     };
 
@@ -139,7 +156,6 @@ const FilesModal = ({ open, onClose, fileListId, reload }) => {
       
               try {
                 const { data } = await api.post(`/files/uploadList/${id}`, formData);
-                setFiles([]);
                 return data;
               } catch (err) {
                 toastError(err);
@@ -192,7 +208,7 @@ const FilesModal = ({ open, onClose, fileListId, reload }) => {
                         }, 400);
                     }}
                 >
-                    {({ touched, errors, isSubmitting, values }) => (
+                    {({ touched, errors, isSubmitting, values, setFieldValue }) => (
                         <Form>
                             <DialogContent dividers>
                                 <div className={classes.multFieldLine}>
@@ -244,7 +260,7 @@ const FilesModal = ({ open, onClose, fileListId, reload }) => {
                                                         className={classes.extraAttr}
                                                         key={`${index}-info`}
                                                     >
-                                                        <Grid container  spacing={0}>
+                                                        <Grid container spacing={1} className={classes.optionRow}>
                                                             <Grid xs={6} md={10} item> 
                                                                 <Field
                                                                     as={TextField}
@@ -258,15 +274,12 @@ const FilesModal = ({ open, onClose, fileListId, reload }) => {
                                                                     className={classes.textField}
                                                                 />
                                                             </Grid>     
-                                                            <Grid xs={2} md={2} item style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
+                                                            <Grid xs={6} md={2} item className={classes.optionActions}>
                                                                 <input
                                                                     type="file"
                                                                     onChange={(e) => {
                                                                         const selectedFile = e.target.files[0];
-                                                                        const updatedOptions = [...values.options];                                                                
-                                                                        updatedOptions[index].file = selectedFile;
-                                                                       
-                                                                        setFiles('options', updatedOptions);
+                                                                        setFieldValue(`options[${index}].file`, selectedFile);
 
                                                                         // Atualize a lista selectedFileNames para o campo específico
                                                                         const updatedFileNames = [...selectedFileNames];
@@ -289,43 +302,39 @@ const FilesModal = ({ open, onClose, fileListId, reload }) => {
                                                                     <DeleteOutlineIcon />
                                                                 </IconButton>    
                                                             </Grid>
-                                                            <Grid xs={12} md={12} item>
-                                                                {info.path? info.path : selectedFileNames[index]}                               
+                                                            <Grid xs={12} md={12} item className={classes.fileName}>
+                                                                {info.path ? info.path : (selectedFileNames[index] || "")}
                                                             </Grid> 
                                                         </Grid>                                                    
                                                 </div>                     
                                                                                            
                                                 ))}
                                             <div className={classes.extraAttr}>
-                                                <Button
+                                                <TrButton
                                                     style={{ flex: 1, marginTop: 8 }}
-                                                    variant="outlined"
-                                                    color="primary"
-                                                    onClick={() => {push({ name: "", path: ""});
-                                                    setSelectedFileNames([...selectedFileNames, ""]);
-                                                }}
+                                                    onClick={() => {
+                                                        push({ name: "", path: "" });
+                                                        setSelectedFileNames([...selectedFileNames, ""]);
+                                                    }}
+                                                    startIcon={<AddCircleOutlineIcon />}
                                                 >
-                                                    {`+ ${i18n.t("fileModal.buttons.fileOptions")}`}
-                                                </Button>
+                                                    {i18n.t("fileModal.buttons.fileOptions")}
+                                                </TrButton>
                                             </div>
                                         </>
                                     )}
                                 </FieldArray>
                             </DialogContent>
                             <DialogActions>
-                                <Button
+                                <TrButton
                                     onClick={handleClose}
-                                    color="secondary"
                                     disabled={isSubmitting}
-                                    variant="outlined"
                                 >
                                     {i18n.t("fileModal.buttons.cancel")}
-                                </Button>
-                                <Button
+                                </TrButton>
+                                <TrButton
                                     type="submit"
-                                    color="primary"
                                     disabled={isSubmitting}
-                                    variant="contained"
                                     className={classes.btnWrapper}
                                 >
                                     {fileListId
@@ -337,7 +346,7 @@ const FilesModal = ({ open, onClose, fileListId, reload }) => {
                                             className={classes.buttonProgress}
                                         />
                                     )}
-                                </Button>
+                                </TrButton>
                             </DialogActions>
                         </Form>
                     )}
