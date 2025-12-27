@@ -335,25 +335,28 @@ const FilesModal = ({ open, onClose, fileListId, reload }) => {
                                                                 />
                                                             </Grid>     
                                                             <Grid xs={6} md={2} item className={classes.optionActions}>
-                                                                <TrButton
-                                                                    className={classes.attachBtn}
-                                                                    startIcon={<CloudUploadIcon />}
-                                                                    component="label"
-                                                                >
-                                                                    Anexar
-                                                                    <input
-                                                                        type="file"
-                                                                        className={classes.hiddenFileInput}
-                                                                        onChange={(e) => {
-                                                                            const selectedFile = e.target.files[0];
-                                                                            setFieldValue(`options[${index}].file`, selectedFile);
+                                                                <input
+                                                                    id={`file-upload-${index}`}
+                                                                    type="file"
+                                                                    style={{ display: "none" }}
+                                                                    onChange={(e) => {
+                                                                        const selectedFile = e.target.files && e.target.files[0];
+                                                                        setFieldValue(`options[${index}].file`, selectedFile);
 
-                                                                            const updatedFileNames = [...selectedFileNames];
-                                                                            updatedFileNames[index] = selectedFile ? selectedFile.name : "";
-                                                                            setSelectedFileNames(updatedFileNames);
-                                                                        }}
-                                                                    />
-                                                                </TrButton>
+                                                                        const updatedFileNames = [...selectedFileNames];
+                                                                        updatedFileNames[index] = selectedFile ? selectedFile.name : "";
+                                                                        setSelectedFileNames(updatedFileNames);
+                                                                    }}
+                                                                />
+                                                                <label htmlFor={`file-upload-${index}`} style={{ margin: 0 }}>
+                                                                    <TrButton
+                                                                        className={classes.attachBtn}
+                                                                        startIcon={<CloudUploadIcon />}
+                                                                        component="span"
+                                                                    >
+                                                                        Anexar
+                                                                    </TrButton>
+                                                                </label>
                                                                 <IconButton
                                                                     size="small"
                                                                     onClick={() => remove(index)}
