@@ -21,6 +21,7 @@ import announcementsRoutes from "./modules/announcements/announcements.routes";
 import campaignsRoutes from "./modules/campaigns/campaigns.routes";
 import contactListsRoutes from "./modules/contactLists/contactLists.routes";
 import quickMessagesRoutes from "./modules/quickMessages/quickMessages.routes";
+import ticketNotesRoutes from "./modules/ticketNotes/ticketNotes.routes";
 import chatsRoutes from "./modules/chats/chats.routes";
 import messagesRoutes from "./modules/messages/messages.routes";
 import whatsappRoutes from "./modules/whatsapp/whatsapp.routes";
@@ -398,6 +399,7 @@ app.use("/announcements", announcementsRoutes);
 app.use("/campaigns", campaignsRoutes);
 app.use("/contact-lists", contactListsRoutes);
 app.use("/quick-messages", quickMessagesRoutes);
+app.use("/ticket-notes", ticketNotesRoutes);
 app.use("/chats", chatsRoutes);
 app.use("/messages", messagesRoutes);
 // WhatsApp routes: prefer legacy routers (Baileys) when available; fallback to TS routes.

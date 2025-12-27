@@ -53,6 +53,20 @@ async function loadTicketWithRelations(ticketId: number, companyId: number) {
   return ticket;
 }
 
+async function loadTicketTags(ticketId: number, companyId: number) {
+  const rows = await pgQuery<any>(
+    `
+      SELECT tg.id, tg.name, tg.color
+      FROM "TicketTags" tt
+      JOIN "Tags" tg ON tg.id = tt."tagId"
+      WHERE tt."ticketId" = $1 AND tg."companyId" = $2
+      ORDER BY tg.id ASC
+    `,
+    [ticketId, companyId]
+  );
+  return Array.isArray(rows) ? rows : [];
+}
+
 // GET /tickets
 router.get("/", authMiddleware, async (req, res) => {
   const companyId = tenantIdFromReq(req);
@@ -125,6 +139,40 @@ router.get("/", authMiddleware, async (req, res) => {
   });
 
   return res.json(list);
+});
+
+// GET /tickets/u/:uuid (frontend uses this when opening a ticket)
+router.get("/u/:uuid", authMiddleware, async (req, res) => {
+  const companyId = tenantIdFromReq(req);
+  if (!companyId) return res.status(401).json({ error: true, message: "missing tenantId" });
+
+  const uuid = String(req.params.uuid || "").trim();
+  if (!uuid) return res.status(400).json({ error: true, message: "missing uuid" });
+
+  const rows = await pgQuery<any>(
+    `SELECT id FROM "Tickets" WHERE uuid = $1 AND "companyId" = $2 LIMIT 1`,
+    [uuid, companyId]
+  );
+  const id = Number(rows?.[0]?.id || 0);
+  if (!id) return res.status(404).json({ error: true, message: "not found" });
+
+  const ticket = await loadTicketWithRelations(id, companyId);
+  if (!ticket) return res.status(404).json({ error: true, message: "not found" });
+
+  // attach assigned user (TicketInfo expects ticket.user possibly)
+  if (ticket.userId) {
+    const u = await pgQuery<any>(
+      `SELECT id, name, email FROM "Users" WHERE id = $1 LIMIT 1`,
+      [Number(ticket.userId)]
+    );
+    ticket.user = u?.[0] || null;
+  } else {
+    ticket.user = null;
+  }
+
+  // attach tags for TagsContainer
+  ticket.tags = await loadTicketTags(id, companyId);
+  return res.json(ticket);
 });
 
 // GET /tickets/:id
