@@ -6,7 +6,6 @@ import {
   DisconnectReason,
   fetchLatestBaileysVersion,
   makeCacheableSignalKeyStore,
-  makeInMemoryStore,
   makeWASocket,
   useMultiFileAuthState
 } from "@whiskeysockets/baileys";
@@ -178,10 +177,16 @@ export async function startOrRefreshBaileysSession(opts: {
     generateHighQualityLinkPreview: true
   });
 
-  const store = makeInMemoryStore({ logger });
-  store.bind(sock.ev);
-
-  const managed: ManagedSession = { sock, store, companyId, retries: 0 };
+  // Some Baileys builds export makeInMemoryStore as default-only; require it to be safe.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const baileysAny = require("@whiskeysockets/baileys");
+  const makeInMemoryStore =
+    baileysAny.makeInMemoryStore || baileysAny.default?.makeInMemoryStore || baileysAny.default;
+  const store = typeof makeInMemoryStore === "function" ? makeInMemoryStore({ logger }) : null;
+  if (store && typeof store.bind === "function") {
+    store.bind(sock.ev);
+  }
+  const managed: ManagedSession = { sock, store: store || undefined, companyId, retries: 0 };
   sessions.set(whatsappId, managed);
 
   sock.ev.on("creds.update", saveCreds);
