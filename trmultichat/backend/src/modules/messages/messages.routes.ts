@@ -2,7 +2,7 @@ import { Router } from "express";
 import { authMiddleware } from "../../middleware/authMiddleware";
 import { pgQuery } from "../../utils/pgClient";
 import { getIO } from "../../libs/socket";
-import { getSessionSock } from "../../libs/baileysManager";
+import { getSessionSock, startOrRefreshBaileysSession } from "../../libs/baileysManager";
 
 const router = Router();
 
@@ -60,10 +60,24 @@ router.post("/:ticketId", authMiddleware, async (req, res) => {
   const whatsappId = Number(ticket.whatsappId || 0);
   if (!whatsappId) return res.status(400).json({ error: true, message: "ticket has no whatsappId" });
 
-  // Send via Baileys
-  const sock = getSessionSock(whatsappId);
+  // Send via Baileys (auto-start session if needed)
+  let sock = getSessionSock(whatsappId);
   if (!sock) {
-    return res.status(409).json({ error: true, message: "whatsapp session not ready, try again" });
+    // Try to start/reconnect session on-demand (same behavior as /whatsappsession/:id)
+    try {
+      startOrRefreshBaileysSession({ companyId, whatsappId }).catch(() => {});
+    } catch {}
+    const startedAt = Date.now();
+    while (!sock && Date.now() - startedAt < 5000) {
+      await new Promise((r) => setTimeout(r, 250));
+      sock = getSessionSock(whatsappId);
+    }
+  }
+  if (!sock) {
+    return res.status(409).json({
+      error: true,
+      message: "whatsapp session not ready yet, retry in a few seconds"
+    });
   }
 
   const remoteJid = `${String(contact.number).replace(/\D/g, "")}@s.whatsapp.net`;
