@@ -158,6 +158,22 @@ export async function startOrRefreshBaileysSession(opts: {
 }): Promise<void> {
   const { companyId, whatsappId, emit } = opts;
 
+  // Runtime-safe Baileys exports (GitHub build can vary CJS/ESM exports)
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const baileysAny = require("@whiskeysockets/baileys");
+  const makeWASocketFn =
+    baileysAny?.makeWASocket || baileysAny?.default?.makeWASocket || baileysAny?.default || makeWASocket;
+  const useMultiFileAuthStateFn =
+    baileysAny?.useMultiFileAuthState || baileysAny?.default?.useMultiFileAuthState || useMultiFileAuthState;
+  const makeCacheableSignalKeyStoreFn =
+    baileysAny?.makeCacheableSignalKeyStore ||
+    baileysAny?.default?.makeCacheableSignalKeyStore ||
+    makeCacheableSignalKeyStore;
+  const fetchLatestBaileysVersionFn =
+    baileysAny?.fetchLatestBaileysVersion ||
+    baileysAny?.default?.fetchLatestBaileysVersion ||
+    fetchLatestBaileysVersion;
+
   // restart existing session if any
   const existing = sessions.get(whatsappId);
   if (existing?.sock) {
@@ -171,10 +187,10 @@ export async function startOrRefreshBaileysSession(opts: {
   const authPath = path.join(AUTH_DIR, String(companyId), String(whatsappId));
   ensureDir(authPath);
 
-  const { state, saveCreds } = await useMultiFileAuthState(authPath);
+  const { state, saveCreds } = await useMultiFileAuthStateFn(authPath);
   let version: any = undefined;
   try {
-    const v = await fetchLatestBaileysVersion();
+    const v = await fetchLatestBaileysVersionFn();
     version = v?.version;
   } catch {
     // VPS pode não ter saída para internet; Baileys consegue operar sem buscar versão "latest".
@@ -192,30 +208,30 @@ export async function startOrRefreshBaileysSession(opts: {
   let sock: any;
   try {
     // some versions use `authState` instead of `auth`
-    sock = makeWASocket({
+    sock = makeWASocketFn({
       ...sockOptsBase,
       authState: {
         creds: (state as any).creds,
-        keys: makeCacheableSignalKeyStore((state as any).keys, logger)
+        keys: makeCacheableSignalKeyStoreFn((state as any).keys, logger)
       }
     } as any);
   } catch (e1: any) {
     try {
-      sock = makeWASocket({
+      sock = makeWASocketFn({
         ...sockOptsBase,
         auth: {
           creds: (state as any).creds,
-          keys: makeCacheableSignalKeyStore((state as any).keys, logger)
+          keys: makeCacheableSignalKeyStoreFn((state as any).keys, logger)
         }
       } as any);
     } catch (e2: any) {
       try {
-        sock = makeWASocket({
+        sock = makeWASocketFn({
           ...sockOptsBase,
           authState: state as any
         } as any);
       } catch (e3: any) {
-        sock = makeWASocket({
+        sock = makeWASocketFn({
           ...sockOptsBase,
           auth: state as any
         } as any);
