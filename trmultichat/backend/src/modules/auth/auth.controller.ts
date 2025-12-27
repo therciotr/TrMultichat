@@ -259,8 +259,17 @@ export async function signup(req: Request, res: Response) {
       super: false,
       profile: "admin"
     });
-    const accessToken = jwt.sign({ userId: user.id, tenantId: company.id }, env.JWT_SECRET, { expiresIn: "15m" });
-    const refreshToken = jwt.sign({ userId: user.id, tenantId: company.id }, env.JWT_REFRESH_SECRET, { expiresIn: "7d" });
+    const profile = "admin";
+    const accessToken = jwt.sign(
+      { userId: user.id, tenantId: company.id, id: user.id, companyId: company.id, profile },
+      env.JWT_SECRET,
+      { expiresIn: "15m" }
+    );
+    const refreshToken = jwt.sign(
+      { userId: user.id, tenantId: company.id, id: user.id, companyId: company.id, profile },
+      env.JWT_REFRESH_SECRET,
+      { expiresIn: "7d" }
+    );
     return res.status(201).json({
       token: accessToken,
       user: {
@@ -363,7 +372,13 @@ export async function refreshLegacy(req: Request, res: Response) {
       : [];
 
     const newToken = jwt.sign(
-      { userId: user.id, tenantId: user.companyId },
+      {
+        userId: user.id,
+        tenantId: user.companyId,
+        id: user.id,
+        companyId: user.companyId,
+        profile
+      },
       env.JWT_SECRET,
       { expiresIn: "15m" }
     );

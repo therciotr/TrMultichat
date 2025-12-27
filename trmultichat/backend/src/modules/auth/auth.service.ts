@@ -19,6 +19,19 @@ export type AuthTokens = {
   refreshToken: string;
 };
 
+function buildAccessPayload(input: { userId: number; tenantId: number; profile?: string }) {
+  const profile = String(input.profile || "user");
+  return {
+    // New API payload (current)
+    userId: input.userId,
+    tenantId: input.tenantId,
+    // Legacy payload compatibility (dist/middleware/isAuth expects these)
+    id: input.userId,
+    companyId: input.tenantId,
+    profile
+  };
+}
+
 export async function login({ email, password }: LoginInput): Promise<{ user: AuthUser } & AuthTokens> {
   // DEV fallback without DB (avoid requiring legacy models to prevent DB connect)
   if (String(process.env.DEV_MODE || "false").toLowerCase() === "true") {
@@ -34,12 +47,12 @@ export async function login({ email, password }: LoginInput): Promise<{ user: Au
         profile: "admin"
       };
       const accessToken = jwt.sign(
-        { userId: user.id, tenantId: user.tenantId },
+        buildAccessPayload({ userId: user.id, tenantId: user.tenantId, profile: user.profile }),
         env.JWT_SECRET,
         { expiresIn: "15m" }
       );
       const refreshToken = jwt.sign(
-        { userId: user.id, tenantId: user.tenantId },
+        buildAccessPayload({ userId: user.id, tenantId: user.tenantId, profile: user.profile }),
         env.JWT_REFRESH_SECRET,
         { expiresIn: "7d" }
       );
@@ -86,12 +99,12 @@ export async function login({ email, password }: LoginInput): Promise<{ user: Au
     };
 
     const accessToken = jwt.sign(
-      { userId: user.id, tenantId: user.tenantId },
+      buildAccessPayload({ userId: user.id, tenantId: user.tenantId, profile: user.profile }),
       env.JWT_SECRET,
       { expiresIn: "15m" }
     );
     const refreshToken = jwt.sign(
-      { userId: user.id, tenantId: user.tenantId },
+      buildAccessPayload({ userId: user.id, tenantId: user.tenantId, profile: user.profile }),
       env.JWT_REFRESH_SECRET,
       { expiresIn: "7d" }
     );
@@ -104,14 +117,14 @@ export async function login({ email, password }: LoginInput): Promise<{ user: Au
 
 export async function refresh(oldRefreshToken: string): Promise<AuthTokens> {
   try {
-    const payload = jwt.verify(oldRefreshToken, env.JWT_REFRESH_SECRET) as { userId: number; tenantId: number };
+    const payload = jwt.verify(oldRefreshToken, env.JWT_REFRESH_SECRET) as { userId: number; tenantId: number; profile?: string };
     const accessToken = jwt.sign(
-      { userId: payload.userId, tenantId: payload.tenantId },
+      buildAccessPayload({ userId: payload.userId, tenantId: payload.tenantId, profile: (payload as any).profile }),
       env.JWT_SECRET,
       { expiresIn: "15m" }
     );
     const refreshToken = jwt.sign(
-      { userId: payload.userId, tenantId: payload.tenantId },
+      buildAccessPayload({ userId: payload.userId, tenantId: payload.tenantId, profile: (payload as any).profile }),
       env.JWT_REFRESH_SECRET,
       { expiresIn: "7d" }
     );
