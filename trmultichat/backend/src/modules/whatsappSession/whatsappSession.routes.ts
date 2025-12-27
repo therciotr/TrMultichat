@@ -168,6 +168,23 @@ router.get("/:id", (req, res) => {
   });
 });
 
+// Debug helper (admin only): inspect Baileys exports in production
+router.get("/debug/baileys-exports", (req, res) => {
+  const tenantId = extractTenantIdFromAuth(req.headers.authorization as string);
+  if (!tenantId) return res.status(401).json({ error: true, message: "missing tenantId" });
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const b = require("@whiskeysockets/baileys");
+    const keys = Object.keys(b || {});
+    const d = (b && (b.default || b)) || {};
+    const defaultType = typeof d;
+    const defaultKeys = (d && typeof d === "object") ? Object.keys(d) : [];
+    return res.json({ keys, defaultType, defaultKeys });
+  } catch (e: any) {
+    return res.status(500).json({ error: true, message: e?.message || "failed" });
+  }
+});
+
 router.post("/:id", async (req, res) => {
   const id = Number(req.params.id);
   const tenantId = extractTenantIdFromAuth(req.headers.authorization as string);
