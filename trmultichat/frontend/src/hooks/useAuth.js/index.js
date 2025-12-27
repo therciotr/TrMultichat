@@ -89,7 +89,15 @@ const useAuth = () => {
 
       socket.on(`company-${companyId}-user`, (data) => {
         if (data.action === "update" && data.user.id === user.id) {
-          setUser(data.user);
+          setUser((prev) => ({
+            ...(prev || {}),
+            ...(data.user || {}),
+            // preserva dados já carregados no login/refresh_token
+            company: (data.user && data.user.company) || (prev && prev.company),
+            queues: Array.isArray((data.user && data.user.queues) || (prev && prev.queues))
+              ? ((data.user && data.user.queues) || (prev && prev.queues))
+              : [],
+          }));
         }
       });
     

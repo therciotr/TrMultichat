@@ -284,11 +284,11 @@ export async function create(req: Request, res: Response) {
     const now = new Date();
     const inserted = await queryUsersTable<any>(
       (table) => `
-        INSERT INTO ${table} (name, email, "companyId", profile, "passwordHash", password, super, "createdAt", "updatedAt")
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+        INSERT INTO ${table} (name, email, "companyId", profile, "passwordHash", "super", "createdAt", "updatedAt")
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
         RETURNING id, name, email, "companyId", profile, "super"
       `,
-      [name, email, companyId, profile, hash, hash, false, now, now]
+      [name, email, companyId, profile, hash, false, now, now]
     );
     const user = Array.isArray(inserted) && inserted[0];
     return res.status(201).json(user || { ok: true });
