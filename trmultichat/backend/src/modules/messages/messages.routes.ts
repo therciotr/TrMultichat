@@ -132,11 +132,14 @@ router.post("/:ticketId", authMiddleware, async (req, res) => {
     }
   }
   if (!sock) {
-    return res.status(409).json({
+    const payload: any = {
       error: true,
-      message: "whatsapp session not ready yet, retry in a few seconds",
-      debug: { whatsappId, knownSessions: listSessionIds() }
-    });
+      message: "whatsapp session not ready yet, retry in a few seconds"
+    };
+    if (String(process.env.ENABLE_DEBUG_ENDPOINTS || "").toLowerCase() === "true") {
+      payload.debug = { whatsappId, knownSessions: listSessionIds() };
+    }
+    return res.status(409).json(payload);
   }
 
   const remoteJid = `${String(contact.number).replace(/\D/g, "")}@s.whatsapp.net`;

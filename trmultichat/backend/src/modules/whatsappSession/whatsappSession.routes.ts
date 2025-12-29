@@ -170,6 +170,9 @@ router.get("/:id", (req, res) => {
 
 // Debug helper (admin only): inspect Baileys exports in production
 router.get("/debug/baileys-exports", (req, res) => {
+  if (String(process.env.ENABLE_DEBUG_ENDPOINTS || "").toLowerCase() !== "true") {
+    return res.status(404).json({ error: true, message: "not found" });
+  }
   const tenantId = extractTenantIdFromAuth(req.headers.authorization as string);
   if (!tenantId) return res.status(401).json({ error: true, message: "missing tenantId" });
   try {
