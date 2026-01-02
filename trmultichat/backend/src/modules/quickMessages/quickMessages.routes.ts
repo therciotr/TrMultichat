@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { authMiddleware } from "../../middleware/authMiddleware";
 import { pgQuery } from "../../utils/pgClient";
+import { getIO } from "../../libs/socket";
 
 const router = Router();
 
@@ -34,11 +35,62 @@ router.get("/", authMiddleware, async (req, res) => {
   const pageNumber = Number(req.query.pageNumber || 1);
   const limit = 50;
   const offset = (pageNumber - 1) * limit;
+  const searchParam = String(req.query.searchParam || "").trim().toLowerCase();
+
+  const params: any[] = [companyId];
+  let where = `"companyId" = $1`;
+  if (searchParam) {
+    params.push(`%${searchParam}%`);
+    const p = `$${params.length}`;
+    where += ` AND (lower(shortcode) LIKE ${p} OR lower(message) LIKE ${p})`;
+  }
+
+  params.push(limit);
+  params.push(offset);
   const records = await pgQuery<any>(
-    `SELECT id, shortcode, message, "companyId", "userId", "mediaPath", "mediaName" FROM "QuickMessages" WHERE "companyId" = $1 ORDER BY id ASC LIMIT $2 OFFSET $3`,
-    [companyId, limit, offset]
+    `SELECT id, shortcode, message, "companyId", "userId", "mediaPath", "mediaName"
+     FROM "QuickMessages"
+     WHERE ${where}
+     ORDER BY id ASC
+     LIMIT $${params.length - 1} OFFSET $${params.length}`,
+    params
   );
   return res.json({ records, hasMore: (records || []).length === limit });
+});
+
+// POST /quick-messages (create)
+router.post("/", authMiddleware, async (req, res) => {
+  const companyId = tenantIdFromReq(req);
+  const userId = Number((req as any).userId || 0) || null;
+  if (!companyId) return res.status(401).json({ error: true, message: "missing tenantId" });
+
+  const body: any = req.body || {};
+  const shortcode = String(body.shortcode || "").trim();
+  const message = String(body.message || "").trim();
+  const mediaPath = body.mediaPath !== undefined ? body.mediaPath : null;
+
+  if (!shortcode) return res.status(400).json({ error: true, message: "missing shortcode" });
+  if (!message) return res.status(400).json({ error: true, message: "missing message" });
+
+  // Keep compatibility: ignore extra fields (geral/status/isMedia) if DB doesn't have them.
+  const inserted = await pgQuery<any>(
+    `
+      INSERT INTO "QuickMessages" (shortcode, message, "companyId", "userId", "mediaPath", "createdAt", "updatedAt")
+      VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
+      RETURNING id, shortcode, message, "companyId", "userId", "mediaPath", "mediaName"
+    `,
+    [shortcode, message, companyId, userId, mediaPath]
+  );
+  const record = inserted?.[0];
+  if (!record) return res.status(500).json({ error: true, message: "failed to create quick message" });
+
+  try {
+    const io = getIO();
+    // frontend listens on `company${companyId}-quickemessage`
+    io.emit(`company${companyId}-quickemessage`, { action: "create", record });
+  } catch {}
+
+  return res.status(201).json(record);
 });
 
 export default router;
