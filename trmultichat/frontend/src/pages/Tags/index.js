@@ -11,18 +11,21 @@ import { makeStyles } from "@material-ui/core/styles";
 import Paper from "@material-ui/core/Paper";
 // removed Button import after migrating to TrButton
 import { TrButton } from "../../components/ui";
-import Table from "@material-ui/core/Table";
-import TableBody from "@material-ui/core/TableBody";
-import TableCell from "@material-ui/core/TableCell";
-import TableHead from "@material-ui/core/TableHead";
-import TableRow from "@material-ui/core/TableRow";
 import IconButton from "@material-ui/core/IconButton";
-import SearchIcon from "@material-ui/icons/Search";
+import Grid from "@material-ui/core/Grid";
+import Card from "@material-ui/core/Card";
+import CardContent from "@material-ui/core/CardContent";
+import CardActions from "@material-ui/core/CardActions";
+import Typography from "@material-ui/core/Typography";
+import Box from "@material-ui/core/Box";
+import SearchOutlinedIcon from "@material-ui/icons/SearchOutlined";
 import TextField from "@material-ui/core/TextField";
 import InputAdornment from "@material-ui/core/InputAdornment";
 
 import DeleteOutlineIcon from "@material-ui/icons/DeleteOutline";
-import EditIcon from "@material-ui/icons/Edit";
+import EditOutlinedIcon from "@material-ui/icons/EditOutlined";
+import LocalOfferOutlinedIcon from "@material-ui/icons/LocalOfferOutlined";
+import AddCircleOutlineIcon from "@material-ui/icons/AddCircleOutline";
 
 import MainContainer from "../../components/MainContainer";
 import MainHeader from "../../components/MainHeader";
@@ -31,7 +34,6 @@ import Title from "../../components/Title";
 
 import api from "../../services/api";
 import { i18n } from "../../translate/i18n";
-import TableRowSkeleton from "../../components/TableRowSkeleton";
 import TagModal from "../../components/TagModal";
 import ConfirmationModal from "../../components/ConfirmationModal";
 import toastError from "../../errors/toastError";
@@ -86,9 +88,106 @@ const reducer = (state, action) => {
 const useStyles = makeStyles((theme) => ({
   mainPaper: {
     flex: 1,
-    padding: theme.spacing(1),
+    padding: theme.spacing(2),
     overflowY: "scroll",
     ...theme.scrollbarStyles,
+    backgroundColor: "#F8FAFC",
+    borderRadius: 14,
+    border: "1px solid rgba(15, 23, 42, 0.08)",
+  },
+  searchField: {
+    "& .MuiOutlinedInput-root": {
+      borderRadius: 12,
+      backgroundColor: "#fff",
+    },
+  },
+  actionBtn: {
+    borderRadius: 12,
+    fontWeight: 900,
+    textTransform: "none",
+    whiteSpace: "nowrap",
+  },
+  cardsGrid: {
+    marginTop: theme.spacing(0.5),
+  },
+  card: {
+    height: "100%",
+    borderRadius: 14,
+    border: "1px solid rgba(15, 23, 42, 0.08)",
+    boxShadow: "0 1px 2px rgba(15, 23, 42, 0.06)",
+    transition: "box-shadow 150ms ease, transform 150ms ease, border-color 150ms ease",
+    "&:hover": {
+      borderColor: "rgba(15, 23, 42, 0.14)",
+      boxShadow: "0 10px 22px rgba(15, 23, 42, 0.10)",
+      transform: "translateY(-1px)",
+    },
+  },
+  cardTop: {
+    display: "flex",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: theme.spacing(1),
+  },
+  titleRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    minWidth: 0,
+  },
+  iconBadge: {
+    width: 38,
+    height: 38,
+    borderRadius: 14,
+    display: "grid",
+    placeItems: "center",
+    backgroundColor: "rgba(99, 102, 241, 0.12)",
+    color: "rgba(67, 56, 202, 0.95)",
+    flex: "none",
+  },
+  name: {
+    fontWeight: 900,
+    fontSize: 14,
+    color: "rgba(15, 23, 42, 0.92)",
+  },
+  meta: {
+    marginTop: theme.spacing(1),
+    display: "flex",
+    gap: 10,
+    alignItems: "center",
+    flexWrap: "wrap",
+  },
+  tagChip: {
+    borderRadius: 999,
+    fontWeight: 800,
+  },
+  countChip: {
+    borderRadius: 999,
+    backgroundColor: "rgba(15, 23, 42, 0.04)",
+  },
+  actions: {
+    justifyContent: "flex-end",
+    paddingTop: 0,
+  },
+  emptyWrap: {
+    borderRadius: 14,
+    border: "1px dashed rgba(15, 23, 42, 0.18)",
+    backgroundColor: "rgba(255,255,255,0.75)",
+    padding: theme.spacing(4),
+    textAlign: "center",
+    marginTop: theme.spacing(2),
+  },
+  emptyIcon: {
+    width: 56,
+    height: 56,
+    color: "rgba(15, 23, 42, 0.22)",
+    margin: "0 auto 10px",
+    display: "block",
+  },
+  skeletonCard: {
+    borderRadius: 14,
+    border: "1px solid rgba(15, 23, 42, 0.08)",
+    backgroundColor: "#fff",
+    height: 130,
   },
 }));
 
@@ -223,15 +322,18 @@ const Tags = () => {
             type="search"
             value={searchParam}
             onChange={handleSearch}
+            variant="outlined"
+            size="small"
+            className={classes.searchField}
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
-                  <SearchIcon style={{ color: "gray" }} />
+                  <SearchOutlinedIcon style={{ color: "rgba(15, 23, 42, 0.55)" }} />
                 </InputAdornment>
               ),
             }}
           />
-          <TrButton onClick={handleOpenTagModal}>
+          <TrButton className={classes.actionBtn} onClick={handleOpenTagModal} startIcon={<AddCircleOutlineIcon />}>
             {i18n.t("tags.buttons.add")}
           </TrButton>
         </MainHeaderButtonsWrapper>
@@ -241,56 +343,84 @@ const Tags = () => {
         variant="outlined"
         onScroll={handleScroll}
       >
-        <Table size="small">
-          <TableHead style={{ backgroundColor: 'rgba(11, 76, 70, 0.06)' }}>
-            <TableRow>
-              <TableCell align="center" style={{ color: 'var(--tr-primary)', fontWeight: 600 }}>{i18n.t("tags.table.name")}</TableCell>
-              <TableCell align="center">
-                {i18n.t("tags.table.tickets")}
-              </TableCell>
-              <TableCell align="center">
-                {i18n.t("tags.table.actions")}
-              </TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            <>
-              {tags.map((tag) => (
-                <TableRow key={tag.id}>
-                  <TableCell align="center">
-                    <Chip
-                      variant="outlined"
-                      style={{
-                        backgroundColor: tag.color,
-                        textShadow: "1px 1px 1px #000",
-                        color: "white",
-                      }}
-                      label={tag.name}
-                      size="small"
-                    />
-                  </TableCell>
-                  <TableCell align="center">{tag.ticketsCount}</TableCell>
-                  <TableCell align="center">
-                    <IconButton size="small" onClick={() => handleEditTag(tag)}>
-                      <EditIcon />
-                    </IconButton>
+        {tags.length === 0 && !loading ? (
+          <div className={classes.emptyWrap}>
+            <LocalOfferOutlinedIcon className={classes.emptyIcon} />
+            <Typography style={{ fontWeight: 900, fontSize: 16, color: "rgba(15, 23, 42, 0.92)" }}>
+              {i18n.t("tags.title")}
+            </Typography>
+            <Typography style={{ color: "rgba(15, 23, 42, 0.62)", fontSize: 13 }}>
+              {i18n.t("contacts.searchPlaceholder")}
+            </Typography>
+          </div>
+        ) : (
+          <Grid container spacing={2} className={classes.cardsGrid}>
+            {tags.map((tag) => (
+              <Grid key={tag.id} item xs={12} sm={6} md={4} lg={3}>
+                <Card className={classes.card} variant="outlined">
+                  <CardContent>
+                    <div className={classes.cardTop}>
+                      <div className={classes.titleRow}>
+                        <div className={classes.iconBadge}>
+                          <LocalOfferOutlinedIcon style={{ fontSize: 20 }} />
+                        </div>
+                        <div style={{ minWidth: 0 }}>
+                          <Typography className={classes.name} noWrap>
+                            {tag.name}
+                          </Typography>
+                          <div className={classes.meta}>
+                            <Chip
+                              className={classes.tagChip}
+                              variant="outlined"
+                              style={{
+                                backgroundColor: tag.color,
+                                textShadow: "1px 1px 1px rgba(0,0,0,0.35)",
+                                color: "white",
+                              }}
+                              label={tag.name}
+                              size="small"
+                            />
+                            <Chip
+                              className={classes.countChip}
+                              variant="outlined"
+                              size="small"
+                              label={`${i18n.t("tags.table.tickets")}: ${tag.ticketsCount ?? 0}`}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      <Box>
+                        <IconButton size="small" onClick={() => handleEditTag(tag)} aria-label="Editar tag">
+                          <EditOutlinedIcon />
+                        </IconButton>
+                        <IconButton
+                          size="small"
+                          onClick={() => {
+                            setConfirmModalOpen(true);
+                            setDeletingTag(tag);
+                          }}
+                          aria-label="Excluir tag"
+                        >
+                          <DeleteOutlineIcon />
+                        </IconButton>
+                      </Box>
+                    </div>
+                  </CardContent>
+                  <CardActions className={classes.actions}>
+                    {/* ações ficam nos ícones para não alterar comportamento */}
+                  </CardActions>
+                </Card>
+              </Grid>
+            ))}
 
-                    <IconButton
-                      size="small"
-                      onClick={(e) => {
-                        setConfirmModalOpen(true);
-                        setDeletingTag(tag);
-                      }}
-                    >
-                      <DeleteOutlineIcon />
-                    </IconButton>
-                  </TableCell>
-                </TableRow>
+            {loading &&
+              Array.from({ length: 8 }).map((_, idx) => (
+                <Grid key={`sk-${idx}`} item xs={12} sm={6} md={4} lg={3}>
+                  <div className={classes.skeletonCard} />
+                </Grid>
               ))}
-              {loading && <TableRowSkeleton columns={4} />}
-            </>
-          </TableBody>
-        </Table>
+          </Grid>
+        )}
       </Paper>
     </MainContainer>
   );
