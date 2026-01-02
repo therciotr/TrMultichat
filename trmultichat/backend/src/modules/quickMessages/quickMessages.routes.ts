@@ -93,6 +93,105 @@ router.post("/", authMiddleware, async (req, res) => {
   return res.status(201).json(record);
 });
 
+// GET /quick-messages/:id (fetch one)
+router.get("/:id", authMiddleware, async (req, res) => {
+  const companyId = tenantIdFromReq(req);
+  const id = Number(req.params.id);
+  if (!companyId) return res.status(401).json({ error: true, message: "missing tenantId" });
+  if (!id) return res.status(400).json({ error: true, message: "invalid id" });
+
+  const rows = await pgQuery<any>(
+    `SELECT id, shortcode, message, "companyId", "userId", "mediaPath", "mediaName" FROM "QuickMessages" WHERE id = $1 AND "companyId" = $2 LIMIT 1`,
+    [id, companyId]
+  );
+  const record = rows?.[0];
+  if (!record) return res.status(404).json({ error: true, message: "not found" });
+  return res.json(record);
+});
+
+// PUT /quick-messages/:id (update)
+router.put("/:id", authMiddleware, async (req, res) => {
+  const companyId = tenantIdFromReq(req);
+  const id = Number(req.params.id);
+  if (!companyId) return res.status(401).json({ error: true, message: "missing tenantId" });
+  if (!id) return res.status(400).json({ error: true, message: "invalid id" });
+
+  const body: any = req.body || {};
+  const shortcode = body.shortcode !== undefined ? String(body.shortcode || "").trim() : undefined;
+  const message = body.message !== undefined ? String(body.message || "").trim() : undefined;
+  const mediaPath = body.mediaPath !== undefined ? body.mediaPath : undefined;
+
+  // allow partial update; but don't blank required fields if provided empty
+  if (shortcode !== undefined && !shortcode) {
+    return res.status(400).json({ error: true, message: "missing shortcode" });
+  }
+  if (message !== undefined && !message) {
+    return res.status(400).json({ error: true, message: "missing message" });
+  }
+
+  // ensure exists
+  const exists = await pgQuery<any>(
+    `SELECT id FROM "QuickMessages" WHERE id = $1 AND "companyId" = $2 LIMIT 1`,
+    [id, companyId]
+  );
+  if (!exists?.[0]?.id) return res.status(404).json({ error: true, message: "not found" });
+
+  await pgQuery(
+    `
+      UPDATE "QuickMessages"
+      SET
+        shortcode = COALESCE($1, shortcode),
+        message = COALESCE($2, message),
+        "mediaPath" = COALESCE($3, "mediaPath"),
+        "updatedAt" = NOW()
+      WHERE id = $4 AND "companyId" = $5
+    `,
+    [shortcode ?? null, message ?? null, mediaPath ?? null, id, companyId]
+  );
+
+  const rows = await pgQuery<any>(
+    `SELECT id, shortcode, message, "companyId", "userId", "mediaPath", "mediaName" FROM "QuickMessages" WHERE id = $1 AND "companyId" = $2 LIMIT 1`,
+    [id, companyId]
+  );
+  const record = rows?.[0];
+  if (!record) return res.status(404).json({ error: true, message: "not found" });
+
+  try {
+    const io = getIO();
+    io.emit(`company${companyId}-quickemessage`, { action: "update", record });
+  } catch {}
+
+  return res.json(record);
+});
+
+// DELETE /quick-messages/:id (delete)
+router.delete("/:id", authMiddleware, async (req, res) => {
+  const companyId = tenantIdFromReq(req);
+  const id = Number(req.params.id);
+  if (!companyId) return res.status(401).json({ error: true, message: "missing tenantId" });
+  if (!id) return res.status(400).json({ error: true, message: "invalid id" });
+
+  // ensure it belongs to company
+  const exists = await pgQuery<any>(
+    `SELECT id FROM "QuickMessages" WHERE id = $1 AND "companyId" = $2 LIMIT 1`,
+    [id, companyId]
+  );
+  if (!exists?.[0]?.id) return res.status(404).json({ error: true, message: "not found" });
+
+  await pgQuery(`DELETE FROM "QuickMessages" WHERE id = $1 AND "companyId" = $2`, [
+    id,
+    companyId,
+  ]);
+
+  try {
+    const io = getIO();
+    // frontend listens on `company${companyId}-quickemessage`
+    io.emit(`company${companyId}-quickemessage`, { action: "delete", id });
+  } catch {}
+
+  return res.status(204).end();
+});
+
 export default router;
 
 

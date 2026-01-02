@@ -1,22 +1,21 @@
-import React, { useState, useEffect, useReducer, useContext, useCallback } from "react";
+import React, { useState, useEffect, useReducer, useContext } from "react";
 import { toast } from "react-toastify";
 
 import { makeStyles } from "@material-ui/core/styles";
 import Paper from "@material-ui/core/Paper";
 import { TrButton } from "../../components/ui";
-import Table from "@material-ui/core/Table";
-import TableBody from "@material-ui/core/TableBody";
-import TableCell from "@material-ui/core/TableCell";
-import TableHead from "@material-ui/core/TableHead";
-import TableRow from "@material-ui/core/TableRow";
+import Card from "@material-ui/core/Card";
+import CardContent from "@material-ui/core/CardContent";
+import CardActions from "@material-ui/core/CardActions";
 import IconButton from "@material-ui/core/IconButton";
 import SearchIcon from "@material-ui/icons/Search";
 import TextField from "@material-ui/core/TextField";
 import InputAdornment from "@material-ui/core/InputAdornment";
-import CheckCircleIcon from '@material-ui/icons/CheckCircle';
+import FlashOnOutlinedIcon from "@material-ui/icons/FlashOnOutlined";
 
 import DeleteOutlineIcon from "@material-ui/icons/DeleteOutline";
 import EditIcon from "@material-ui/icons/Edit";
+import AttachmentOutlinedIcon from "@material-ui/icons/AttachmentOutlined";
 
 import MainContainer from "../../components/MainContainer";
 import MainHeader from "../../components/MainHeader";
@@ -24,11 +23,10 @@ import Title from "../../components/Title";
 
 import api from "../../services/api";
 import { i18n } from "../../translate/i18n";
-import TableRowSkeleton from "../../components/TableRowSkeleton";
 import QuickMessageDialog from "../../components/QuickMessageDialog";
 import ConfirmationModal from "../../components/ConfirmationModal";
 import toastError from "../../errors/toastError";
-import { Grid } from "@material-ui/core";
+import { Grid, Typography, Chip, Box } from "@material-ui/core";
 import { isArray } from "lodash";
 import { socketConnection } from "../../services/socket";
 import { AuthContext } from "../../context/Auth/AuthContext";
@@ -89,9 +87,112 @@ const reducer = (state, action) => {
 const useStyles = makeStyles((theme) => ({
   mainPaper: {
     flex: 1,
-    padding: theme.spacing(1),
+    padding: theme.spacing(2),
     overflowY: "scroll",
     ...theme.scrollbarStyles,
+    backgroundColor: "#F8FAFC",
+    borderRadius: 14,
+    border: "1px solid rgba(15, 23, 42, 0.08)",
+  },
+  headerRow: {
+    alignItems: "center",
+  },
+  searchField: {
+    "& .MuiOutlinedInput-root": {
+      borderRadius: 12,
+      backgroundColor: "#fff",
+    },
+  },
+  addButton: {
+    borderRadius: 12,
+    fontWeight: 800,
+    textTransform: "none",
+  },
+  cardsGrid: {
+    marginTop: theme.spacing(1),
+  },
+  card: {
+    height: "100%",
+    borderRadius: 14,
+    border: "1px solid rgba(15, 23, 42, 0.08)",
+    boxShadow: "0 1px 2px rgba(15, 23, 42, 0.06)",
+    transition: "box-shadow 150ms ease, transform 150ms ease, border-color 150ms ease",
+    "&:hover": {
+      borderColor: "rgba(15, 23, 42, 0.14)",
+      boxShadow: "0 10px 22px rgba(15, 23, 42, 0.10)",
+      transform: "translateY(-1px)",
+    },
+  },
+  cardTop: {
+    display: "flex",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: theme.spacing(1),
+  },
+  cardTitleRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    minWidth: 0,
+  },
+  iconBadge: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    display: "grid",
+    placeItems: "center",
+    backgroundColor: "rgba(59, 130, 246, 0.10)",
+    color: "rgba(30, 64, 175, 0.95)",
+    flex: "none",
+  },
+  shortcode: {
+    fontWeight: 900,
+    fontSize: 14,
+    color: "rgba(15, 23, 42, 0.92)",
+  },
+  meta: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: theme.spacing(1),
+  },
+  messagePreview: {
+    marginTop: theme.spacing(1.25),
+    color: "rgba(15, 23, 42, 0.70)",
+    fontSize: 13,
+    lineHeight: 1.45,
+    display: "-webkit-box",
+    WebkitLineClamp: 3,
+    WebkitBoxOrient: "vertical",
+    overflow: "hidden",
+  },
+  actions: {
+    justifyContent: "flex-end",
+    paddingTop: 0,
+  },
+  emptyWrap: {
+    borderRadius: 14,
+    border: "1px solid rgba(15, 23, 42, 0.08)",
+    backgroundColor: "#fff",
+    boxShadow: "0 1px 2px rgba(15, 23, 42, 0.06)",
+    padding: theme.spacing(4),
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: theme.spacing(1),
+    textAlign: "center",
+    marginTop: theme.spacing(2),
+  },
+  emptyIcon: {
+    width: 52,
+    height: 52,
+    color: "rgba(15, 23, 42, 0.22)",
+  },
+  skeletonCard: {
+    borderRadius: 14,
+    border: "1px solid rgba(15, 23, 42, 0.08)",
+    backgroundColor: "#fff",
+    height: 140,
   },
 }));
 
@@ -227,7 +328,7 @@ const Quickemessages = () => {
         quickemessageId={selectedQuickemessage && selectedQuickemessage.id}
       />
       <MainHeader>
-        <Grid style={{ width: "99.6%" }} container>
+        <Grid style={{ width: "99.6%" }} container className={classes.headerRow} spacing={2}>
           <Grid xs={12} sm={8} item>
             <Title>{i18n.t("quickMessages.title")}</Title>
           </Grid>
@@ -240,6 +341,9 @@ const Quickemessages = () => {
                   type="search"
                   value={searchParam}
                   onChange={handleSearch}
+                  variant="outlined"
+                  size="small"
+                  className={classes.searchField}
                   InputProps={{
                     startAdornment: (
                       <InputAdornment position="start">
@@ -250,7 +354,11 @@ const Quickemessages = () => {
                 />
               </Grid>
               <Grid xs={6} sm={6} item>
-                <TrButton fullWidth onClick={handleOpenQuickMessageDialog}>
+                <TrButton
+                  fullWidth
+                  className={classes.addButton}
+                  onClick={handleOpenQuickMessageDialog}
+                >
                   {i18n.t("quickMessages.buttons.add")}
                 </TrButton>
               </Grid>
@@ -263,55 +371,81 @@ const Quickemessages = () => {
         variant="outlined"
         onScroll={handleScroll}
       >
-        <Table size="small">
-          <TableHead>
-            <TableRow>
-              <TableCell align="center">
-                {i18n.t("quickMessages.table.shortcode")}
-              </TableCell>
+        {quickemessages.length === 0 && !loading ? (
+          <div className={classes.emptyWrap}>
+            <FlashOnOutlinedIcon className={classes.emptyIcon} />
+            <Typography style={{ fontWeight: 900, fontSize: 16 }}>
+              {i18n.t("quickMessages.table.shortcode")}
+            </Typography>
+            <Typography style={{ color: "rgba(15, 23, 42, 0.65)", fontSize: 13 }}>
+              {i18n.t("quickMessages.noAttachment")}
+            </Typography>
+          </div>
+        ) : (
+          <Grid container spacing={2} className={classes.cardsGrid}>
+            {quickemessages.map((quickemessage) => (
+              <Grid key={quickemessage.id} item xs={12} sm={6} md={4} lg={3}>
+                <Card className={classes.card} variant="outlined">
+                  <CardContent>
+                    <div className={classes.cardTop}>
+                      <div className={classes.cardTitleRow}>
+                        <div className={classes.iconBadge}>
+                          <FlashOnOutlinedIcon style={{ fontSize: 20 }} />
+                        </div>
+                        <div style={{ minWidth: 0 }}>
+                          <Typography className={classes.shortcode} noWrap>
+                            {quickemessage.shortcode}
+                          </Typography>
+                          <div className={classes.meta}>
+                            <Chip
+                              size="small"
+                              icon={<AttachmentOutlinedIcon />}
+                              label={
+                                quickemessage.mediaName ??
+                                i18n.t("quickMessages.noAttachment")
+                              }
+                              variant="outlined"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      <Box>
+                        <IconButton
+                          size="small"
+                          onClick={() => handleEditQuickemessage(quickemessage)}
+                        >
+                          <EditIcon />
+                        </IconButton>
+                        <IconButton
+                          size="small"
+                          onClick={() => {
+                            setConfirmModalOpen(true);
+                            setDeletingQuickemessage(quickemessage);
+                          }}
+                        >
+                          <DeleteOutlineIcon />
+                        </IconButton>
+                      </Box>
+                    </div>
+                    <Typography className={classes.messagePreview}>
+                      {quickemessage.message || "—"}
+                    </Typography>
+                  </CardContent>
+                  <CardActions className={classes.actions}>
+                    {/* mantém ações apenas via ícones (edit/delete) para não criar comportamento novo */}
+                  </CardActions>
+                </Card>
+              </Grid>
+            ))}
 
-              <TableCell align="center">
-                {i18n.t("quickMessages.table.mediaName")}
-              </TableCell>        
-              <TableCell align="center">
-                {i18n.t("quickMessages.table.actions")}
-              </TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            <>
-              {quickemessages.map((quickemessage) => (
-                <TableRow key={quickemessage.id}>
-                  <TableCell align="center">{quickemessage.shortcode}</TableCell>
-
-                  <TableCell align="center">
-                    {quickemessage.mediaName ?? i18n.t("quickMessages.noAttachment")}
-                  </TableCell>
-                  <TableCell align="center">
-                    <IconButton
-                      size="small"
-                      onClick={() => handleEditQuickemessage(quickemessage)}
-                    >
-                      <EditIcon />
-                    </IconButton>
-
-
-                    <IconButton
-                      size="small"
-                      onClick={(e) => {
-                        setConfirmModalOpen(true);
-                        setDeletingQuickemessage(quickemessage);
-                      }}
-                    >
-                      <DeleteOutlineIcon />
-                    </IconButton>
-                  </TableCell>
-                </TableRow>
+            {loading &&
+              Array.from({ length: 8 }).map((_, idx) => (
+                <Grid key={`sk-${idx}`} item xs={12} sm={6} md={4} lg={3}>
+                  <div className={classes.skeletonCard} />
+                </Grid>
               ))}
-              {loading && <TableRowSkeleton columns={5} />}
-            </>
-          </TableBody>
-        </Table>
+          </Grid>
+        )}
       </Paper>
     </MainContainer>
   );
