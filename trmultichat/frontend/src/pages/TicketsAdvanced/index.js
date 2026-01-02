@@ -5,14 +5,16 @@ import { TrButton } from "../../components/ui";
 import Box from '@material-ui/core/Box';
 import BottomNavigation from '@material-ui/core/BottomNavigation';
 import BottomNavigationAction from '@material-ui/core/BottomNavigationAction';
-import QuestionAnswerIcon from '@material-ui/icons/QuestionAnswer';
-import ChatIcon from '@material-ui/icons/Chat';
+import QuestionAnswerOutlinedIcon from "@material-ui/icons/QuestionAnswerOutlined";
+import ChatBubbleOutlineIcon from "@material-ui/icons/ChatBubbleOutline";
 
 import TicketsManagerTabs from "../../components/TicketsManagerTabs/";
 import Ticket from "../../components/Ticket/";
 import TicketAdvancedLayout from "../../components/TicketAdvancedLayout";
 import logo from "../../assets/logo-tr.png"; //PLW DESIGN LOGO//
 import { TicketsContext } from "../../context/Tickets/TicketsContext";
+import TechBackground from "../../components/TechBackground";
+import Typography from "@material-ui/core/Typography";
 
 import { i18n } from "../../translate/i18n";
 
@@ -28,7 +30,8 @@ const useStyles = makeStyles(theme => ({
         alignItems: "center",
         justifyContent: "center",
         height: "100%",
-		backgroundColor: theme.palette.boxticket, //DARK MODE PLW DESIGN//
+		backgroundColor: "#F5F7FB",
+        padding: theme.spacing(2),
     },
     placeholderItem: {
     }
@@ -61,16 +64,17 @@ const TicketAdvanced = (props) => {
 
 	const renderPlaceholder = () => {
 		return <Box className={classes.placeholderContainer}>
-             {/*<div className={classes.placeholderItem}>{i18n.t("chat.noTicketMessage")}</div>*/}
-			//LOGO//
-			<div>
-			<center><img style={{ margin: "0 auto", width: "70%" }} src={logo} alt="logologin" /></center>
-			</div>
-			//LOGO//
-			<br />
-            <TrButton onClick={() => setOption(1)}>
-                Selecionar Ticket
-            </TrButton>
+            <TechBackground>
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
+                    <img style={{ width: "min(360px, 75%)", height: "auto" }} src={logo} alt="logologin" />
+                    <Typography style={{ maxWidth: 420, color: "rgba(15, 23, 42, 0.65)", fontSize: 14, lineHeight: 1.5 }}>
+                        {i18n.t("chat.noTicketMessage")}
+                    </Typography>
+                    <TrButton onClick={() => setOption(1)}>
+                        Selecionar Ticket
+                    </TrButton>
+                </div>
+            </TechBackground>
         </Box>
 	}
 
@@ -96,8 +100,8 @@ const TicketAdvanced = (props) => {
                     showLabels
                     className={classes.root}
                 >
-                    <BottomNavigationAction label="Ticket" icon={<ChatIcon />} />
-                    <BottomNavigationAction label="Atendimentos" icon={<QuestionAnswerIcon />} />
+                    <BottomNavigationAction label="Ticket" icon={<ChatBubbleOutlineIcon />} />
+                    <BottomNavigationAction label="Atendimentos" icon={<QuestionAnswerOutlinedIcon />} />
                 </BottomNavigation>
             </Box>
             <Box className={classes.content}>

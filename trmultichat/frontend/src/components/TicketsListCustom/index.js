@@ -3,6 +3,8 @@ import React, { useState, useEffect, useReducer, useContext } from "react";
 import { makeStyles } from "@material-ui/core/styles";
 import List from "@material-ui/core/List";
 import Paper from "@material-ui/core/Paper";
+import InboxOutlinedIcon from "@material-ui/icons/InboxOutlined";
+import Typography from "@material-ui/core/Typography";
 
 import TicketListItem from "../TicketListItemCustom";
 import TicketsListSkeleton from "../TicketsListSkeleton";
@@ -28,7 +30,7 @@ const useStyles = makeStyles((theme) => ({
     maxHeight: "100%",
     overflowY: "scroll",
     ...theme.scrollbarStyles,
-    borderTop: "2px solid rgba(0, 0, 0, 0.12)",
+    backgroundColor: "#F8FAFC",
   },
 
   ticketsListHeader: {
@@ -50,25 +52,45 @@ const useStyles = makeStyles((theme) => ({
 
   noTicketsText: {
     textAlign: "center",
-    color: "rgb(104, 121, 146)",
-    fontSize: "14px",
+    color: "rgba(15, 23, 42, 0.65)",
+    fontSize: 13,
     lineHeight: "1.4",
+    margin: 0,
   },
 
   noTicketsTitle: {
     textAlign: "center",
-    fontSize: "16px",
-    fontWeight: "600",
-    margin: "0px",
+    fontSize: 16,
+    fontWeight: 700,
+    margin: 0,
+    color: "rgba(15, 23, 42, 0.92)",
   },
 
   noTicketsDiv: {
     display: "flex",
-    height: "100px",
-    margin: 40,
+    minHeight: 220,
+    margin: theme.spacing(2),
     flexDirection: "column",
     alignItems: "center",
     justifyContent: "center",
+    gap: theme.spacing(1),
+    padding: theme.spacing(3),
+    borderRadius: 12,
+    border: "1px solid rgba(15, 23, 42, 0.08)",
+    backgroundColor: "#fff",
+    boxShadow: "0 1px 2px rgba(15, 23, 42, 0.06)",
+  },
+  noTicketsIcon: {
+    width: 44,
+    height: 44,
+    color: "rgba(15, 23, 42, 0.22)",
+    marginBottom: theme.spacing(0.5),
+  },
+  listPad: {
+    paddingTop: theme.spacing(1),
+    paddingBottom: theme.spacing(1),
+    paddingLeft: theme.spacing(1),
+    paddingRight: theme.spacing(1),
   },
 }));
 
@@ -308,18 +330,21 @@ const TicketsListCustom = (props) => {
         <List style={{ paddingTop: 0 }}>
           {ticketsList.length === 0 && !loading ? (
             <div className={classes.noTicketsDiv}>
-              <span className={classes.noTicketsTitle}>
+              <InboxOutlinedIcon className={classes.noTicketsIcon} />
+              <Typography className={classes.noTicketsTitle}>
                 {i18n.t("ticketsList.noTicketsTitle")}
-              </span>
-              <p className={classes.noTicketsText}>
+              </Typography>
+              <Typography className={classes.noTicketsText}>
                 {i18n.t("ticketsList.noTicketsMessage")}
-              </p>
+              </Typography>
             </div>
           ) : (
             <>
-              {ticketsList.map((ticket) => (
-                <TicketListItem ticket={ticket} key={ticket.id} />
-              ))}
+              <div className={classes.listPad}>
+                {ticketsList.map((ticket) => (
+                  <TicketListItem ticket={ticket} key={ticket.id} />
+                ))}
+              </div>
             </>
           )}
           {loading && <TicketsListSkeleton />}

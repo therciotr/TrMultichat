@@ -3,13 +3,15 @@ import { useHistory } from "react-router-dom";
 
 import { makeStyles } from "@material-ui/core/styles";
 import Paper from "@material-ui/core/Paper";
-import SearchIcon from "@material-ui/icons/Search";
+import SearchOutlinedIcon from "@material-ui/icons/SearchOutlined";
 import InputBase from "@material-ui/core/InputBase";
 import Tabs from "@material-ui/core/Tabs";
 import Tab from "@material-ui/core/Tab";
 import Badge from "@material-ui/core/Badge";
-import MoveToInboxIcon from "@material-ui/icons/MoveToInbox";
-import CheckBoxIcon from "@material-ui/icons/CheckBox";
+import InboxOutlinedIcon from "@material-ui/icons/InboxOutlined";
+import CheckCircleOutlineIcon from "@material-ui/icons/CheckCircleOutline";
+import AddIcon from "@material-ui/icons/Add";
+import TuneOutlinedIcon from "@material-ui/icons/TuneOutlined";
 
 import FormControlLabel from "@material-ui/core/FormControlLabel";
 import Switch from "@material-ui/core/Switch";
@@ -35,17 +37,19 @@ const useStyles = makeStyles(theme => ({
 		overflow: "hidden",
 		borderTopRightRadius: 0,
 		borderBottomRightRadius: 0,
-		borderRadius:0,
+		borderRadius: 0,
 	},
 
 	tabsHeader: {
 		flex: "none",
-		backgroundColor: theme.palette.tabHeaderBackground,
+		backgroundColor: "#fff",
+		borderBottom: "1px solid rgba(15, 23, 42, 0.08)",
 	},
 
 	tabsInternal: {
 		flex: "none",
-		backgroundColor: theme.palette.tabHeaderBackground
+		backgroundColor: "#fff",
+		borderBottom: "1px solid rgba(15, 23, 42, 0.08)",
 	},
 
 	settingsIcon: {
@@ -57,20 +61,27 @@ const useStyles = makeStyles(theme => ({
 	tab: {
 		minWidth: 120,
 		width: 120,
+		textTransform: "none",
+		fontWeight: 600,
+		letterSpacing: 0,
 	},
 
 	internalTab: {
 		minWidth: 120,
 		width: 120,
-		padding: 5
+		padding: 5,
+		textTransform: "none",
+		fontWeight: 600,
 	},
 
 	ticketOptionsBox: {
 		display: "flex",
 		justifyContent: "space-between",
 		alignItems: "center",
-		background: theme.palette.optionsBackground,
-		padding: theme.spacing(1),
+		background: "#fff",
+		padding: theme.spacing(1.25, 1.25),
+		gap: theme.spacing(1),
+		borderBottom: "1px solid rgba(15, 23, 42, 0.08)",
 	},
 
 	ticketSearchLine: {
@@ -79,24 +90,29 @@ const useStyles = makeStyles(theme => ({
 
 	serachInputWrapper: {
 		flex: 1,
-		background: theme.palette.total,
+		background: "rgba(15, 23, 42, 0.04)",
 		display: "flex",
-		borderRadius: 40,
-		padding: 4,
+		borderRadius: 12,
+		padding: theme.spacing(0.75, 1),
 		marginRight: theme.spacing(1),
+		border: "1px solid rgba(15, 23, 42, 0.08)",
+		transition: "box-shadow 120ms ease, border-color 120ms ease",
+		"&:focus-within": {
+			borderColor: "rgba(59, 130, 246, 0.55)",
+			boxShadow: "0 0 0 3px rgba(59, 130, 246, 0.18)",
+		},
 	},
 
 	searchIcon: {
-		color: "grey",
-		marginLeft: 6,
-		marginRight: 6,
+		color: "rgba(15, 23, 42, 0.55)",
+		marginRight: 8,
 		alignSelf: "center",
 	},
 
 	searchInput: {
 		flex: 1,
 		border: "none",
-		borderRadius: 30,
+		borderRadius: 10,
 	},
 
 	insiderTabPanel: {
@@ -121,7 +137,7 @@ const useStyles = makeStyles(theme => ({
 		flexDirection: "row",
 		'& > *:first-child': {
 			marginBottom: '3px !important',
-			marginRight: 16
+			marginRight: 12
 		}
 	},
 	insiderTabLabel: {
@@ -136,6 +152,30 @@ const useStyles = makeStyles(theme => ({
 		'& .MuiInputLabel-outlined': {
 			marginTop: "-6px"
 		}
+	},
+	primaryActions: {
+		display: "flex",
+		alignItems: "center",
+		gap: theme.spacing(1),
+	},
+	newTicketButton: {
+		borderRadius: 12,
+		textTransform: "none",
+		fontWeight: 700,
+	},
+	queueWrap: {
+		display: "flex",
+		alignItems: "center",
+		gap: 6,
+	},
+	queueLabel: {
+		display: "flex",
+		alignItems: "center",
+		gap: 6,
+		fontSize: 12,
+		fontWeight: 700,
+		color: "rgba(15, 23, 42, 0.62)",
+		whiteSpace: "nowrap",
 	}
 }));
 
@@ -243,28 +283,28 @@ const TicketsManagerTabs = () => {
         >
           <Tab
             value={"open"}
-            icon={<MoveToInboxIcon />}
+            icon={<InboxOutlinedIcon />}
             label={i18n.t("tickets.tabs.open.title")}
-            classes={{ root: classes.tab }}
+            classes={{ root: classes.tab, wrapper: classes.iconLabelWrapper }}
           />
           <Tab
             value={"closed"}
-            icon={<CheckBoxIcon />}
+            icon={<CheckCircleOutlineIcon />}
             label={i18n.t("tickets.tabs.closed.title")}
-            classes={{ root: classes.tab }}
+            classes={{ root: classes.tab, wrapper: classes.iconLabelWrapper }}
           />
           <Tab
             value={"search"}
-            icon={<SearchIcon />}
+            icon={<SearchOutlinedIcon />}
             label={i18n.t("tickets.tabs.search.title")}
-            classes={{ root: classes.tab }}
+            classes={{ root: classes.tab, wrapper: classes.iconLabelWrapper }}
           />
         </Tabs>
       </Paper>
       <Paper square elevation={0} className={classes.ticketOptionsBox}>
         {tab === "search" ? (
           <div className={classes.serachInputWrapper}>
-            <SearchIcon className={classes.searchIcon} />
+            <SearchOutlinedIcon className={classes.searchIcon} />
             <InputBase
               className={classes.searchInput}
               inputRef={searchInputRef}
@@ -275,13 +315,17 @@ const TicketsManagerTabs = () => {
           </div>
         ) : (
           <>
-            <Button
-              variant="outlined"
-              color="primary"
-              onClick={() => setNewTicketModalOpen(true)}
-            >
-              {i18n.t("ticketsManager.buttons.newTicket")}
-            </Button>
+            <div className={classes.primaryActions}>
+              <Button
+                className={classes.newTicketButton}
+                variant="contained"
+                color="primary"
+                startIcon={<AddIcon />}
+                onClick={() => setNewTicketModalOpen(true)}
+              >
+                {i18n.t("ticketsManager.buttons.newTicket")}
+              </Button>
+            </div>
             <Can
               role={user?.profile || "user"}
               perform="tickets-manager:showall"
@@ -305,12 +349,18 @@ const TicketsManagerTabs = () => {
             />
           </>
         )}
-        <TicketsQueueSelect
-          style={{ marginLeft: 6 }}
-          selectedQueueIds={selectedQueueIds}
-          userQueues={user?.queues || []}
-          onChange={(values) => setSelectedQueueIds(values)}
-        />
+        <div className={classes.queueWrap}>
+          <div className={classes.queueLabel}>
+            <TuneOutlinedIcon style={{ fontSize: 18 }} />
+            {i18n.t("ticketsQueueSelect.placeholder")}
+          </div>
+          <TicketsQueueSelect
+            style={{ marginLeft: 0 }}
+            selectedQueueIds={selectedQueueIds}
+            userQueues={user?.queues || []}
+            onChange={(values) => setSelectedQueueIds(values)}
+          />
+        </div>
       </Paper>
       <TabPanel value={tab} name="open" className={classes.ticketsWrapper}>
         <Tabs

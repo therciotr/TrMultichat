@@ -8,20 +8,26 @@ import TicketsManager from "../../components/TicketsManagerTabs/";
 import Ticket from "../../components/Ticket/";
 import logo from "../../assets/logo-tr.png"; //PLW DESIGN LOGO//
 import { i18n } from "../../translate/i18n";
+import TechBackground from "../../components/TechBackground";
+import Typography from "@material-ui/core/Typography";
 
 const useStyles = makeStyles(theme => ({
 	chatContainer: {
 		flex: 1,
-		// backgroundColor: "#eee",
-		padding: theme.spacing(1), //Aqui ele ajusta espaço na tela de ticket
+		backgroundColor: "#F5F7FB",
+		padding: theme.spacing(2),
 		height: `calc(100% - 48px)`,
 		overflowY: "hidden",
 	},
 
 	chatPapper: {
-		// backgroundColor: "red",
 		display: "flex",
 		height: "100%",
+		borderRadius: 14,
+		overflow: "hidden",
+		border: "1px solid rgba(15, 23, 42, 0.08)",
+		boxShadow: "0 2px 12px rgba(15, 23, 42, 0.06)",
+		backgroundColor: "#fff",
 	},
 
 	contactsWrapper: {
@@ -29,6 +35,7 @@ const useStyles = makeStyles(theme => ({
 		height: "100%",
 		flexDirection: "column",
 		overflowY: "hidden",
+		borderRight: "1px solid rgba(15, 23, 42, 0.08)",
 	},
 	messagesWrapper: {
 		display: "flex",
@@ -36,12 +43,28 @@ const useStyles = makeStyles(theme => ({
 		flexDirection: "column",
 	},
 	welcomeMsg: {
-		backgroundColor: theme.palette.boxticket, //DARK MODE PLW DESIGN//
 		display: "flex",
-		justifyContent: "space-evenly",
+		justifyContent: "center",
 		alignItems: "center",
 		height: "100%",
-		textAlign: "center",
+		padding: theme.spacing(3),
+		backgroundColor: "#fff",
+	},
+	logoWrap: {
+		display: "flex",
+		flexDirection: "column",
+		alignItems: "center",
+		gap: theme.spacing(1.5),
+	},
+	logoImg: {
+		width: "min(420px, 75%)",
+		height: "auto",
+	},
+	helperText: {
+		maxWidth: 420,
+		color: "rgba(15, 23, 42, 0.65)",
+		fontSize: 14,
+		lineHeight: 1.5,
 	},
 }));
 
@@ -62,13 +85,15 @@ const TicketsCustom = () => {
 								<Ticket />
 							</>
 						) : (
-							<Paper square variant="outlined" className={classes.welcomeMsg}>
-							{/* PLW DESIGN LOGO */}
-							<div>
-							<center><img style={{ margin: "0 auto", width: "70%" }} src={logo} alt="logologin" /></center>
-							</div>
-							{/* PLW DESIGN LOGO */}
-							{/*<span>{i18n.t("chat.noTicketMessage")}</span>*/}
+							<Paper square elevation={0} className={classes.welcomeMsg}>
+								<TechBackground>
+									<div className={classes.logoWrap}>
+										<img className={classes.logoImg} src={logo} alt="logologin" />
+										<Typography className={classes.helperText}>
+											{i18n.t("chat.noTicketMessage")}
+										</Typography>
+									</div>
+								</TechBackground>
 							</Paper>
 						)}
 					</Grid>
