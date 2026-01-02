@@ -17,6 +17,10 @@ function toInt(v: any, fallback: number | null = null): number | null {
   return Number.isFinite(n) ? n : fallback;
 }
 
+function isDebug(): boolean {
+  return String(process.env.DEBUG_QUEUE_OPTIONS || "").toLowerCase() === "true";
+}
+
 function quoteIdent(name: string): string {
   const safe = String(name).replace(/"/g, '""');
   return `"${safe}"`;
@@ -235,8 +239,49 @@ function parseParentId(v: any): number | null {
   const n = toInt(v, null);
   // UI uses -1 to mean "root options"
   if (n === null) return null;
-  if (n === -1) return null;
+  if (n <= 0) return null;
   return n;
+}
+
+async function validateParentId(
+  queueId: number,
+  companyId: number,
+  parentId: number | null
+): Promise<void> {
+  if (!parentId) return; // root
+  const out = await tryEachQueueOptionsTable(async (t, colsMap) => {
+    const colQueueId = pickColumn(colsMap, ["queueId", "queue_id", "queueid"]);
+    const colCompanyId = pickColumn(colsMap, ["companyId", "company_id", "companyid"]);
+
+    const hasCompanyId = Boolean(colCompanyId);
+    const whereCompany = hasCompanyId ? ` AND ${quoteIdent(colCompanyId as string)} = $2` : "";
+    const paramsBase = hasCompanyId ? [parentId, companyId] : [parentId];
+
+    const whereQueue =
+      colQueueId ? ` AND ${quoteIdent(colQueueId)} = $${paramsBase.length + 1}` : "";
+    const params = colQueueId ? [...paramsBase, queueId] : paramsBase;
+
+    const rows = await pgQuery<{ id: number }>(
+      `
+      SELECT id
+      FROM ${t}
+      WHERE id = $1
+      ${whereCompany}
+      ${whereQueue}
+      LIMIT 1
+    `,
+      params
+    );
+    return Boolean(rows?.[0]?.id);
+  });
+
+  if (!out.ok) throw (out as { ok: false; error: any }).error;
+  if (!out.value) {
+    const err: any = new Error("Invalid parentId");
+    err.statusCode = 400;
+    err.publicMessage = "parentId inválido (opção pai não encontrada)";
+    throw err;
+  }
 }
 
 // GET /queue-options?queueId=3&parentId=-1
@@ -268,8 +313,8 @@ router.get("/", async (req, res) => {
       let params = paramsBase;
       if (colParentId) {
         if (parentId === null) {
-          // Root: frontend queries with -1; some DBs store root as NULL, others as -1.
-          whereParent = ` AND (${quoteIdent(colParentId)} IS NULL OR ${quoteIdent(colParentId)} = -1)`;
+          // Root: frontend queries with -1; DB uses NULL for root (FK parentId -> id).
+          whereParent = ` AND ${quoteIdent(colParentId)} IS NULL`;
         } else {
           whereParent = ` AND ${quoteIdent(colParentId)} = $${paramsBase.length + 1}`;
           params = [...paramsBase, parentId];
@@ -288,7 +333,40 @@ router.get("/", async (req, res) => {
       `,
         params
       );
-      return Array.isArray(rows) ? rows : [];
+      const list = Array.isArray(rows) ? rows : [];
+      // Normalize some fields for frontend compatibility (title/message/mediaPath/mediaName)
+      const wantsRootMinusOne = String(req.query.parentId) === "-1";
+      const colTitle = pickColumn(colsMap, ["title", "name"]);
+      const colMessage = pickColumn(colsMap, ["message", "body", "text"]);
+      const colMediaPath = pickColumn(colsMap, [
+        "mediaPath",
+        "media_path",
+        "mediapath",
+        "attachmentPath",
+        "attachment_path",
+        "attachmentUrl",
+        "attachment_url",
+        "path"
+      ]);
+      // Avoid generic "name" here because DBs often use "name" for title.
+      const colMediaName = pickColumn(colsMap, [
+        "mediaName",
+        "media_name",
+        "medianame",
+        "attachmentName",
+        "attachment_name",
+        "fileName",
+        "filename"
+      ]);
+      return list.map((r: any) => {
+        const out: any = { ...r };
+        if (colTitle && out.title === undefined) out.title = r[colTitle];
+        if (colMessage && out.message === undefined) out.message = r[colMessage];
+        if (colMediaPath && out.mediaPath === undefined) out.mediaPath = r[colMediaPath];
+        if (colMediaName && out.mediaName === undefined) out.mediaName = r[colMediaName];
+        if (wantsRootMinusOne && (out.parentId === null || out.parentId === undefined)) out.parentId = -1;
+        return out;
+      });
     });
 
     if (!out.ok) {
@@ -296,6 +374,10 @@ router.get("/", async (req, res) => {
     }
     return res.json(out.value);
   } catch (e: any) {
+    if (isDebug()) {
+      // eslint-disable-next-line no-console
+      console.error("[queue-options GET] error:", e?.message, e?.constraint, e?.code);
+    }
     return res.status(400).json({ error: true, message: e?.message || "list error" });
   }
 });
@@ -314,9 +396,12 @@ router.post("/", async (req, res) => {
 
     if (!queueId) return res.status(400).json({ error: true, message: "queueId is required" });
     if (!title) return res.status(400).json({ error: true, message: "title is required" });
+    if (option === null) return res.status(400).json({ error: true, message: "option is required" });
 
     const okQueue = await queueBelongsToCompany(queueId, companyId);
     if (!okQueue) return res.status(404).json({ error: true, message: "queue not found" });
+
+    await validateParentId(queueId, companyId, parentId);
 
     const out = await tryEachQueueOptionsTable(async (t, colsMap) => {
       const cols = new Set(Array.from(colsMap.keys()));
@@ -334,10 +419,6 @@ router.post("/", async (req, res) => {
       if (!colQueueId) throw new Error("queueId column not found on queue-options table");
       if (!colOption) throw new Error("option/order column not found on queue-options table");
 
-      // Root option: must be NULL to satisfy FK constraints on parentId (parentId references QueueOptions.id).
-      // UI also queries root using parentId=-1; we already treat -1 as "root" on GET via IS NULL.
-      const normalizedParentId = parentId;
-
       const insertCols: string[] = [colTitle, colOption, colQueueId];
       const values: any[] = [title, option, queueId];
 
@@ -347,7 +428,7 @@ router.post("/", async (req, res) => {
       }
       if (colParentId) {
         insertCols.push(colParentId);
-        values.push(normalizedParentId);
+        values.push(parentId); // NULL for root to satisfy FK
       }
       if (colCompanyId) {
         insertCols.push(colCompanyId);
@@ -377,7 +458,12 @@ router.post("/", async (req, res) => {
       if (!created) return { ok: true };
       // Ensure id exists for frontend
       const createdId = created?.id ?? created?.ID ?? created?.Id;
-      return createdId ? created : { ...created, id: createdId };
+      const normalized: any = createdId ? created : { ...created, id: createdId };
+      // ensure frontend fields exist
+      if (normalized.title === undefined && colTitle) normalized.title = created[colTitle];
+      if (normalized.message === undefined && colMessage) normalized.message = created[colMessage];
+      if (normalized.parentId === undefined) normalized.parentId = parentId;
+      return normalized;
     });
 
     if (!out.ok) {
@@ -385,6 +471,13 @@ router.post("/", async (req, res) => {
     }
     return res.status(201).json(out.value);
   } catch (e: any) {
+    if (isDebug()) {
+      // eslint-disable-next-line no-console
+      console.error("[queue-options POST] error:", e?.message, e?.constraint, e?.code);
+    }
+    if (e?.statusCode === 400) {
+      return res.status(400).json({ error: true, message: e?.publicMessage || e?.message });
+    }
     return res.status(400).json({ error: true, message: e?.message || "create error" });
   }
 });
@@ -403,60 +496,76 @@ router.put("/:id", async (req, res) => {
     const queueId = body.queueId !== undefined ? toInt(body.queueId, 0) : undefined;
     const parentId = body.parentId !== undefined ? parseParentId(body.parentId) : undefined;
 
-    const t = await resolveQueueOptionsTable();
-    const colsMap = await resolveQueueOptionsColumnsMap(t);
-    const cols = new Set(Array.from(colsMap.keys()));
-    const hasCompanyId = cols.has("companyid");
-
-    const colTitle = pickColumn(colsMap, ["title", "name"], "title");
-    const colMessage = pickColumn(colsMap, ["message", "body", "text"], "message");
-    const colOption = pickColumn(colsMap, ["option", "order", "position"], "option");
-    const colQueueId = pickColumn(colsMap, ["queueId", "queue_id", "queueid"], "queueId");
-    const colParentId = pickColumn(colsMap, ["parentId", "parent_id", "parentid"], "parentId");
-    const colUpdatedAt = pickColumn(colsMap, ["updatedAt", "updated_at", "updatedat"], "updatedAt");
-
     if (queueId) {
       const okQueue = await queueBelongsToCompany(queueId, companyId);
       if (!okQueue) return res.status(404).json({ error: true, message: "queue not found" });
     }
+    if (parentId !== undefined) {
+      if (parentId === id) {
+        return res.status(400).json({ error: true, message: "parentId inválido (não pode apontar para si mesmo)" });
+      }
+      // validate against current queueId if provided; otherwise we validate just existence (best-effort)
+      await validateParentId(queueId || 0, companyId, parentId);
+    }
 
-    const sets: string[] = [];
-    const params: any[] = [];
-    const pushSet = (col: string, val: any) => {
-      sets.push(`${quoteIdent(col)} = $${params.length + 1}`);
-      params.push(val);
-    };
+    const out = await tryEachQueueOptionsTable(async (t, colsMap) => {
+      const cols = new Set(Array.from(colsMap.keys()));
+      const colCompanyId = pickColumn(colsMap, ["companyId", "company_id", "companyid"]);
+      const colTitle = pickColumn(colsMap, ["title", "name"]);
+      const colMessage = pickColumn(colsMap, ["message", "body", "text"]);
+      const colOption = pickColumn(colsMap, ["option", "order", "position"]);
+      const colQueueId = pickColumn(colsMap, ["queueId", "queue_id", "queueid"]);
+      const colParentId = pickColumn(colsMap, ["parentId", "parent_id", "parentid"]);
+      const colUpdatedAt = pickColumn(colsMap, ["updatedAt", "updated_at", "updatedat"]);
 
-    if (title !== undefined) pushSet(colTitle, title);
-    if (message !== undefined) pushSet(colMessage, message);
-    if (option !== undefined) pushSet(colOption, option);
-    if (queueId !== undefined) pushSet(colQueueId, queueId);
-    if (parentId !== undefined) pushSet(colParentId, parentId);
-    if (cols.has("updatedat")) pushSet(colUpdatedAt, new Date());
+      const sets: string[] = [];
+      const params: any[] = [];
+      const pushSet = (col: string, val: any) => {
+        sets.push(`${quoteIdent(col)} = $${params.length + 1}`);
+        params.push(val);
+      };
 
-    if (!sets.length) return res.json({ ok: true });
+      if (title !== undefined && colTitle) pushSet(colTitle, title);
+      if (message !== undefined && colMessage) pushSet(colMessage, message);
+      if (option !== undefined && colOption) pushSet(colOption, option);
+      if (queueId !== undefined && colQueueId) pushSet(colQueueId, queueId);
+      if (parentId !== undefined && colParentId) pushSet(colParentId, parentId); // NULL for root
+      if (cols.has("updatedat") && colUpdatedAt) pushSet(colUpdatedAt, new Date());
 
-    const whereCompany = hasCompanyId ? ` AND "companyId" = $${params.length + 2}` : "";
-    const sql = `
-      UPDATE ${t}
-      SET ${sets.join(", ")}
-      WHERE id = $${params.length + 1}
-      ${whereCompany}
-      RETURNING *
-    `;
+      if (!sets.length) return { ok: true };
 
-    try {
+      const hasCompanyId = Boolean(colCompanyId);
+      const whereCompany = hasCompanyId ? ` AND ${quoteIdent(colCompanyId as string)} = $${params.length + 2}` : "";
+      const sql = `
+        UPDATE ${t}
+        SET ${sets.join(", ")}
+        WHERE id = $${params.length + 1}
+        ${whereCompany}
+        RETURNING *
+      `;
+
       const rows = await pgQuery<any>(
         sql,
         hasCompanyId ? [...params, id, companyId] : [...params, id]
       );
       const updated = rows?.[0];
-      if (!updated) return res.status(404).json({ error: true, message: "not found" });
-      return res.json(updated);
-    } catch (e: any) {
-      throw e;
-    }
+      if (!updated) throw Object.assign(new Error("not found"), { statusCode: 404 });
+
+      // normalize
+      const outRow: any = { ...updated };
+      if (colTitle && outRow.title === undefined) outRow.title = updated[colTitle];
+      if (colMessage && outRow.message === undefined) outRow.message = updated[colMessage];
+      return outRow;
+    });
+
+    if (!out.ok) throw (out as any).error;
+    return res.json(out.value);
   } catch (e: any) {
+    if (isDebug()) {
+      // eslint-disable-next-line no-console
+      console.error("[queue-options PUT] error:", e?.message, e?.constraint, e?.code);
+    }
+    if (e?.statusCode === 404) return res.status(404).json({ error: true, message: "not found" });
     return res.status(400).json({ error: true, message: e?.message || "update error" });
   }
 });
