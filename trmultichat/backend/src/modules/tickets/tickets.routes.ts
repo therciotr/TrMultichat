@@ -228,6 +228,19 @@ router.delete("/:id", authMiddleware, async (req, res) => {
   if (!companyId) return res.status(401).json({ error: true, message: "missing tenantId" });
   if (!id) return res.status(400).json({ error: true, message: "invalid id" });
 
+  // only admin can delete tickets
+  const requesterId = Number((req as any).userId || 0);
+  if (!requesterId) return res.status(401).json({ error: true, message: "missing userId" });
+  const requesterRows = await pgQuery<any>(
+    `SELECT id, admin, profile FROM "Users" WHERE id = $1 AND "companyId" = $2 LIMIT 1`,
+    [requesterId, companyId]
+  );
+  const requester = requesterRows?.[0];
+  const isAdmin = Boolean(requester?.admin) || String(requester?.profile || "") === "admin";
+  if (!isAdmin) {
+    return res.status(403).json({ error: true, message: "Only admins can delete tickets" });
+  }
+
   // ensure ticket belongs to company
   const exists = await pgQuery<{ id: number }>(
     `SELECT id FROM "Tickets" WHERE id = $1 AND "companyId" = $2 LIMIT 1`,
