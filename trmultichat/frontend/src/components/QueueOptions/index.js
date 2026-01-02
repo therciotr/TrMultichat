@@ -40,7 +40,6 @@ export function QueueOptionStepper({ queueId, options, updateOptions }) {
   const [activeOption, setActiveOption] = useState(-1);
   const [attachment, setAttachment] = useState(null);
   const attachmentFile = useRef(null);
-  const [confirmationOpen, setConfirmationOpen] = useState(false);
 
   const handleOption = (index) => async () => {
     setActiveOption(index);
@@ -79,7 +78,7 @@ export function QueueOptionStepper({ queueId, options, updateOptions }) {
        if (attachment != null) {
           const formData = new FormData();
           formData.append("file", attachment);
-          await api.post(`/queue-options/${option.id}/media-upload`, formData);
+          await api.post(`/queue-options/${option.id}/attachment`, formData);
         }		
       } else {
         const { data } = await api.request({
@@ -91,12 +90,34 @@ export function QueueOptionStepper({ queueId, options, updateOptions }) {
        if (attachment != null) {
           const formData = new FormData();
           formData.append("file", attachment);
-          await api.post(`/queue-options/${option.id}/media-upload`, formData);
+          await api.post(`/queue-options/${option.id}/attachment`, formData);
         }
       }
       option.edition = false;
       updateOptions();
       setAttachment(null)
+    } catch (e) {
+      toastError(e);
+    }
+  };
+
+  const getPublicFileUrl = (pathname) => {
+    if (!pathname) return "";
+    if (String(pathname).startsWith("http")) return String(pathname);
+    const base = (api && api.defaults && api.defaults.baseURL) ? String(api.defaults.baseURL).replace(/\/+$/g, "") : "";
+    const p = String(pathname).startsWith("/") ? String(pathname) : `/${pathname}`;
+    return base ? `${base}${p}` : p;
+  };
+
+  const deleteAttachment = async (opt) => {
+    try {
+      if (opt?.id) {
+        await api.delete(`/queue-options/${opt.id}/attachment`);
+        opt.mediaPath = null;
+        opt.mediaName = null;
+        setAttachment(null);
+        updateOptions();
+      }
     } catch (e) {
       toastError(e);
     }
@@ -196,14 +217,20 @@ export function QueueOptionStepper({ queueId, options, updateOptions }) {
               )}
                {(option.mediaPath || attachment) && (
                     <Grid xs={12} item>
-                      <Button startIcon={<AttachFile />}>
+                      <Button
+                        startIcon={<AttachFile />}
+                        onClick={() => {
+                          const url = getPublicFileUrl(option.mediaPath);
+                          if (url) window.open(url, "_blank", "noopener,noreferrer");
+                        }}
+                      >
                         {attachment != null
                           ? attachment.name
                           : option.mediaName}
                       </Button>
 
                         <IconButton
-                          onClick={() => setConfirmationOpen(true)}
+                          onClick={() => deleteAttachment(option)}
                           color="secondary"
                         >
                           <DeleteOutline />

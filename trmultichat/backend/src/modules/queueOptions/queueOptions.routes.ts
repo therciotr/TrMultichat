@@ -57,6 +57,182 @@ function maybeUploadSingle(fieldName: string) {
   };
 }
 
+function toPublicUrl(pathname: string): string {
+  const p = String(pathname || "");
+  if (!p) return "";
+  return p.startsWith("/") ? p : `/${p}`;
+}
+
+function safeJoinUrl(base: string, pathname: string): string {
+  const b = String(base || "").replace(/\/+$/g, "");
+  const p = toPublicUrl(pathname);
+  return b ? `${b}${p}` : p;
+}
+
+async function maybeEnsureAttachmentColumns(tableIdent: string) {
+  // Best-effort: if we can add columns, we do; if not, keep working with existing mediaPath/mediaName.
+  try {
+    await pgQuery(
+      `
+      ALTER TABLE ${tableIdent}
+        ADD COLUMN IF NOT EXISTS "attachmentPath" text,
+        ADD COLUMN IF NOT EXISTS "attachmentName" text,
+        ADD COLUMN IF NOT EXISTS "attachmentMime" text,
+        ADD COLUMN IF NOT EXISTS "attachmentSize" integer
+    `
+    );
+  } catch {
+    // ignore (no privileges / different schema)
+  }
+}
+
+async function handleQueueOptionAttachmentUpload(req: any, res: any) {
+  const companyId = Number(req.tenantId);
+  const id = toInt(req.params.id, 0) || 0;
+  if (!id) return res.status(400).json({ error: true, message: "invalid id" });
+  if (!req.file) return res.status(400).json({ error: true, message: "file is required" });
+
+  const attachmentPath = `/uploads/queue-options/${req.file.filename}`;
+  const attachmentName = String(req.file.originalname || req.file.filename || "").trim();
+  const attachmentMime = String(req.file.mimetype || "").trim();
+  const attachmentSize = Number(req.file.size || 0) || 0;
+
+  const out = await tryEachQueueOptionsTable(async (t, colsMap) => {
+    await maybeEnsureAttachmentColumns(t);
+    const cols = new Set(Array.from(colsMap.keys()));
+    const colCompanyId = pickColumn(colsMap, ["companyId", "company_id", "companyid"]);
+
+    const colMediaPath = pickColumn(colsMap, ["mediaPath", "media_path", "mediapath", "path"]);
+    const colMediaName = pickColumn(colsMap, ["mediaName", "media_name", "medianame", "fileName", "filename"]);
+    const colAttachmentPath = pickColumn(colsMap, ["attachmentPath", "attachment_path"]);
+    const colAttachmentName = pickColumn(colsMap, ["attachmentName", "attachment_name"]);
+    const colAttachmentMime = pickColumn(colsMap, ["attachmentMime", "attachment_mime", "mimetype", "mimeType", "mime_type"]);
+    const colAttachmentSize = pickColumn(colsMap, ["attachmentSize", "attachment_size", "size"]);
+    const colUpdatedAt = pickColumn(colsMap, ["updatedAt", "updated_at", "updatedat"]);
+
+    const sets: string[] = [];
+    const params: any[] = [];
+    const pushSet = (col: string | null, val: any) => {
+      if (!col) return;
+      sets.push(`${quoteIdent(col)} = $${params.length + 1}`);
+      params.push(val);
+    };
+
+    // Keep legacy fields for UI compatibility
+    pushSet(colMediaPath, attachmentPath);
+    pushSet(colMediaName, attachmentName);
+    pushSet(colAttachmentPath, attachmentPath);
+    pushSet(colAttachmentName, attachmentName);
+    pushSet(colAttachmentMime, attachmentMime);
+    pushSet(colAttachmentSize, attachmentSize);
+    if (cols.has("updatedat") && colUpdatedAt) {
+      sets.push(`${quoteIdent(colUpdatedAt)} = NOW()`);
+    }
+
+    if (!sets.length) throw new Error("attachment fields not available");
+
+    const hasCompanyId = Boolean(colCompanyId);
+    const whereCompany = hasCompanyId ? ` AND ${quoteIdent(colCompanyId as string)} = $${params.length + 2}` : "";
+
+    const rows = await pgQuery<any>(
+      `
+      UPDATE ${t}
+      SET ${sets.join(", ")}
+      WHERE id = $${params.length + 1}${whereCompany}
+      RETURNING *
+    `,
+      hasCompanyId ? [...params, id, companyId] : [...params, id]
+    );
+    const updated = rows?.[0];
+    if (!updated) throw Object.assign(new Error("not found"), { statusCode: 404 });
+    return updated;
+  });
+
+  if (!out.ok) throw (out as any).error;
+
+  return res.json({
+    url: attachmentPath,
+    name: attachmentName,
+    mime: attachmentMime,
+    size: attachmentSize
+  });
+}
+
+async function handleQueueOptionAttachmentDelete(req: any, res: any) {
+  const companyId = Number(req.tenantId);
+  const id = toInt(req.params.id, 0) || 0;
+  if (!id) return res.status(400).json({ error: true, message: "invalid id" });
+
+  // Best-effort: fetch current path to delete file on disk.
+  let existingPath: string | null = null;
+  try {
+    const found = await tryEachQueueOptionsTable(async (t, colsMap) => {
+      const colCompanyId = pickColumn(colsMap, ["companyId", "company_id", "companyid"]);
+      const colMediaPath = pickColumn(colsMap, ["mediaPath", "media_path", "mediapath", "path"]);
+      const colAttachmentPath = pickColumn(colsMap, ["attachmentPath", "attachment_path"]);
+      const hasCompanyId = Boolean(colCompanyId);
+      const whereCompany = hasCompanyId ? ` AND ${quoteIdent(colCompanyId as string)} = $2` : "";
+      const rows = await pgQuery<any>(
+        `SELECT * FROM ${t} WHERE id = $1${whereCompany} LIMIT 1`,
+        hasCompanyId ? [id, companyId] : [id]
+      );
+      const row = rows?.[0];
+      if (!row) throw Object.assign(new Error("not found"), { statusCode: 404 });
+      return String(row[colAttachmentPath || ""] || row[colMediaPath || ""] || "") || null;
+    });
+    if (found.ok) existingPath = found.value;
+  } catch {}
+
+  const out = await tryEachQueueOptionsTable(async (t, colsMap) => {
+    const cols = new Set(Array.from(colsMap.keys()));
+    const colCompanyId = pickColumn(colsMap, ["companyId", "company_id", "companyid"]);
+    const colMediaPath = pickColumn(colsMap, ["mediaPath", "media_path", "mediapath", "path"]);
+    const colMediaName = pickColumn(colsMap, ["mediaName", "media_name", "medianame", "fileName", "filename"]);
+    const colAttachmentPath = pickColumn(colsMap, ["attachmentPath", "attachment_path"]);
+    const colAttachmentName = pickColumn(colsMap, ["attachmentName", "attachment_name"]);
+    const colAttachmentMime = pickColumn(colsMap, ["attachmentMime", "attachment_mime", "mimetype", "mimeType", "mime_type"]);
+    const colAttachmentSize = pickColumn(colsMap, ["attachmentSize", "attachment_size", "size"]);
+    const colUpdatedAt = pickColumn(colsMap, ["updatedAt", "updated_at", "updatedat"]);
+
+    const sets: string[] = [];
+    const params: any[] = [];
+    const pushNull = (col: string | null) => {
+      if (!col) return;
+      sets.push(`${quoteIdent(col)} = NULL`);
+    };
+    pushNull(colMediaPath);
+    pushNull(colMediaName);
+    pushNull(colAttachmentPath);
+    pushNull(colAttachmentName);
+    pushNull(colAttachmentMime);
+    pushNull(colAttachmentSize);
+    if (cols.has("updatedat") && colUpdatedAt) sets.push(`${quoteIdent(colUpdatedAt)} = NOW()`);
+
+    if (!sets.length) return true;
+
+    const hasCompanyId = Boolean(colCompanyId);
+    const whereCompany = hasCompanyId ? ` AND ${quoteIdent(colCompanyId as string)} = $2` : "";
+    await pgQuery(
+      `UPDATE ${t} SET ${sets.join(", ")} WHERE id = $1${whereCompany}`,
+      hasCompanyId ? [id, companyId] : [id]
+    );
+    return true;
+  });
+
+  if (!out.ok) throw (out as any).error;
+
+  // Remove file on disk (only if under our uploads dir)
+  try {
+    if (existingPath && existingPath.startsWith("/uploads/queue-options/")) {
+      const filename = existingPath.replace("/uploads/queue-options/", "");
+      const abs = path.join(QUEUE_OPTIONS_UPLOADS_DIR, filename);
+      if (fs.existsSync(abs)) fs.unlinkSync(abs);
+    }
+  } catch {}
+
+  return res.status(204).end();
+}
+
 let cachedQueueOptionsTable: string | null = null; // quoted identifier
 let cachedQueuesTable: string | null = null; // quoted identifier
 let cachedQueueOptionsColsMap: Map<string, string> | null = null; // lower -> actual
@@ -612,47 +788,41 @@ router.delete("/:id", async (req, res) => {
 // POST /queue-options/:id/media-upload (multipart/form-data: file)
 router.post("/:id/media-upload", maybeUploadSingle("file"), async (req: any, res) => {
   try {
-    const companyId = Number(req.tenantId);
-    const id = toInt(req.params.id, 0) || 0;
-    if (!id) return res.status(400).json({ error: true, message: "invalid id" });
-    if (!req.file) return res.status(400).json({ error: true, message: "file is required" });
-
-    const mediaPath = `/uploads/queue-options/${req.file.filename}`;
-    const mediaName = String(req.file.originalname || req.file.filename || "").trim();
-
-    const t = await resolveQueueOptionsTable();
-    const colsMap = await resolveQueueOptionsColumnsMap(t);
-    const cols = new Set(Array.from(colsMap.keys()));
-    const hasCompanyId = cols.has("companyid");
-
-    // Use the most common column names seen in the UI: mediaPath/mediaName
-    const colPath = pickColumn(colsMap, ["mediaPath", "media_path", "mediapath", "path"], "mediaPath");
-    const colName = pickColumn(colsMap, ["mediaName", "media_name", "medianame", "name", "fileName", "filename"], "mediaName");
-    const colUpdatedAt = pickColumn(colsMap, ["updatedAt", "updated_at", "updatedat"], "updatedAt");
-
-    const whereCompany = hasCompanyId ? ` AND "companyId" = $4` : "";
-    const params = hasCompanyId
-      ? [mediaPath, mediaName, id, companyId]
-      : [mediaPath, mediaName, id];
-
-    try {
-      const rows = await pgQuery<any>(
-        `
-        UPDATE ${t}
-        SET ${quoteIdent(colPath)} = $1, ${quoteIdent(colName)} = $2${cols.has("updatedat") ? `, ${quoteIdent(colUpdatedAt)} = NOW()` : ""}
-        WHERE id = $3${whereCompany}
-        RETURNING *
-      `,
-        params
-      );
-      const updated = rows?.[0];
-      if (!updated) return res.status(404).json({ error: true, message: "not found" });
-      return res.json(updated);
-    } catch (e: any) {
-      throw e;
-    }
+    return await handleQueueOptionAttachmentUpload(req, res);
   } catch (e: any) {
+    if (isDebug()) {
+      // eslint-disable-next-line no-console
+      console.error("[queue-options media-upload] error:", e?.message, e?.constraint, e?.code);
+    }
+    if (e?.statusCode === 404) return res.status(404).json({ error: true, message: "not found" });
     return res.status(400).json({ error: true, message: e?.message || "upload error" });
+  }
+});
+
+// New attachment routes (preferred)
+router.post("/:id/attachment", maybeUploadSingle("file"), async (req: any, res) => {
+  try {
+    return await handleQueueOptionAttachmentUpload(req, res);
+  } catch (e: any) {
+    if (isDebug()) {
+      // eslint-disable-next-line no-console
+      console.error("[queue-options attachment] error:", e?.message, e?.constraint, e?.code);
+    }
+    if (e?.statusCode === 404) return res.status(404).json({ error: true, message: "not found" });
+    return res.status(400).json({ error: true, message: e?.message || "upload error" });
+  }
+});
+
+router.delete("/:id/attachment", async (req: any, res) => {
+  try {
+    return await handleQueueOptionAttachmentDelete(req, res);
+  } catch (e: any) {
+    if (isDebug()) {
+      // eslint-disable-next-line no-console
+      console.error("[queue-options attachment delete] error:", e?.message, e?.constraint, e?.code);
+    }
+    if (e?.statusCode === 404) return res.status(404).json({ error: true, message: "not found" });
+    return res.status(400).json({ error: true, message: e?.message || "delete attachment error" });
   }
 });
 
