@@ -51,6 +51,27 @@ async function queryQueuesTable<T>(
   return [];
 }
 
+function normalizeJsonParam(value: any): any {
+  if (value === undefined || value === null) return null;
+  // If the UI already sends JSON as string, keep it (but validate it is JSON)
+  if (typeof value === "string") {
+    const v = value.trim();
+    if (!v) return null;
+    try {
+      JSON.parse(v);
+      return v;
+    } catch {
+      // not valid JSON -> keep raw string (avoids throwing here); DB cast will error clearly
+      return v;
+    }
+  }
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return null;
+  }
+}
+
 router.get("/", async (_req, res) => {
   try {
     const tenantId = extractTenantIdFromAuth(_req.headers.authorization as string);
@@ -99,7 +120,9 @@ router.post("/", async (req, res) => {
     const color = String(body.color ?? "#0B4C46").trim() || "#0B4C46";
     const greetingMessage = String(body.greetingMessage ?? "");
     const outOfHoursMessage = String(body.outOfHoursMessage ?? "");
-    const schedules = body.schedules ?? null;
+    // Important: pg treats arrays as Postgres arrays, not JSON.
+    // UI sends schedules as array of objects -> store as JSON/JSONB safely.
+    const schedules = normalizeJsonParam(body.schedules);
     const orderQueue =
       body.orderQueue === undefined ||
       body.orderQueue === null ||
@@ -135,7 +158,7 @@ router.post("/", async (req, res) => {
         INSERT INTO ${table}
           ("name","color","greetingMessage","outOfHoursMessage","schedules","orderQueue","integrationId","promptId","companyId","createdAt","updatedAt")
         VALUES
-          ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW(),NOW())
+          ($1,$2,$3,$4,$5::jsonb,$6,$7,$8,$9,NOW(),NOW())
         RETURNING *
       `,
       [
@@ -211,7 +234,7 @@ router.put("/:id", async (req, res) => {
       color: body.color,
       greetingMessage: body.greetingMessage,
       outOfHoursMessage: body.outOfHoursMessage,
-      schedules: body.schedules,
+      schedules: normalizeJsonParam(body.schedules),
       orderQueue:
         body.orderQueue === undefined || body.orderQueue === null || String(body.orderQueue).trim() === ""
           ? null
@@ -237,7 +260,7 @@ router.put("/:id", async (req, res) => {
             "color" = COALESCE($2, "color"),
             "greetingMessage" = COALESCE($3, "greetingMessage"),
             "outOfHoursMessage" = COALESCE($4, "outOfHoursMessage"),
-            "schedules" = COALESCE($5, "schedules"),
+            "schedules" = COALESCE($5::jsonb, "schedules"),
             "orderQueue" = $6,
             "integrationId" = $7,
             "promptId" = $8,
