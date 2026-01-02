@@ -91,7 +91,7 @@ const useStyles = makeStyles((theme) => ({
     padding: theme.spacing(2),
     overflowY: "scroll",
     ...theme.scrollbarStyles,
-    backgroundColor: "#F8FAFC",
+    backgroundColor: "#F6F8FB",
     borderRadius: 14,
     border: "1px solid rgba(15, 23, 42, 0.08)",
   },
@@ -112,14 +112,22 @@ const useStyles = makeStyles((theme) => ({
   },
   card: {
     height: "100%",
+    minHeight: 168,
     borderRadius: 14,
     border: "1px solid rgba(15, 23, 42, 0.08)",
+    background: "linear-gradient(180deg, #FFFFFF 0%, #FBFCFE 100%)",
     boxShadow: "0 1px 2px rgba(15, 23, 42, 0.06)",
     transition: "box-shadow 150ms ease, transform 150ms ease, border-color 150ms ease",
     "&:hover": {
       borderColor: "rgba(15, 23, 42, 0.14)",
       boxShadow: "0 10px 22px rgba(15, 23, 42, 0.10)",
       transform: "translateY(-1px)",
+    },
+  },
+  cardContent: {
+    padding: theme.spacing(2),
+    "&:last-child": {
+      paddingBottom: theme.spacing(2),
     },
   },
   cardTop: {
@@ -135,13 +143,13 @@ const useStyles = makeStyles((theme) => ({
     minWidth: 0,
   },
   iconBadge: {
-    width: 38,
-    height: 38,
+    width: 42,
+    height: 42,
     borderRadius: 14,
     display: "grid",
     placeItems: "center",
-    backgroundColor: "rgba(99, 102, 241, 0.12)",
-    color: "rgba(67, 56, 202, 0.95)",
+    backgroundColor: "rgba(14, 116, 144, 0.10)",
+    color: "rgba(14, 116, 144, 0.95)",
     flex: "none",
   },
   meta: {
@@ -165,7 +173,8 @@ const useStyles = makeStyles((theme) => ({
   },
   countChip: {
     borderRadius: 999,
-    backgroundColor: "rgba(15, 23, 42, 0.04)",
+    backgroundColor: "rgba(15, 23, 42, 0.03)",
+    color: "rgba(15, 23, 42, 0.78)",
   },
   actions: {
     justifyContent: "flex-end",
@@ -361,11 +370,11 @@ const Tags = () => {
             {tags.map((tag) => (
               <Grid key={tag.id} item xs={12} sm={6} md={4} lg={3}>
                 <Card className={classes.card} variant="outlined">
-                  <CardContent>
+                  <CardContent className={classes.cardContent}>
                     <div className={classes.cardTop}>
                       <div className={classes.titleRow}>
                         <div className={classes.iconBadge}>
-                          <LocalOfferOutlinedIcon style={{ fontSize: 20 }} />
+                          <LocalOfferOutlinedIcon style={{ fontSize: 22 }} />
                         </div>
                         <div style={{ minWidth: 0, width: "100%" }}>
                           <div className={classes.meta}>
