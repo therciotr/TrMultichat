@@ -4,26 +4,31 @@ import { toast } from "react-toastify";
 import { useHistory } from "react-router-dom";
 
 import { makeStyles } from "@material-ui/core/styles";
-import Table from "@material-ui/core/Table";
-import TableBody from "@material-ui/core/TableBody";
-import TableCell from "@material-ui/core/TableCell";
-import TableHead from "@material-ui/core/TableHead";
-import TableRow from "@material-ui/core/TableRow";
 import Paper from "@material-ui/core/Paper";
 // removed Button import after migrating to TrButton
 import { TrButton } from "../../components/ui";
 import Avatar from "@material-ui/core/Avatar";
+import Grid from "@material-ui/core/Grid";
+import Card from "@material-ui/core/Card";
+import CardContent from "@material-ui/core/CardContent";
+import CardActions from "@material-ui/core/CardActions";
+import Typography from "@material-ui/core/Typography";
+import Chip from "@material-ui/core/Chip";
+import Box from "@material-ui/core/Box";
 import WhatsAppIcon from "@material-ui/icons/WhatsApp";
-import SearchIcon from "@material-ui/icons/Search";
+import SearchOutlinedIcon from "@material-ui/icons/SearchOutlined";
 import TextField from "@material-ui/core/TextField";
 import InputAdornment from "@material-ui/core/InputAdornment";
 
 import IconButton from "@material-ui/core/IconButton";
 import DeleteOutlineIcon from "@material-ui/icons/DeleteOutline";
-import EditIcon from "@material-ui/icons/Edit";
+import EditOutlinedIcon from "@material-ui/icons/EditOutlined";
+import PersonOutlineIcon from "@material-ui/icons/PersonOutline";
+import CloudDownloadOutlinedIcon from "@material-ui/icons/CloudDownloadOutlined";
+import PersonAddOutlinedIcon from "@material-ui/icons/PersonAddOutlined";
+import FileDownloadOutlinedIcon from "@material-ui/icons/GetAppOutlined";
 
 import api from "../../services/api";
-import TableRowSkeleton from "../../components/TableRowSkeleton";
 import ContactModal from "../../components/ContactModal";
 import ConfirmationModal from "../../components/ConfirmationModal/";
 
@@ -87,9 +92,107 @@ const reducer = (state, action) => {
 const useStyles = makeStyles((theme) => ({
   mainPaper: {
     flex: 1,
-    padding: theme.spacing(1),
+    padding: theme.spacing(2),
     overflowY: "scroll",
     ...theme.scrollbarStyles,
+    backgroundColor: "#F8FAFC",
+    borderRadius: 14,
+    border: "1px solid rgba(15, 23, 42, 0.08)",
+  },
+  headerRow: {
+    width: "99.6%",
+    alignItems: "center",
+  },
+  searchField: {
+    "& .MuiOutlinedInput-root": {
+      borderRadius: 12,
+      backgroundColor: "#fff",
+    },
+  },
+  actionBtn: {
+    borderRadius: 12,
+    fontWeight: 900,
+    textTransform: "none",
+    whiteSpace: "nowrap",
+  },
+  cardsGrid: {
+    marginTop: theme.spacing(0.5),
+  },
+  card: {
+    height: "100%",
+    borderRadius: 14,
+    border: "1px solid rgba(15, 23, 42, 0.08)",
+    boxShadow: "0 1px 2px rgba(15, 23, 42, 0.06)",
+    transition: "box-shadow 150ms ease, transform 150ms ease, border-color 150ms ease",
+    "&:hover": {
+      borderColor: "rgba(15, 23, 42, 0.14)",
+      boxShadow: "0 10px 22px rgba(15, 23, 42, 0.10)",
+      transform: "translateY(-1px)",
+    },
+  },
+  cardTop: {
+    display: "flex",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: theme.spacing(1),
+  },
+  titleRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+    minWidth: 0,
+  },
+  avatar: {
+    width: 46,
+    height: 46,
+    borderRadius: 14,
+    border: "1px solid rgba(15, 23, 42, 0.08)",
+    backgroundColor: "rgba(15, 23, 42, 0.06)",
+  },
+  name: {
+    fontWeight: 900,
+    fontSize: 14,
+    color: "rgba(15, 23, 42, 0.92)",
+  },
+  sub: {
+    marginTop: 2,
+    color: "rgba(15, 23, 42, 0.65)",
+    fontSize: 13,
+  },
+  chips: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: theme.spacing(1.25),
+  },
+  chip: {
+    borderRadius: 999,
+    backgroundColor: "rgba(15, 23, 42, 0.04)",
+  },
+  actions: {
+    justifyContent: "flex-end",
+    paddingTop: 0,
+  },
+  emptyWrap: {
+    borderRadius: 14,
+    border: "1px dashed rgba(15, 23, 42, 0.18)",
+    backgroundColor: "rgba(255,255,255,0.75)",
+    padding: theme.spacing(4),
+    textAlign: "center",
+    marginTop: theme.spacing(2),
+  },
+  emptyIcon: {
+    width: 56,
+    height: 56,
+    color: "rgba(15, 23, 42, 0.22)",
+    margin: "0 auto 10px",
+    display: "block",
+  },
+  skeletonCard: {
+    borderRadius: 14,
+    border: "1px solid rgba(15, 23, 42, 0.08)",
+    backgroundColor: "#fff",
+    height: 140,
   },
 }));
 
@@ -273,27 +376,34 @@ const Contacts = () => {
             type="search"
             value={searchParam}
             onChange={handleSearch}
+            variant="outlined"
+            size="small"
+            className={classes.searchField}
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
-                  <SearchIcon style={{ color: "gray" }} />
+                  <SearchOutlinedIcon style={{ color: "rgba(15, 23, 42, 0.55)" }} />
                 </InputAdornment>
               ),
             }}
           />
           <TrButton
+            className={classes.actionBtn}
             onClick={(e) => setConfirmOpen(true)}
+            startIcon={<CloudDownloadOutlinedIcon />}
           >
             {i18n.t("contacts.buttons.import")}
           </TrButton>
           <TrButton
+            className={classes.actionBtn}
             onClick={handleOpenContactModal}
+            startIcon={<PersonAddOutlinedIcon />}
           >
             {i18n.t("contacts.buttons.add")}
           </TrButton>
 
          <CSVLink style={{ textDecoration:'none'}} separator=";" filename={'trtecnologias.csv'} data={contacts.map((contact) => ({ name: contact.name, number: contact.number, email: contact.email }))}>
-          <TrButton>
+          <TrButton className={classes.actionBtn} startIcon={<FileDownloadOutlinedIcon />}>
           EXPORTAR CONTATOS 
           </TrButton>
           </CSVLink>
@@ -305,70 +415,102 @@ const Contacts = () => {
         variant="outlined"
         onScroll={handleScroll}
       >
-        <Table size="small">
-          <TableHead style={{ backgroundColor: 'rgba(11, 76, 70, 0.06)' }}>
-            <TableRow>
-              <TableCell padding="checkbox" />
-              <TableCell style={{ color: 'var(--tr-primary)', fontWeight: 600 }}>{i18n.t("contacts.table.name")}</TableCell>
-              <TableCell align="center">
-                {i18n.t("contacts.table.whatsapp")}
-              </TableCell>
-              <TableCell align="center">
-                {i18n.t("contacts.table.email")}
-              </TableCell>
-              <TableCell align="center">
-                {i18n.t("contacts.table.actions")}
-              </TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            <>
-              {contacts.map((contact) => (
-                <TableRow key={contact.id}>
-                  <TableCell style={{ paddingRight: 0 }}>
-                    {<Avatar src={contact.profilePicUrl} />}
-                  </TableCell>
-                  <TableCell>{contact.name}</TableCell>
-                  <TableCell align="center">{contact.number}</TableCell>
-                  <TableCell align="center">{contact.email}</TableCell>
-                  <TableCell align="center">
-                    <IconButton
-                      size="small"
-                      onClick={() => {
-                        setContactTicket(contact);
-                        setNewTicketModalOpen(true);
-                      }}
-                    >
-                      <WhatsAppIcon />
-                    </IconButton>
-                    <IconButton
-                      size="small"
-                      onClick={() => hadleEditContact(contact.id)}
-                    >
-                      <EditIcon />
-                    </IconButton>
-                    <Can
-                      role={user?.profile || "user"}
-                      perform="contacts-page:deleteContact"
-                      yes={() => (
+        {contacts.length === 0 && !loading ? (
+          <div className={classes.emptyWrap}>
+            <PersonOutlineIcon className={classes.emptyIcon} />
+            <Typography style={{ fontWeight: 900, fontSize: 16, color: "rgba(15, 23, 42, 0.92)" }}>
+              {i18n.t("contacts.title")}
+            </Typography>
+            <Typography style={{ color: "rgba(15, 23, 42, 0.62)", fontSize: 13 }}>
+              {i18n.t("contacts.searchPlaceholder")}
+            </Typography>
+          </div>
+        ) : (
+          <Grid container spacing={2} className={classes.cardsGrid}>
+            {contacts.map((contact) => (
+              <Grid key={contact.id} item xs={12} sm={6} md={4} lg={3}>
+                <Card className={classes.card} variant="outlined">
+                  <CardContent>
+                    <div className={classes.cardTop}>
+                      <div className={classes.titleRow}>
+                        <Avatar className={classes.avatar} src={contact.profilePicUrl} />
+                        <div style={{ minWidth: 0 }}>
+                          <Typography className={classes.name} noWrap>
+                            {contact.name}
+                          </Typography>
+                          <Typography className={classes.sub} noWrap>
+                            {contact.number || "—"}
+                          </Typography>
+                        </div>
+                      </div>
+                      <Box>
                         <IconButton
                           size="small"
-                          onClick={(e) => {
-                            setConfirmOpen(true);
-                            setDeletingContact(contact);
+                          onClick={() => {
+                            setContactTicket(contact);
+                            setNewTicketModalOpen(true);
                           }}
+                          aria-label="Abrir atendimento"
                         >
-                          <DeleteOutlineIcon />
+                          <WhatsAppIcon />
                         </IconButton>
-                      )}
-                    />
-                  </TableCell>
-                </TableRow>
+                        <IconButton
+                          size="small"
+                          onClick={() => hadleEditContact(contact.id)}
+                          aria-label="Editar contato"
+                        >
+                          <EditOutlinedIcon />
+                        </IconButton>
+                        <Can
+                          role={user?.profile || "user"}
+                          perform="contacts-page:deleteContact"
+                          yes={() => (
+                            <IconButton
+                              size="small"
+                              onClick={() => {
+                                setConfirmOpen(true);
+                                setDeletingContact(contact);
+                              }}
+                              aria-label="Excluir contato"
+                            >
+                              <DeleteOutlineIcon />
+                            </IconButton>
+                          )}
+                        />
+                      </Box>
+                    </div>
+
+                    <div className={classes.chips}>
+                      <Chip
+                        className={classes.chip}
+                        size="small"
+                        icon={<WhatsAppIcon style={{ fontSize: 16 }} />}
+                        label={contact.number || "—"}
+                        variant="outlined"
+                      />
+                      <Chip
+                        className={classes.chip}
+                        size="small"
+                        label={contact.email || i18n.t("contacts.table.email")}
+                        variant="outlined"
+                      />
+                    </div>
+                  </CardContent>
+                  <CardActions className={classes.actions}>
+                    {/* ações ficam nos ícones para não alterar comportamento */}
+                  </CardActions>
+                </Card>
+              </Grid>
+            ))}
+
+            {loading &&
+              Array.from({ length: 8 }).map((_, idx) => (
+                <Grid key={`sk-${idx}`} item xs={12} sm={6} md={4} lg={3}>
+                  <div className={classes.skeletonCard} />
+                </Grid>
               ))}
-              {loading && <TableRowSkeleton avatar columns={3} />}
-            </>
-          </TableBody>
-        </Table>
+          </Grid>
+        )}
       </Paper>
     </MainContainer>
   );
