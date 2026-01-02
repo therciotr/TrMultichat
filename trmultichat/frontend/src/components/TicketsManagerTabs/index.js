@@ -27,6 +27,8 @@ import TicketsQueueSelect from "../TicketsQueueSelect";
 import { Button } from "@material-ui/core";
 import { TagsFilter } from "../TagsFilter";
 import { UsersFilter } from "../UsersFilter";
+import useQueues from "../../hooks/useQueues";
+import api from "../../services/api";
 
 const useStyles = makeStyles(theme => ({
 	ticketsWrapper: {
@@ -197,6 +199,8 @@ const TicketsManagerTabs = () => {
 
   const userQueueIds = (user?.queues || []).map((q) => q.id);
   const [selectedQueueIds, setSelectedQueueIds] = useState(userQueueIds || []);
+  const [allQueues, setAllQueues] = useState([]);
+  const { findAll } = useQueues();
   const [selectedTags, setSelectedTags] = useState([]);
   const [selectedUsers, setSelectedUsers] = useState([]);
 
@@ -207,6 +211,44 @@ const TicketsManagerTabs = () => {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // When user data loads async, keep queue filter in sync (without changing any fetch logic)
+  useEffect(() => {
+    if (Array.isArray(userQueueIds) && userQueueIds.length > 0) {
+      setSelectedQueueIds((prev) => {
+        if (Array.isArray(prev) && prev.length > 0) return prev;
+        return userQueueIds;
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userQueueIds.join(",")]);
+
+  // Admin can see all queues in the filter even if user.queues is empty
+  useEffect(() => {
+    const p = (user?.profile || "").toString().toUpperCase();
+    if (p !== "ADMIN") return;
+    (async () => {
+      try {
+        let data = await findAll();
+        if (!Array.isArray(data) || data.length === 0) {
+          try {
+            const alt = await api.get("/queue-list");
+            data = alt.data;
+          } catch (_) {}
+        }
+        setAllQueues(Array.isArray(data) ? data : []);
+      } catch (_) {
+        setAllQueues([]);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.profile]);
+
+  const pUpper = (user?.profile || "").toString().toUpperCase();
+  const queuesForSelect =
+    pUpper === "ADMIN"
+      ? (Array.isArray(allQueues) && allQueues.length > 0 ? allQueues : (user?.queues || []))
+      : (user?.queues || []);
 
   useEffect(() => {
     if (tab === "search" && searchInputRef.current) {
@@ -357,7 +399,7 @@ const TicketsManagerTabs = () => {
           <TicketsQueueSelect
             style={{ marginLeft: 0 }}
             selectedQueueIds={selectedQueueIds}
-            userQueues={user?.queues || []}
+            userQueues={queuesForSelect}
             onChange={(values) => setSelectedQueueIds(values)}
           />
         </div>
