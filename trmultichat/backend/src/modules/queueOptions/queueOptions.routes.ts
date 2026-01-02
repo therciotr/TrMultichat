@@ -55,7 +55,7 @@ function maybeUploadSingle(fieldName: string) {
 
 let cachedQueueOptionsTable: string | null = null; // quoted identifier
 let cachedQueuesTable: string | null = null; // quoted identifier
-let cachedQueueOptionsCols: Set<string> | null = null; // lowercase
+let cachedQueueOptionsColsMap: Map<string, string> | null = null; // lower -> actual
 
 async function resolveTableByILike(patterns: string[], fallback: string): Promise<string> {
   try {
@@ -82,7 +82,10 @@ async function resolveTableByILike(patterns: string[], fallback: string): Promis
 
 async function resolveQueueOptionsTable(): Promise<string> {
   if (cachedQueueOptionsTable) return cachedQueueOptionsTable;
-  cachedQueueOptionsTable = await resolveTableByILike(["queueoptions", "queue_options"], "QueueOptions");
+  cachedQueueOptionsTable = await resolveTableByILike(
+    ["queueoptions", "queue_options", "queueoption", "queue_option"],
+    "QueueOptions"
+  );
   return cachedQueueOptionsTable;
 }
 
@@ -93,7 +96,12 @@ async function resolveQueuesTable(): Promise<string> {
 }
 
 async function resolveQueueOptionsColumns(tableIdentQuoted: string): Promise<Set<string>> {
-  if (cachedQueueOptionsCols) return cachedQueueOptionsCols;
+  const map = await resolveQueueOptionsColumnsMap(tableIdentQuoted);
+  return new Set(Array.from(map.keys()));
+}
+
+async function resolveQueueOptionsColumnsMap(tableIdentQuoted: string): Promise<Map<string, string>> {
+  if (cachedQueueOptionsColsMap) return cachedQueueOptionsColsMap;
   try {
     const rawName = tableIdentQuoted.replace(/^"+|"+$/g, "").replace(/""/g, '"');
     const cols = await pgQuery<{ column_name: string }>(
@@ -105,12 +113,30 @@ async function resolveQueueOptionsColumns(tableIdentQuoted: string): Promise<Set
     `,
       [rawName]
     );
-    cachedQueueOptionsCols = new Set(cols.map((c) => String(c.column_name || "").toLowerCase()));
-    return cachedQueueOptionsCols;
+    const m = new Map<string, string>();
+    for (const c of cols) {
+      const actual = String(c.column_name || "");
+      if (!actual) continue;
+      m.set(actual.toLowerCase(), actual);
+    }
+    cachedQueueOptionsColsMap = m;
+    return m;
   } catch {
-    cachedQueueOptionsCols = new Set();
-    return cachedQueueOptionsCols;
+    cachedQueueOptionsColsMap = new Map();
+    return cachedQueueOptionsColsMap;
   }
+}
+
+function pickColumn(
+  colsMap: Map<string, string>,
+  candidates: string[],
+  fallback: string
+): string {
+  for (const c of candidates) {
+    const actual = colsMap.get(String(c).toLowerCase());
+    if (actual) return actual;
+  }
+  return fallback;
 }
 
 async function queueBelongsToCompany(queueId: number, companyId: number): Promise<boolean> {
@@ -156,25 +182,31 @@ router.get("/", async (req, res) => {
     if (!okQueue) return res.status(404).json({ error: true, message: "queue not found" });
 
     const t = await resolveQueueOptionsTable();
-    const cols = await resolveQueueOptionsColumns(t);
+    const colsMap = await resolveQueueOptionsColumnsMap(t);
+    const cols = new Set(Array.from(colsMap.keys()));
     const hasCompanyId = cols.has("companyid");
+    const colQueueId = pickColumn(colsMap, ["queueId", "queue_id", "queueid"], "queueId");
+    const colParentId = pickColumn(colsMap, ["parentId", "parent_id", "parentid"], "parentId");
+    const colOption = pickColumn(colsMap, ["option", "order", "position"], "option");
 
     const whereCompany = hasCompanyId ? ` AND "companyId" = $2` : "";
     const paramsBase = hasCompanyId ? [queueId, companyId] : [queueId];
     const idxParent = paramsBase.length + 1;
 
     const whereParent =
-      parentId === null ? ` AND "parentId" IS NULL` : ` AND "parentId" = $${idxParent}`;
+      parentId === null
+        ? ` AND ${quoteIdent(colParentId)} IS NULL`
+        : ` AND ${quoteIdent(colParentId)} = $${idxParent}`;
     const params = parentId === null ? paramsBase : [...paramsBase, parentId];
 
     const rows = await pgQuery<any>(
       `
       SELECT *
       FROM ${t}
-      WHERE "queueId" = $1
+      WHERE ${quoteIdent(colQueueId)} = $1
       ${whereCompany}
       ${whereParent}
-      ORDER BY "option" ASC, id ASC
+      ORDER BY ${quoteIdent(colOption)} ASC, id ASC
     `,
       params
     );
@@ -204,21 +236,28 @@ router.post("/", async (req, res) => {
     if (!okQueue) return res.status(404).json({ error: true, message: "queue not found" });
 
     const t = await resolveQueueOptionsTable();
-    const cols = await resolveQueueOptionsColumns(t);
+    const colsMap = await resolveQueueOptionsColumnsMap(t);
+    const cols = new Set(Array.from(colsMap.keys()));
 
-    const insertCols: string[] = ["title", "message", "option", "queueId", "parentId"];
+    const colTitle = pickColumn(colsMap, ["title", "name"], "title");
+    const colMessage = pickColumn(colsMap, ["message", "body", "text"], "message");
+    const colOption = pickColumn(colsMap, ["option", "order", "position"], "option");
+    const colQueueId = pickColumn(colsMap, ["queueId", "queue_id", "queueid"], "queueId");
+    const colParentId = pickColumn(colsMap, ["parentId", "parent_id", "parentid"], "parentId");
+
+    const insertCols: string[] = [colTitle, colMessage, colOption, colQueueId, colParentId];
     const values: any[] = [title, message, option, queueId, parentId];
 
     if (cols.has("companyid")) {
-      insertCols.push("companyId");
+      insertCols.push(pickColumn(colsMap, ["companyId", "company_id", "companyid"], "companyId"));
       values.push(companyId);
     }
     if (cols.has("createdat")) {
-      insertCols.push("createdAt");
+      insertCols.push(pickColumn(colsMap, ["createdAt", "created_at", "createdat"], "createdAt"));
       values.push(new Date());
     }
     if (cols.has("updatedat")) {
-      insertCols.push("updatedAt");
+      insertCols.push(pickColumn(colsMap, ["updatedAt", "updated_at", "updatedat"], "updatedAt"));
       values.push(new Date());
     }
 
@@ -255,8 +294,16 @@ router.put("/:id", async (req, res) => {
     const parentId = body.parentId !== undefined ? parseParentId(body.parentId) : undefined;
 
     const t = await resolveQueueOptionsTable();
-    const cols = await resolveQueueOptionsColumns(t);
+    const colsMap = await resolveQueueOptionsColumnsMap(t);
+    const cols = new Set(Array.from(colsMap.keys()));
     const hasCompanyId = cols.has("companyid");
+
+    const colTitle = pickColumn(colsMap, ["title", "name"], "title");
+    const colMessage = pickColumn(colsMap, ["message", "body", "text"], "message");
+    const colOption = pickColumn(colsMap, ["option", "order", "position"], "option");
+    const colQueueId = pickColumn(colsMap, ["queueId", "queue_id", "queueid"], "queueId");
+    const colParentId = pickColumn(colsMap, ["parentId", "parent_id", "parentid"], "parentId");
+    const colUpdatedAt = pickColumn(colsMap, ["updatedAt", "updated_at", "updatedat"], "updatedAt");
 
     if (queueId) {
       const okQueue = await queueBelongsToCompany(queueId, companyId);
@@ -270,12 +317,12 @@ router.put("/:id", async (req, res) => {
       params.push(val);
     };
 
-    if (title !== undefined) pushSet("title", title);
-    if (message !== undefined) pushSet("message", message);
-    if (option !== undefined) pushSet("option", option);
-    if (queueId !== undefined) pushSet("queueId", queueId);
-    if (parentId !== undefined) pushSet("parentId", parentId);
-    if (cols.has("updatedat")) pushSet("updatedAt", new Date());
+    if (title !== undefined) pushSet(colTitle, title);
+    if (message !== undefined) pushSet(colMessage, message);
+    if (option !== undefined) pushSet(colOption, option);
+    if (queueId !== undefined) pushSet(colQueueId, queueId);
+    if (parentId !== undefined) pushSet(colParentId, parentId);
+    if (cols.has("updatedat")) pushSet(colUpdatedAt, new Date());
 
     if (!sets.length) return res.json({ ok: true });
 
@@ -308,14 +355,16 @@ router.delete("/:id", async (req, res) => {
     if (!id) return res.status(400).json({ error: true, message: "invalid id" });
 
     const t = await resolveQueueOptionsTable();
-    const cols = await resolveQueueOptionsColumns(t);
+    const colsMap = await resolveQueueOptionsColumnsMap(t);
+    const cols = new Set(Array.from(colsMap.keys()));
     const hasCompanyId = cols.has("companyid");
+    const colParentId = pickColumn(colsMap, ["parentId", "parent_id", "parentid"], "parentId");
 
     // delete children first (avoid FK constraints)
     try {
       const whereCompany = hasCompanyId ? ` AND "companyId" = $2` : "";
       await pgQuery(
-        `DELETE FROM ${t} WHERE "parentId" = $1${whereCompany}`,
+        `DELETE FROM ${t} WHERE ${quoteIdent(colParentId)} = $1${whereCompany}`,
         hasCompanyId ? [id, companyId] : [id]
       );
     } catch {
@@ -345,12 +394,14 @@ router.post("/:id/media-upload", maybeUploadSingle("file"), async (req: any, res
     const mediaName = String(req.file.originalname || req.file.filename || "").trim();
 
     const t = await resolveQueueOptionsTable();
-    const cols = await resolveQueueOptionsColumns(t);
+    const colsMap = await resolveQueueOptionsColumnsMap(t);
+    const cols = new Set(Array.from(colsMap.keys()));
     const hasCompanyId = cols.has("companyid");
 
     // Use the most common column names seen in the UI: mediaPath/mediaName
-    const colPath = cols.has("mediapath") ? "mediaPath" : cols.has("path") ? "path" : "mediaPath";
-    const colName = cols.has("medianame") ? "mediaName" : cols.has("name") ? "name" : "mediaName";
+    const colPath = pickColumn(colsMap, ["mediaPath", "media_path", "mediapath", "path"], "mediaPath");
+    const colName = pickColumn(colsMap, ["mediaName", "media_name", "medianame", "name", "fileName", "filename"], "mediaName");
+    const colUpdatedAt = pickColumn(colsMap, ["updatedAt", "updated_at", "updatedat"], "updatedAt");
 
     const whereCompany = hasCompanyId ? ` AND "companyId" = $4` : "";
     const params = hasCompanyId
@@ -360,7 +411,7 @@ router.post("/:id/media-upload", maybeUploadSingle("file"), async (req: any, res
     const rows = await pgQuery<any>(
       `
       UPDATE ${t}
-      SET ${quoteIdent(colPath)} = $1, ${quoteIdent(colName)} = $2${cols.has("updatedat") ? `, "updatedAt" = NOW()` : ""}
+      SET ${quoteIdent(colPath)} = $1, ${quoteIdent(colName)} = $2${cols.has("updatedat") ? `, ${quoteIdent(colUpdatedAt)} = NOW()` : ""}
       WHERE id = $3${whereCompany}
       RETURNING *
     `,
