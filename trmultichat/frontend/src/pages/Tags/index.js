@@ -124,7 +124,7 @@ const useStyles = makeStyles((theme) => ({
   },
   cardTop: {
     display: "flex",
-    alignItems: "flex-start",
+    alignItems: "center",
     justifyContent: "space-between",
     gap: theme.spacing(1),
   },
@@ -144,21 +144,24 @@ const useStyles = makeStyles((theme) => ({
     color: "rgba(67, 56, 202, 0.95)",
     flex: "none",
   },
-  name: {
-    fontWeight: 900,
-    fontSize: 14,
-    color: "rgba(15, 23, 42, 0.92)",
-  },
   meta: {
     marginTop: theme.spacing(1),
     display: "flex",
-    gap: 10,
-    alignItems: "center",
-    flexWrap: "wrap",
+    flexDirection: "column",
+    gap: 8,
+    alignItems: "flex-start",
   },
   tagChip: {
     borderRadius: 999,
     fontWeight: 800,
+    maxWidth: "100%",
+    "& .MuiChip-label": {
+      maxWidth: "100%",
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+      whiteSpace: "nowrap",
+      display: "block",
+    },
   },
   countChip: {
     borderRadius: 999,
@@ -364,10 +367,7 @@ const Tags = () => {
                         <div className={classes.iconBadge}>
                           <LocalOfferOutlinedIcon style={{ fontSize: 20 }} />
                         </div>
-                        <div style={{ minWidth: 0 }}>
-                          <Typography className={classes.name} noWrap>
-                            {tag.name}
-                          </Typography>
+                        <div style={{ minWidth: 0, width: "100%" }}>
                           <div className={classes.meta}>
                             <Chip
                               className={classes.tagChip}
