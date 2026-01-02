@@ -334,9 +334,9 @@ router.post("/", async (req, res) => {
       if (!colQueueId) throw new Error("queueId column not found on queue-options table");
       if (!colOption) throw new Error("option/order column not found on queue-options table");
 
-      // Root option: UI sends parentId null, but list roots with parentId=-1.
-      // Normalize to -1 so it works with both schemas.
-      const normalizedParentId = parentId === null ? -1 : parentId;
+      // Root option: must be NULL to satisfy FK constraints on parentId (parentId references QueueOptions.id).
+      // UI also queries root using parentId=-1; we already treat -1 as "root" on GET via IS NULL.
+      const normalizedParentId = parentId;
 
       const insertCols: string[] = [colTitle, colOption, colQueueId];
       const values: any[] = [title, option, queueId];
