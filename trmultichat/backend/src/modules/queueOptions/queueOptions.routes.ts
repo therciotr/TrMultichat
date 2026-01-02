@@ -4,6 +4,7 @@ import path from "path";
 import multer from "multer";
 import { authMiddleware } from "../../middleware/authMiddleware";
 import { pgQuery } from "../../utils/pgClient";
+import { getLegacyModel } from "../../utils/legacyModel";
 
 const router = Router();
 router.use(authMiddleware);
@@ -199,19 +200,38 @@ router.get("/", async (req, res) => {
         : ` AND ${quoteIdent(colParentId)} = $${idxParent}`;
     const params = parentId === null ? paramsBase : [...paramsBase, parentId];
 
-    const rows = await pgQuery<any>(
-      `
-      SELECT *
-      FROM ${t}
-      WHERE ${quoteIdent(colQueueId)} = $1
-      ${whereCompany}
-      ${whereParent}
-      ORDER BY ${quoteIdent(colOption)} ASC, id ASC
-    `,
-      params
-    );
-
-    return res.json(Array.isArray(rows) ? rows : []);
+    try {
+      const rows = await pgQuery<any>(
+        `
+        SELECT *
+        FROM ${t}
+        WHERE ${quoteIdent(colQueueId)} = $1
+        ${whereCompany}
+        ${whereParent}
+        ORDER BY ${quoteIdent(colOption)} ASC, id ASC
+      `,
+        params
+      );
+      return res.json(Array.isArray(rows) ? rows : []);
+    } catch (e: any) {
+      // Fallback: legacy Sequelize model (schema/table name differences)
+      const Model =
+        getLegacyModel("QueueOption") ||
+        getLegacyModel("QueueOptions") ||
+        getLegacyModel("QueuesOption") ||
+        getLegacyModel("QueueOptionModel");
+      if (Model && typeof Model.findAll === "function") {
+        const where: any = {
+          queueId,
+          parentId: parentId === null ? null : parentId
+        };
+        if (hasCompanyId) where.companyId = companyId;
+        const rows = await Model.findAll({ where, order: [["option", "ASC"], ["id", "ASC"]] });
+        const list = Array.isArray(rows) ? rows.map((r: any) => (r?.toJSON ? r.toJSON() : r)) : [];
+        return res.json(list);
+      }
+      throw e;
+    }
   } catch (e: any) {
     return res.status(400).json({ error: true, message: e?.message || "list error" });
   }
@@ -264,16 +284,41 @@ router.post("/", async (req, res) => {
     const colsSql = insertCols.map((c) => quoteIdent(c)).join(",");
     const paramsSql = values.map((_, i) => `$${i + 1}`).join(",");
 
-    const rows = await pgQuery<any>(
-      `
-      INSERT INTO ${t} (${colsSql})
-      VALUES (${paramsSql})
-      RETURNING *
-    `,
-      values
-    );
-    const created = rows?.[0];
-    return res.status(201).json(created || { ok: true });
+    try {
+      const rows = await pgQuery<any>(
+        `
+        INSERT INTO ${t} (${colsSql})
+        VALUES (${paramsSql})
+        RETURNING *
+      `,
+        values
+      );
+      const created = rows?.[0];
+      return res.status(201).json(created || { ok: true });
+    } catch (e: any) {
+      // Fallback: legacy Sequelize model (schema/table name differences)
+      const Model =
+        getLegacyModel("QueueOption") ||
+        getLegacyModel("QueueOptions") ||
+        getLegacyModel("QueuesOption") ||
+        getLegacyModel("QueueOptionModel");
+      if (Model && typeof Model.create === "function") {
+        const payload: any = {
+          // tolerate both schemas
+          title,
+          name: title,
+          message,
+          option,
+          queueId,
+          parentId: parentId === null ? null : parentId,
+          companyId
+        };
+        const created = await Model.create(payload);
+        const json = created?.toJSON ? created.toJSON() : created;
+        return res.status(201).json(json);
+      }
+      throw e;
+    }
   } catch (e: any) {
     return res.status(400).json({ error: true, message: e?.message || "create error" });
   }
@@ -335,13 +380,38 @@ router.put("/:id", async (req, res) => {
       RETURNING *
     `;
 
-    const rows = await pgQuery<any>(
-      sql,
-      hasCompanyId ? [...params, id, companyId] : [...params, id]
-    );
-    const updated = rows?.[0];
-    if (!updated) return res.status(404).json({ error: true, message: "not found" });
-    return res.json(updated);
+    try {
+      const rows = await pgQuery<any>(
+        sql,
+        hasCompanyId ? [...params, id, companyId] : [...params, id]
+      );
+      const updated = rows?.[0];
+      if (!updated) return res.status(404).json({ error: true, message: "not found" });
+      return res.json(updated);
+    } catch (e: any) {
+      const Model =
+        getLegacyModel("QueueOption") ||
+        getLegacyModel("QueueOptions") ||
+        getLegacyModel("QueuesOption") ||
+        getLegacyModel("QueueOptionModel");
+      if (Model && typeof Model.findByPk === "function") {
+        const instance = await Model.findByPk(id);
+        if (!instance) return res.status(404).json({ error: true, message: "not found" });
+        const up: any = {};
+        if (title !== undefined) {
+          up.title = title;
+          up.name = title;
+        }
+        if (message !== undefined) up.message = message;
+        if (option !== undefined) up.option = option;
+        if (queueId !== undefined) up.queueId = queueId;
+        if (parentId !== undefined) up.parentId = parentId;
+        await instance.update(up);
+        const json = instance?.toJSON ? instance.toJSON() : instance;
+        return res.json(json);
+      }
+      throw e;
+    }
   } catch (e: any) {
     return res.status(400).json({ error: true, message: e?.message || "update error" });
   }
@@ -371,12 +441,25 @@ router.delete("/:id", async (req, res) => {
       // ignore
     }
 
-    const whereCompany = hasCompanyId ? ` AND "companyId" = $2` : "";
-    await pgQuery(
-      `DELETE FROM ${t} WHERE id = $1${whereCompany}`,
-      hasCompanyId ? [id, companyId] : [id]
-    );
-    return res.status(204).end();
+    try {
+      const whereCompany = hasCompanyId ? ` AND "companyId" = $2` : "";
+      await pgQuery(
+        `DELETE FROM ${t} WHERE id = $1${whereCompany}`,
+        hasCompanyId ? [id, companyId] : [id]
+      );
+      return res.status(204).end();
+    } catch (e: any) {
+      const Model =
+        getLegacyModel("QueueOption") ||
+        getLegacyModel("QueueOptions") ||
+        getLegacyModel("QueuesOption") ||
+        getLegacyModel("QueueOptionModel");
+      if (Model && typeof Model.destroy === "function") {
+        await Model.destroy({ where: { id } });
+        return res.status(204).end();
+      }
+      throw e;
+    }
   } catch (e: any) {
     return res.status(400).json({ error: true, message: e?.message || "delete error" });
   }
@@ -408,18 +491,34 @@ router.post("/:id/media-upload", maybeUploadSingle("file"), async (req: any, res
       ? [mediaPath, mediaName, id, companyId]
       : [mediaPath, mediaName, id];
 
-    const rows = await pgQuery<any>(
-      `
-      UPDATE ${t}
-      SET ${quoteIdent(colPath)} = $1, ${quoteIdent(colName)} = $2${cols.has("updatedat") ? `, ${quoteIdent(colUpdatedAt)} = NOW()` : ""}
-      WHERE id = $3${whereCompany}
-      RETURNING *
-    `,
-      params
-    );
-    const updated = rows?.[0];
-    if (!updated) return res.status(404).json({ error: true, message: "not found" });
-    return res.json(updated);
+    try {
+      const rows = await pgQuery<any>(
+        `
+        UPDATE ${t}
+        SET ${quoteIdent(colPath)} = $1, ${quoteIdent(colName)} = $2${cols.has("updatedat") ? `, ${quoteIdent(colUpdatedAt)} = NOW()` : ""}
+        WHERE id = $3${whereCompany}
+        RETURNING *
+      `,
+        params
+      );
+      const updated = rows?.[0];
+      if (!updated) return res.status(404).json({ error: true, message: "not found" });
+      return res.json(updated);
+    } catch (e: any) {
+      const Model =
+        getLegacyModel("QueueOption") ||
+        getLegacyModel("QueueOptions") ||
+        getLegacyModel("QueuesOption") ||
+        getLegacyModel("QueueOptionModel");
+      if (Model && typeof Model.findByPk === "function") {
+        const instance = await Model.findByPk(id);
+        if (!instance) return res.status(404).json({ error: true, message: "not found" });
+        await instance.update({ mediaPath, mediaName });
+        const json = instance?.toJSON ? instance.toJSON() : instance;
+        return res.json(json);
+      }
+      throw e;
+    }
   } catch (e: any) {
     return res.status(400).json({ error: true, message: e?.message || "upload error" });
   }
