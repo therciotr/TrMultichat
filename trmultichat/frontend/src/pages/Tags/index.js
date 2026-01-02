@@ -22,8 +22,8 @@ import SearchOutlinedIcon from "@material-ui/icons/SearchOutlined";
 import TextField from "@material-ui/core/TextField";
 import InputAdornment from "@material-ui/core/InputAdornment";
 
-import DeleteOutlineIcon from "@material-ui/icons/DeleteOutline";
-import EditOutlinedIcon from "@material-ui/icons/EditOutlined";
+import BorderColorOutlinedIcon from "@material-ui/icons/BorderColorOutlined";
+import DeleteForeverOutlinedIcon from "@material-ui/icons/DeleteForeverOutlined";
 import LocalOfferOutlinedIcon from "@material-ui/icons/LocalOfferOutlined";
 import AddCircleOutlineIcon from "@material-ui/icons/AddCircleOutline";
 
@@ -148,9 +148,27 @@ const useStyles = makeStyles((theme) => ({
     borderRadius: 14,
     display: "grid",
     placeItems: "center",
-    backgroundColor: "rgba(14, 116, 144, 0.10)",
-    color: "rgba(14, 116, 144, 0.95)",
+    // Brand-like accent (close to TR green/teal)
+    backgroundColor: "rgba(11, 76, 70, 0.10)",
+    color: "rgba(11, 76, 70, 0.98)",
     flex: "none",
+  },
+  actionsBox: {
+    display: "flex",
+    alignItems: "center",
+    gap: 4,
+  },
+  actionIcon: {
+    color: "rgba(15, 23, 42, 0.65)",
+    transition: "color 120ms ease, background-color 120ms ease",
+    "&:hover": {
+      color: "rgba(15, 23, 42, 0.92)",
+    },
+  },
+  deleteIcon: {
+    "&:hover": {
+      color: "rgba(185, 28, 28, 0.95)",
+    },
   },
   meta: {
     marginTop: theme.spacing(1),
@@ -175,6 +193,11 @@ const useStyles = makeStyles((theme) => ({
     borderRadius: 999,
     backgroundColor: "rgba(15, 23, 42, 0.03)",
     color: "rgba(15, 23, 42, 0.78)",
+  },
+  countText: {
+    fontSize: 12,
+    fontWeight: 700,
+    color: "rgba(15, 23, 42, 0.72)",
   },
   actions: {
     justifyContent: "flex-end",
@@ -393,14 +416,23 @@ const Tags = () => {
                               className={classes.countChip}
                               variant="outlined"
                               size="small"
-                              label={`${i18n.t("tags.table.tickets")}: ${tag.ticketsCount ?? 0}`}
+                              label={
+                                <span className={classes.countText}>
+                                  {i18n.t("tags.table.tickets")}: {tag.ticketsCount ?? 0}
+                                </span>
+                              }
                             />
                           </div>
                         </div>
                       </div>
-                      <Box>
-                        <IconButton size="small" onClick={() => handleEditTag(tag)} aria-label="Editar tag">
-                          <EditOutlinedIcon />
+                      <Box className={classes.actionsBox}>
+                        <IconButton
+                          size="small"
+                          onClick={() => handleEditTag(tag)}
+                          aria-label="Editar tag"
+                          className={classes.actionIcon}
+                        >
+                          <BorderColorOutlinedIcon />
                         </IconButton>
                         <IconButton
                           size="small"
@@ -409,8 +441,9 @@ const Tags = () => {
                             setDeletingTag(tag);
                           }}
                           aria-label="Excluir tag"
+                          className={`${classes.actionIcon} ${classes.deleteIcon}`}
                         >
-                          <DeleteOutlineIcon />
+                          <DeleteForeverOutlinedIcon />
                         </IconButton>
                       </Box>
                     </div>
