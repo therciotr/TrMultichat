@@ -4,7 +4,6 @@ import path from "path";
 import multer from "multer";
 import { authMiddleware } from "../../middleware/authMiddleware";
 import { pgQuery } from "../../utils/pgClient";
-import { getLegacyModel } from "../../utils/legacyModel";
 
 const router = Router();
 router.use(authMiddleware);
@@ -57,6 +56,21 @@ function maybeUploadSingle(fieldName: string) {
 let cachedQueueOptionsTable: string | null = null; // quoted identifier
 let cachedQueuesTable: string | null = null; // quoted identifier
 let cachedQueueOptionsColsMap: Map<string, string> | null = null; // lower -> actual
+
+const QUEUE_OPTIONS_TABLE_CANDIDATES: string[] = [
+  // quoted (Sequelize default)
+  quoteIdent("QueueOptions"),
+  quoteIdent("QueueOption"),
+  quoteIdent("QueuesOptions"),
+  quoteIdent("QueuesOption"),
+  // unquoted common
+  "queue_options",
+  "queue_option",
+  "queueoptions",
+  "queueoption",
+  "queues_options",
+  "queuesoptions"
+];
 
 async function resolveTableByILike(patterns: string[], fallback: string): Promise<string> {
   try {
@@ -131,13 +145,68 @@ async function resolveQueueOptionsColumnsMap(tableIdentQuoted: string): Promise<
 function pickColumn(
   colsMap: Map<string, string>,
   candidates: string[],
-  fallback: string
-): string {
+  fallback?: string
+): string | null {
   for (const c of candidates) {
     const actual = colsMap.get(String(c).toLowerCase());
     if (actual) return actual;
   }
-  return fallback;
+  return fallback ?? null;
+}
+
+async function resolveColumnsMapForTable(tableIdent: string): Promise<Map<string, string>> {
+  // Do not cache globally per-process for different candidates (schemas may differ).
+  // Use direct lookup each time.
+  try {
+    const rawName = tableIdent.replace(/^"+|"+$/g, "").replace(/""/g, '"');
+    const cols = await pgQuery<{ column_name: string }>(
+      `
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = $1
+    `,
+      [rawName]
+    );
+    const m = new Map<string, string>();
+    for (const c of cols) {
+      const actual = String(c.column_name || "");
+      if (!actual) continue;
+      m.set(actual.toLowerCase(), actual);
+    }
+    return m;
+  } catch {
+    return new Map();
+  }
+}
+
+function isRelationMissingError(e: any): boolean {
+  const msg = String(e?.message || "");
+  return /relation .* does not exist/i.test(msg);
+}
+
+async function tryEachQueueOptionsTable<T>(
+  fn: (tableIdent: string, colsMap: Map<string, string>) => Promise<T>
+): Promise<{ ok: true; value: T } | { ok: false; error: any }> {
+  let lastErr: any = null;
+  for (const t of QUEUE_OPTIONS_TABLE_CANDIDATES) {
+    const colsMap = await resolveColumnsMapForTable(t);
+    if (!colsMap.size) {
+      // maybe table doesn't exist or schema is different
+      continue;
+    }
+    try {
+      const v = await fn(t, colsMap);
+      return { ok: true, value: v };
+    } catch (e: any) {
+      lastErr = e;
+      // if table doesn't exist, keep trying other candidates
+      if (isRelationMissingError(e)) continue;
+      // if column mismatch etc, keep trying other candidates
+      continue;
+    }
+  }
+  return { ok: false, error: lastErr || new Error("queue-options table not found") };
 }
 
 async function queueBelongsToCompany(queueId: number, companyId: number): Promise<boolean> {
@@ -182,25 +251,32 @@ router.get("/", async (req, res) => {
     const okQueue = await queueBelongsToCompany(queueId, companyId);
     if (!okQueue) return res.status(404).json({ error: true, message: "queue not found" });
 
-    const t = await resolveQueueOptionsTable();
-    const colsMap = await resolveQueueOptionsColumnsMap(t);
-    const cols = new Set(Array.from(colsMap.keys()));
-    const hasCompanyId = cols.has("companyid");
-    const colQueueId = pickColumn(colsMap, ["queueId", "queue_id", "queueid"], "queueId");
-    const colParentId = pickColumn(colsMap, ["parentId", "parent_id", "parentid"], "parentId");
-    const colOption = pickColumn(colsMap, ["option", "order", "position"], "option");
+    const out = await tryEachQueueOptionsTable(async (t, colsMap) => {
+      const cols = new Set(Array.from(colsMap.keys()));
+      const colQueueId = pickColumn(colsMap, ["queueId", "queue_id", "queueid"]);
+      const colParentId = pickColumn(colsMap, ["parentId", "parent_id", "parentid"]);
+      const colOption = pickColumn(colsMap, ["option", "order", "position"]);
+      const colCompanyId = pickColumn(colsMap, ["companyId", "company_id", "companyid"]);
 
-    const whereCompany = hasCompanyId ? ` AND "companyId" = $2` : "";
-    const paramsBase = hasCompanyId ? [queueId, companyId] : [queueId];
-    const idxParent = paramsBase.length + 1;
+      if (!colQueueId) throw new Error("queueId column not found on queue-options table");
 
-    const whereParent =
-      parentId === null
-        ? ` AND ${quoteIdent(colParentId)} IS NULL`
-        : ` AND ${quoteIdent(colParentId)} = $${idxParent}`;
-    const params = parentId === null ? paramsBase : [...paramsBase, parentId];
+      const hasCompanyId = Boolean(colCompanyId);
+      const whereCompany = hasCompanyId ? ` AND ${quoteIdent(colCompanyId as string)} = $2` : "";
+      const paramsBase = hasCompanyId ? [queueId, companyId] : [queueId];
 
-    try {
+      let whereParent = "";
+      let params = paramsBase;
+      if (colParentId) {
+        if (parentId === null) {
+          // Root: frontend queries with -1; some DBs store root as NULL, others as -1.
+          whereParent = ` AND (${quoteIdent(colParentId)} IS NULL OR ${quoteIdent(colParentId)} = -1)`;
+        } else {
+          whereParent = ` AND ${quoteIdent(colParentId)} = $${paramsBase.length + 1}`;
+          params = [...paramsBase, parentId];
+        }
+      }
+
+      const orderBy = colOption ? `${quoteIdent(colOption)} ASC, id ASC` : "id ASC";
       const rows = await pgQuery<any>(
         `
         SELECT *
@@ -208,30 +284,17 @@ router.get("/", async (req, res) => {
         WHERE ${quoteIdent(colQueueId)} = $1
         ${whereCompany}
         ${whereParent}
-        ORDER BY ${quoteIdent(colOption)} ASC, id ASC
+        ORDER BY ${orderBy}
       `,
         params
       );
-      return res.json(Array.isArray(rows) ? rows : []);
-    } catch (e: any) {
-      // Fallback: legacy Sequelize model (schema/table name differences)
-      const Model =
-        getLegacyModel("QueueOption") ||
-        getLegacyModel("QueueOptions") ||
-        getLegacyModel("QueuesOption") ||
-        getLegacyModel("QueueOptionModel");
-      if (Model && typeof Model.findAll === "function") {
-        const where: any = {
-          queueId,
-          parentId: parentId === null ? null : parentId
-        };
-        if (hasCompanyId) where.companyId = companyId;
-        const rows = await Model.findAll({ where, order: [["option", "ASC"], ["id", "ASC"]] });
-        const list = Array.isArray(rows) ? rows.map((r: any) => (r?.toJSON ? r.toJSON() : r)) : [];
-        return res.json(list);
-      }
-      throw e;
+      return Array.isArray(rows) ? rows : [];
+    });
+
+    if (!out.ok) {
+      throw (out as { ok: false; error: any }).error;
     }
+    return res.json(out.value);
   } catch (e: any) {
     return res.status(400).json({ error: true, message: e?.message || "list error" });
   }
@@ -255,36 +318,53 @@ router.post("/", async (req, res) => {
     const okQueue = await queueBelongsToCompany(queueId, companyId);
     if (!okQueue) return res.status(404).json({ error: true, message: "queue not found" });
 
-    const t = await resolveQueueOptionsTable();
-    const colsMap = await resolveQueueOptionsColumnsMap(t);
-    const cols = new Set(Array.from(colsMap.keys()));
+    const out = await tryEachQueueOptionsTable(async (t, colsMap) => {
+      const cols = new Set(Array.from(colsMap.keys()));
 
-    const colTitle = pickColumn(colsMap, ["title", "name"], "title");
-    const colMessage = pickColumn(colsMap, ["message", "body", "text"], "message");
-    const colOption = pickColumn(colsMap, ["option", "order", "position"], "option");
-    const colQueueId = pickColumn(colsMap, ["queueId", "queue_id", "queueid"], "queueId");
-    const colParentId = pickColumn(colsMap, ["parentId", "parent_id", "parentid"], "parentId");
+      const colTitle = pickColumn(colsMap, ["title", "name"]);
+      const colMessage = pickColumn(colsMap, ["message", "body", "text"]);
+      const colOption = pickColumn(colsMap, ["option", "order", "position"]);
+      const colQueueId = pickColumn(colsMap, ["queueId", "queue_id", "queueid"]);
+      const colParentId = pickColumn(colsMap, ["parentId", "parent_id", "parentid"]);
+      const colCompanyId = pickColumn(colsMap, ["companyId", "company_id", "companyid"]);
+      const colCreatedAt = pickColumn(colsMap, ["createdAt", "created_at", "createdat"]);
+      const colUpdatedAt = pickColumn(colsMap, ["updatedAt", "updated_at", "updatedat"]);
 
-    const insertCols: string[] = [colTitle, colMessage, colOption, colQueueId, colParentId];
-    const values: any[] = [title, message, option, queueId, parentId];
+      if (!colTitle) throw new Error("title/name column not found on queue-options table");
+      if (!colQueueId) throw new Error("queueId column not found on queue-options table");
+      if (!colOption) throw new Error("option/order column not found on queue-options table");
 
-    if (cols.has("companyid")) {
-      insertCols.push(pickColumn(colsMap, ["companyId", "company_id", "companyid"], "companyId"));
-      values.push(companyId);
-    }
-    if (cols.has("createdat")) {
-      insertCols.push(pickColumn(colsMap, ["createdAt", "created_at", "createdat"], "createdAt"));
-      values.push(new Date());
-    }
-    if (cols.has("updatedat")) {
-      insertCols.push(pickColumn(colsMap, ["updatedAt", "updated_at", "updatedat"], "updatedAt"));
-      values.push(new Date());
-    }
+      // Root option: UI sends parentId null, but list roots with parentId=-1.
+      // Normalize to -1 so it works with both schemas.
+      const normalizedParentId = parentId === null ? -1 : parentId;
 
-    const colsSql = insertCols.map((c) => quoteIdent(c)).join(",");
-    const paramsSql = values.map((_, i) => `$${i + 1}`).join(",");
+      const insertCols: string[] = [colTitle, colOption, colQueueId];
+      const values: any[] = [title, option, queueId];
 
-    try {
+      if (colMessage) {
+        insertCols.push(colMessage);
+        values.push(message);
+      }
+      if (colParentId) {
+        insertCols.push(colParentId);
+        values.push(normalizedParentId);
+      }
+      if (colCompanyId) {
+        insertCols.push(colCompanyId);
+        values.push(companyId);
+      }
+      if (colCreatedAt) {
+        insertCols.push(colCreatedAt);
+        values.push(new Date());
+      }
+      if (colUpdatedAt) {
+        insertCols.push(colUpdatedAt);
+        values.push(new Date());
+      }
+
+      const colsSql = insertCols.map((c) => quoteIdent(c)).join(",");
+      const paramsSql = values.map((_, i) => `$${i + 1}`).join(",");
+
       const rows = await pgQuery<any>(
         `
         INSERT INTO ${t} (${colsSql})
@@ -294,31 +374,16 @@ router.post("/", async (req, res) => {
         values
       );
       const created = rows?.[0];
-      return res.status(201).json(created || { ok: true });
-    } catch (e: any) {
-      // Fallback: legacy Sequelize model (schema/table name differences)
-      const Model =
-        getLegacyModel("QueueOption") ||
-        getLegacyModel("QueueOptions") ||
-        getLegacyModel("QueuesOption") ||
-        getLegacyModel("QueueOptionModel");
-      if (Model && typeof Model.create === "function") {
-        const payload: any = {
-          // tolerate both schemas
-          title,
-          name: title,
-          message,
-          option,
-          queueId,
-          parentId: parentId === null ? null : parentId,
-          companyId
-        };
-        const created = await Model.create(payload);
-        const json = created?.toJSON ? created.toJSON() : created;
-        return res.status(201).json(json);
-      }
-      throw e;
+      if (!created) return { ok: true };
+      // Ensure id exists for frontend
+      const createdId = created?.id ?? created?.ID ?? created?.Id;
+      return createdId ? created : { ...created, id: createdId };
+    });
+
+    if (!out.ok) {
+      throw (out as { ok: false; error: any }).error;
     }
+    return res.status(201).json(out.value);
   } catch (e: any) {
     return res.status(400).json({ error: true, message: e?.message || "create error" });
   }
@@ -389,27 +454,6 @@ router.put("/:id", async (req, res) => {
       if (!updated) return res.status(404).json({ error: true, message: "not found" });
       return res.json(updated);
     } catch (e: any) {
-      const Model =
-        getLegacyModel("QueueOption") ||
-        getLegacyModel("QueueOptions") ||
-        getLegacyModel("QueuesOption") ||
-        getLegacyModel("QueueOptionModel");
-      if (Model && typeof Model.findByPk === "function") {
-        const instance = await Model.findByPk(id);
-        if (!instance) return res.status(404).json({ error: true, message: "not found" });
-        const up: any = {};
-        if (title !== undefined) {
-          up.title = title;
-          up.name = title;
-        }
-        if (message !== undefined) up.message = message;
-        if (option !== undefined) up.option = option;
-        if (queueId !== undefined) up.queueId = queueId;
-        if (parentId !== undefined) up.parentId = parentId;
-        await instance.update(up);
-        const json = instance?.toJSON ? instance.toJSON() : instance;
-        return res.json(json);
-      }
       throw e;
     }
   } catch (e: any) {
@@ -449,15 +493,6 @@ router.delete("/:id", async (req, res) => {
       );
       return res.status(204).end();
     } catch (e: any) {
-      const Model =
-        getLegacyModel("QueueOption") ||
-        getLegacyModel("QueueOptions") ||
-        getLegacyModel("QueuesOption") ||
-        getLegacyModel("QueueOptionModel");
-      if (Model && typeof Model.destroy === "function") {
-        await Model.destroy({ where: { id } });
-        return res.status(204).end();
-      }
       throw e;
     }
   } catch (e: any) {
@@ -505,18 +540,6 @@ router.post("/:id/media-upload", maybeUploadSingle("file"), async (req: any, res
       if (!updated) return res.status(404).json({ error: true, message: "not found" });
       return res.json(updated);
     } catch (e: any) {
-      const Model =
-        getLegacyModel("QueueOption") ||
-        getLegacyModel("QueueOptions") ||
-        getLegacyModel("QueuesOption") ||
-        getLegacyModel("QueueOptionModel");
-      if (Model && typeof Model.findByPk === "function") {
-        const instance = await Model.findByPk(id);
-        if (!instance) return res.status(404).json({ error: true, message: "not found" });
-        await instance.update({ mediaPath, mediaName });
-        const json = instance?.toJSON ? instance.toJSON() : instance;
-        return res.json(json);
-      }
       throw e;
     }
   } catch (e: any) {
