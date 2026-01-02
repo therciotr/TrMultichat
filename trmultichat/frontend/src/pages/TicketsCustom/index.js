@@ -48,7 +48,9 @@ const useStyles = makeStyles(theme => ({
 		alignItems: "center",
 		height: "100%",
 		padding: theme.spacing(3),
-		backgroundColor: "#fff",
+		backgroundColor: "#f0f7f6",
+		background:
+			"linear-gradient(135deg, #f0f7f6 0%, #eaf5f3 50%, #f6fbfa 100%)",
 	},
 	logoWrap: {
 		display: "flex",

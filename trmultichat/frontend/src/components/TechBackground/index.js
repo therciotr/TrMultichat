@@ -8,29 +8,29 @@ const useStyles = makeStyles((theme) => ({
     height: "100%",
     borderRadius: 14,
     overflow: "hidden",
-    backgroundColor: "#fff",
+    // base background comes from the parent placeholder container (Atendimento)
+    backgroundColor: "transparent",
     border: "1px solid rgba(15, 23, 42, 0.08)",
-    boxShadow: "0 1px 2px rgba(15, 23, 42, 0.06)",
+    boxShadow: "0 1px 2px rgba(15, 23, 42, 0.05)",
   },
   bg: {
     position: "absolute",
     inset: 0,
     pointerEvents: "none",
+    opacity: 0.04, // 3–5% as requested
     backgroundImage: [
-      "radial-gradient(circle at 18% 22%, rgba(59, 130, 246, 0.10) 0%, rgba(59, 130, 246, 0.00) 38%)",
-      "radial-gradient(circle at 78% 18%, rgba(16, 185, 129, 0.08) 0%, rgba(16, 185, 129, 0.00) 42%)",
-      "radial-gradient(circle at 75% 78%, rgba(99, 102, 241, 0.10) 0%, rgba(99, 102, 241, 0.00) 46%)",
-      "linear-gradient(180deg, rgba(255,255,255,0.92) 0%, rgba(255,255,255,1) 55%)",
+      "radial-gradient(circle at 20% 22%, rgba(15, 23, 42, 0.85) 0%, rgba(15, 23, 42, 0.00) 42%)",
+      "radial-gradient(circle at 78% 30%, rgba(15, 23, 42, 0.70) 0%, rgba(15, 23, 42, 0.00) 44%)",
     ].join(","),
   },
   grid: {
     position: "absolute",
     inset: 0,
     pointerEvents: "none",
-    opacity: 0.55,
+    opacity: 0.04, // 3–5% as requested
     backgroundImage: [
-      "linear-gradient(rgba(15, 23, 42, 0.05) 1px, transparent 1px)",
-      "linear-gradient(90deg, rgba(15, 23, 42, 0.05) 1px, transparent 1px)",
+      "linear-gradient(rgba(15, 23, 42, 0.70) 1px, transparent 1px)",
+      "linear-gradient(90deg, rgba(15, 23, 42, 0.70) 1px, transparent 1px)",
     ].join(","),
     backgroundSize: "32px 32px",
     maskImage:
