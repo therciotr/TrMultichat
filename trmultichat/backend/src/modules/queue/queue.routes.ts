@@ -1,4 +1,7 @@
 import { Router } from "express";
+import fs from "fs";
+import path from "path";
+import multer from "multer";
 import jwt from "jsonwebtoken";
 import env from "../../config/env";
 import { findAllSafe, getLegacyModel } from "../../utils/legacyModel";
@@ -13,6 +16,11 @@ function isDevMode(): boolean {
   );
 }
 
+function quoteIdent(name: string): string {
+  const safe = String(name).replace(/"/g, '""');
+  return `"${safe}"`;
+}
+
 function extractTenantIdFromAuth(authorization?: string): number {
   try {
     const parts = (authorization || "").split(" ");
@@ -23,6 +31,82 @@ function extractTenantIdFromAuth(authorization?: string): number {
     return Number(payload?.tenantId || 0);
   } catch {
     return 0;
+  }
+}
+
+// Upload (public/uploads/queue)
+const PUBLIC_DIR = path.join(process.cwd(), "public");
+const UPLOADS_DIR = path.join(PUBLIC_DIR, "uploads");
+const QUEUE_UPLOADS_DIR = path.join(UPLOADS_DIR, "queue");
+
+function ensureUploadDirs() {
+  if (!fs.existsSync(PUBLIC_DIR)) fs.mkdirSync(PUBLIC_DIR);
+  if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR);
+  if (!fs.existsSync(QUEUE_UPLOADS_DIR)) fs.mkdirSync(QUEUE_UPLOADS_DIR);
+}
+
+ensureUploadDirs();
+const storage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, QUEUE_UPLOADS_DIR),
+  filename: (_req, file, cb) => {
+    const unique = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    const ext = path.extname(file.originalname || ".bin");
+    cb(null, unique + ext.replace(/\//g, "-"));
+  }
+});
+const upload = multer({ storage });
+
+function maybeUploadSingle(fieldName: string) {
+  const handler = upload.single(fieldName);
+  return (req: any, res: any, next: any) => {
+    if (req?.is?.("multipart/form-data")) return handler(req, res, next);
+    return next();
+  };
+}
+
+let cachedQueuesTableIdent: string | null = null; // quoted identifier
+let cachedQueuesCols: Set<string> | null = null; // lowercase
+
+async function resolveQueuesTable(): Promise<string> {
+  if (cachedQueuesTableIdent) return cachedQueuesTableIdent;
+  try {
+    const rows = await pgQuery<{ table_name: string }>(
+      `
+      SELECT table_name
+      FROM information_schema.tables
+      WHERE table_schema = 'public'
+        AND table_name ILIKE 'queues'
+      LIMIT 1
+    `
+    );
+    const name = rows?.[0]?.table_name;
+    if (name) {
+      cachedQueuesTableIdent = quoteIdent(name);
+      return cachedQueuesTableIdent;
+    }
+  } catch {}
+  cachedQueuesTableIdent = quoteIdent("Queues");
+  return cachedQueuesTableIdent;
+}
+
+async function resolveQueuesColumns(tableIdentQuoted: string): Promise<Set<string>> {
+  if (cachedQueuesCols) return cachedQueuesCols;
+  try {
+    const rawName = tableIdentQuoted.replace(/^"+|"+$/g, "").replace(/""/g, '"');
+    const cols = await pgQuery<{ column_name: string }>(
+      `
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = $1
+    `,
+      [rawName]
+    );
+    cachedQueuesCols = new Set(cols.map((c) => String(c.column_name || "").toLowerCase()));
+    return cachedQueuesCols;
+  } catch {
+    cachedQueuesCols = new Set();
+    return cachedQueuesCols;
   }
 }
 
@@ -105,6 +189,81 @@ router.get("/", async (_req, res) => {
     }
   } catch (e: any) {
     return res.status(400).json({ error: true, message: e?.message || "list error" });
+  }
+});
+
+// Upload attachment for a queue (used by QueueModal)
+router.post("/:id/media-upload", maybeUploadSingle("file"), async (req: any, res) => {
+  try {
+    const tenantId = extractTenantIdFromAuth(req.headers.authorization as string);
+    if (!tenantId && !isDevMode()) {
+      return res.status(401).json({ error: true, message: "missing tenantId" });
+    }
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ error: true, message: "invalid id" });
+    if (!req.file) return res.status(400).json({ error: true, message: "file is required" });
+
+    const t = await resolveQueuesTable();
+    const cols = await resolveQueuesColumns(t);
+    if (!cols.has("mediapath") && !cols.has("medianame")) {
+      // Column(s) not present in this schema
+      return res.status(501).json({ error: true, message: "media fields not available" });
+    }
+
+    const mediaPath = `/uploads/queue/${req.file.filename}`;
+    const mediaName = String(req.file.originalname || req.file.filename || "").trim();
+
+    const rows = await pgQuery<any>(
+      `
+      UPDATE ${t}
+      SET
+        ${cols.has("mediapath") ? `"mediaPath" = $1` : `"mediaPath" = "mediaPath"`},
+        ${cols.has("medianame") ? `"mediaName" = $2` : `"mediaName" = "mediaName"`},
+        ${cols.has("updatedat") ? `"updatedAt" = NOW()` : `"id" = "id"`}
+      WHERE id = $3 AND "companyId" = $4
+      RETURNING *
+    `,
+      [mediaPath, mediaName, id, tenantId || 1]
+    );
+    const updated = rows?.[0];
+    if (!updated) return res.status(404).json({ error: true, message: "not found" });
+    return res.json(updated);
+  } catch (e: any) {
+    return res.status(400).json({ error: true, message: e?.message || "upload error" });
+  }
+});
+
+router.delete("/:id/media-upload", async (req, res) => {
+  try {
+    const tenantId = extractTenantIdFromAuth(req.headers.authorization as string);
+    if (!tenantId && !isDevMode()) {
+      return res.status(401).json({ error: true, message: "missing tenantId" });
+    }
+    const id = Number(req.params.id);
+    if (!id) return res.status(400).json({ error: true, message: "invalid id" });
+
+    const t = await resolveQueuesTable();
+    const cols = await resolveQueuesColumns(t);
+    if (!cols.has("mediapath") && !cols.has("medianame")) {
+      return res.status(204).end();
+    }
+
+    // Clear fields; keep file on disk (safe default)
+    await pgQuery(
+      `
+      UPDATE ${t}
+      SET
+        ${cols.has("mediapath") ? `"mediaPath" = NULL` : `"mediaPath" = "mediaPath"`},
+        ${cols.has("medianame") ? `"mediaName" = NULL` : `"mediaName" = "mediaName"`},
+        ${cols.has("updatedat") ? `"updatedAt" = NOW()` : `"id" = "id"`}
+      WHERE id = $1 AND "companyId" = $2
+    `,
+      [id, tenantId || 1]
+    );
+
+    return res.status(204).end();
+  } catch (e: any) {
+    return res.status(400).json({ error: true, message: e?.message || "delete upload error" });
   }
 });
 
