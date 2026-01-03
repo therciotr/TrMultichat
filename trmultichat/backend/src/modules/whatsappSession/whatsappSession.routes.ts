@@ -319,11 +319,21 @@ router.put("/:id", async (req, res) => {
       if (handled) return;
     } catch {}
 
+    const profile = extractProfileFromAuth(req.headers.authorization as string);
+    const debugEnabled = String(process.env.ENABLE_DEBUG_ENDPOINTS || "").toLowerCase() === "true";
+    const includeDebug = debugEnabled && String(profile).toLowerCase() === "admin";
+
     return res.status(422).json({
       error: true,
       message: "could not generate qrcode",
       details: e?.message || "unknown error",
-      debugId
+      debugId,
+      ...(includeDebug
+        ? {
+            // Helpful diagnostics for admins only (no creds content)
+            stack: String(e?.stack || ""),
+          }
+        : {})
     });
   }
 });
