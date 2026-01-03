@@ -10,6 +10,7 @@ const router = Router();
 
 const PUBLIC_DIR = path.join(process.cwd(), "public");
 const SESS_FILE = path.join(PUBLIC_DIR, "dev-whatsapp-sessions.json");
+const ERR_LOG_FILE = path.join(PUBLIC_DIR, "whatsappsession-errors.log");
 
 function ensurePublicDir() {
   try {
@@ -80,6 +81,18 @@ function extractUserIdFromAuth(authorization?: string): number {
   }
 }
 
+function extractProfileFromAuth(authorization?: string): string {
+  try {
+    const parts = (authorization || "").split(" ");
+    const bearer = parts.length === 2 && parts[0] === "Bearer" ? parts[1] : undefined;
+    if (!bearer) return "";
+    const decoded: any = jwt.decode(bearer) || {};
+    return String(decoded?.profile || "");
+  } catch {
+    return "";
+  }
+}
+
 function emitSessionUpdate(tenantId: number, session: any) {
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -107,6 +120,34 @@ function logWhatsappSessionError(req: any, err: any, extra?: Record<string, any>
     });
   } catch {
     // ignore
+  }
+}
+
+function appendErrorLogLine(line: string) {
+  try {
+    ensurePublicDir();
+    fs.appendFileSync(ERR_LOG_FILE, line + "\n", "utf8");
+  } catch {
+    // ignore
+  }
+}
+
+function tailFile(filePath: string, maxBytes = 20_000): string {
+  try {
+    if (!fs.existsSync(filePath)) return "";
+    const stat = fs.statSync(filePath);
+    const size = stat.size || 0;
+    const start = Math.max(0, size - maxBytes);
+    const fd = fs.openSync(filePath, "r");
+    try {
+      const buf = Buffer.alloc(size - start);
+      fs.readSync(fd, buf, 0, buf.length, start);
+      return buf.toString("utf8");
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch {
+    return "";
   }
 }
 
@@ -208,6 +249,17 @@ router.get("/debug/baileys-exports", (req, res) => {
   }
 });
 
+// Debug helper (admin only): last whatsappsession errors
+router.get("/debug/last-error", (req, res) => {
+  const tenantId = extractTenantIdFromAuth(req.headers.authorization as string);
+  const userId = extractUserIdFromAuth(req.headers.authorization as string);
+  const profile = extractProfileFromAuth(req.headers.authorization as string);
+  if (!tenantId || !userId) return res.status(401).json({ error: true, message: "unauthorized" });
+  if (String(profile).toLowerCase() !== "admin") return res.status(403).json({ error: true, message: "forbidden" });
+  const tail = tailFile(ERR_LOG_FILE, 30_000);
+  return res.json({ ok: true, tail });
+});
+
 router.post("/:id", async (req, res) => {
   // POST /whatsappsession/:id NÃO deve ser usado (frontend deve usar GET para consultar e PUT para gerar novo QR)
   return res.status(405).json({
@@ -245,6 +297,20 @@ router.put("/:id", async (req, res) => {
     });
   } catch (e: any) {
     logWhatsappSessionError(req, e, { action: "put_generate_qr" });
+    const debugId = Date.now();
+    appendErrorLogLine(
+      JSON.stringify({
+        ts: new Date().toISOString(),
+        debugId,
+        method: req?.method,
+        url: req?.originalUrl,
+        params: req?.params,
+        tenantId,
+        userId: extractUserIdFromAuth(req.headers.authorization as string),
+        message: e?.message,
+        stack: e?.stack
+      })
+    );
 
     // Fallback: try legacy WhatsAppSessionController update flow (older stacks generate QR correctly)
     // If it handles the response, we stop here.
@@ -256,7 +322,8 @@ router.put("/:id", async (req, res) => {
     return res.status(422).json({
       error: true,
       message: "could not generate qrcode",
-      details: e?.message || "unknown error"
+      details: e?.message || "unknown error",
+      debugId
     });
   }
 });
