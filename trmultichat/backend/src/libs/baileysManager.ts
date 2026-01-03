@@ -112,6 +112,23 @@ type ManagedSession = {
 
 const sessions = new Map<number, ManagedSession>();
 
+function pickFn<T = any>(...candidates: any[]): T {
+  for (const c of candidates) {
+    if (typeof c === "function") return c as T;
+  }
+  return null as any;
+}
+
+function isDebugBaileys(): boolean {
+  return String(process.env.DEBUG_BAILEYS || "").toLowerCase() === "true";
+}
+
+function debugLog(...args: any[]) {
+  if (!isDebugBaileys()) return;
+  // eslint-disable-next-line no-console
+  console.log("[baileysManager]", ...args);
+}
+
 export function getStoredQr(whatsappId: number): SessionSnapshot | null {
   const all = readSessionsFile();
   return all[String(whatsappId)] || null;
@@ -162,18 +179,42 @@ export async function startOrRefreshBaileysSession(opts: {
   // Runtime-safe Baileys exports (GitHub build can vary CJS/ESM exports)
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const baileysRuntime = require("@whiskeysockets/baileys");
-  const makeWASocketFn =
-    baileysRuntime?.makeWASocket || baileysRuntime?.default?.makeWASocket || baileysRuntime?.default || makeWASocket;
-  const useMultiFileAuthStateFn =
-    baileysRuntime?.useMultiFileAuthState || baileysRuntime?.default?.useMultiFileAuthState || useMultiFileAuthState;
-  const makeCacheableSignalKeyStoreFn =
-    baileysRuntime?.makeCacheableSignalKeyStore ||
-    baileysRuntime?.default?.makeCacheableSignalKeyStore ||
-    makeCacheableSignalKeyStore;
-  const fetchLatestBaileysVersionFn =
-    baileysRuntime?.fetchLatestBaileysVersion ||
-    baileysRuntime?.default?.fetchLatestBaileysVersion ||
-    fetchLatestBaileysVersion;
+  const makeWASocketFn = pickFn(
+    baileysRuntime?.makeWASocket,
+    baileysRuntime?.default?.makeWASocket,
+    makeWASocket
+  );
+  const useMultiFileAuthStateFn = pickFn(
+    baileysRuntime?.useMultiFileAuthState,
+    baileysRuntime?.default?.useMultiFileAuthState,
+    useMultiFileAuthState
+  );
+  const makeCacheableSignalKeyStoreFn = pickFn(
+    baileysRuntime?.makeCacheableSignalKeyStore,
+    baileysRuntime?.default?.makeCacheableSignalKeyStore,
+    makeCacheableSignalKeyStore
+  );
+  const fetchLatestBaileysVersionFn = pickFn(
+    baileysRuntime?.fetchLatestBaileysVersion,
+    baileysRuntime?.default?.fetchLatestBaileysVersion,
+    fetchLatestBaileysVersion
+  );
+
+  if (typeof makeWASocketFn !== "function" || typeof useMultiFileAuthStateFn !== "function") {
+    const keys = Object.keys(baileysRuntime || {});
+    const defKeys = Object.keys(baileysRuntime?.default || {});
+    throw new Error(
+      `Baileys exports mismatch (makeWASocket/useMultiFileAuthState not found). keys=${keys.join(
+        ","
+      )} defaultKeys=${defKeys.join(",")}`
+    );
+  }
+  debugLog("baileys exports ok", {
+    makeWASocket: typeof makeWASocketFn,
+    useMultiFileAuthState: typeof useMultiFileAuthStateFn,
+    makeCacheableSignalKeyStore: typeof makeCacheableSignalKeyStoreFn,
+    fetchLatestBaileysVersion: typeof fetchLatestBaileysVersionFn
+  });
 
   // restart existing session if any
   const existing = sessions.get(whatsappId);
@@ -214,15 +255,41 @@ export async function startOrRefreshBaileysSession(opts: {
 
   // Baileys builds differ: some return { state, saveCreds }, others return { authState, saveCreds }.
   const authRes: any = await useMultiFileAuthStateFn(authPath);
-  const state: any = authRes?.state || authRes?.authState;
+  let state: any =
+    authRes?.state ||
+    authRes?.authState ||
+    authRes?.auth ||
+    null;
+  // Some weird builds may return { creds, keys } at top-level
+  if (!state && authRes?.creds && authRes?.keys) {
+    state = { creds: authRes.creds, keys: authRes.keys };
+  }
+  // Some wrappers nest it as { state: { state: { creds, keys } } }
+  if (state?.state && (state.state.creds || state.state.keys)) {
+    state = state.state;
+  }
+
   const saveCreds: any = authRes?.saveCreds || authRes?.saveState || authRes?.save;
   if (!state || typeof state !== "object") {
-    throw new Error("Baileys auth state is undefined");
+    const topKeys = Object.keys(authRes || {});
+    debugLog("authRes keys", topKeys);
+    throw new Error(`Baileys auth state is undefined (authRes keys: ${topKeys.join(",")})`);
+  }
+  if (!state?.creds || !state?.keys) {
+    const stateKeys = Object.keys(state || {});
+    debugLog("authRes/state shape mismatch", { authResKeys: Object.keys(authRes || {}), stateKeys });
+    throw new Error(
+      `Baileys auth state missing creds/keys (state keys: ${stateKeys.join(",")})`
+    );
   }
   let version: any = undefined;
   try {
-    const v = await fetchLatestBaileysVersionFn();
-    version = v?.version;
+    if (typeof fetchLatestBaileysVersionFn === "function") {
+      const v = await fetchLatestBaileysVersionFn();
+      version = v?.version;
+    } else {
+      version = undefined;
+    }
   } catch {
     // VPS pode não ter saída para internet; Baileys consegue operar sem buscar versão "latest".
     version = undefined;
@@ -240,7 +307,10 @@ export async function startOrRefreshBaileysSession(opts: {
   try {
     const wrapped = {
       creds: (state as any).creds,
-      keys: makeCacheableSignalKeyStoreFn((state as any).keys, logger)
+      keys:
+        typeof makeCacheableSignalKeyStoreFn === "function"
+          ? makeCacheableSignalKeyStoreFn((state as any).keys, logger)
+          : (state as any).keys
     };
     // Provide BOTH keys for maximum compatibility (`auth` vs `authState`)
     sock = makeWASocketFn({
@@ -250,6 +320,7 @@ export async function startOrRefreshBaileysSession(opts: {
     } as any);
   } catch (e1: any) {
     // fallback: provide raw state under both keys
+    debugLog("makeWASocket first attempt failed", e1?.message);
     sock = makeWASocketFn({
       ...sockOptsBase,
       auth: state as any,
