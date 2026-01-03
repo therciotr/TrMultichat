@@ -303,29 +303,46 @@ export async function startOrRefreshBaileysSession(opts: {
     msgRetryCounterCache,
     generateHighQualityLinkPreview: true
   };
-  let sock: any;
-  try {
-    const wrapped = {
-      creds: (state as any).creds,
-      keys:
-        typeof makeCacheableSignalKeyStoreFn === "function"
-          ? makeCacheableSignalKeyStoreFn((state as any).keys, logger)
-          : (state as any).keys
-    };
-    // Provide BOTH keys for maximum compatibility (`auth` vs `authState`)
-    sock = makeWASocketFn({
-      ...sockOptsBase,
-      auth: wrapped,
-      authState: wrapped
-    } as any);
-  } catch (e1: any) {
-    // fallback: provide raw state under both keys
-    debugLog("makeWASocket first attempt failed", e1?.message);
-    sock = makeWASocketFn({
-      ...sockOptsBase,
-      auth: state as any,
-      authState: state as any
-    } as any);
+  const wrapped = {
+    creds: (state as any).creds,
+    keys:
+      typeof makeCacheableSignalKeyStoreFn === "function"
+        ? makeCacheableSignalKeyStoreFn((state as any).keys, logger)
+        : (state as any).keys
+  };
+
+  const attempts: Array<{ label: string; cfg: any }> = [
+    // Preferred (Baileys >= 6): config.auth = { creds, keys }
+    { label: "auth_wrapped", cfg: { ...sockOptsBase, auth: wrapped } },
+    { label: "auth_raw", cfg: { ...sockOptsBase, auth: state as any } },
+    // Legacy/alt builds (some expect authState instead of auth)
+    { label: "authState_wrapped", cfg: { ...sockOptsBase, authState: wrapped } },
+    { label: "authState_raw", cfg: { ...sockOptsBase, authState: state as any } }
+  ];
+
+  let sock: any = null;
+  let lastErr: any = null;
+  for (const a of attempts) {
+    try {
+      debugLog("makeWASocket attempt", {
+        label: a.label,
+        keys: Object.keys(a.cfg || {}),
+        hasAuth: Boolean(a.cfg?.auth),
+        hasAuthState: Boolean(a.cfg?.authState)
+      });
+      sock = makeWASocketFn(a.cfg as any);
+      lastErr = null;
+      break;
+    } catch (e: any) {
+      lastErr = e;
+      debugLog("makeWASocket attempt failed", a.label, e?.message);
+    }
+  }
+  if (!sock) {
+    const msg = String(lastErr?.message || "unknown");
+    throw new Error(
+      `Baileys makeWASocket failed after attempts (${attempts.map((a) => a.label).join(", ")}): ${msg}`
+    );
   }
 
   // Some Baileys builds export makeInMemoryStore as default-only; require it to be safe.
