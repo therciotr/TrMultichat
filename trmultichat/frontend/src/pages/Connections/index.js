@@ -156,7 +156,8 @@ const Connections = () => {
 
 	const handleStartWhatsAppSession = async whatsAppId => {
 		try {
-			await api.post(`/whatsappsession/${whatsAppId}`);
+			// Gerar/reiniciar sessão para obter QR Code (método correto: PUT)
+			await api.put(`/whatsappsession/${whatsAppId}`);
 			setSelectedWhatsApp({ id: whatsAppId });
 			setQrModalOpen(true);
 		} catch (err) {

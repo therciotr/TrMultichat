@@ -90,6 +90,26 @@ function emitSessionUpdate(tenantId: number, session: any) {
   } catch {}
 }
 
+function logWhatsappSessionError(req: any, err: any, extra?: Record<string, any>) {
+  try {
+    const tenantId = extractTenantIdFromAuth(req?.headers?.authorization as string);
+    const userId = extractUserIdFromAuth(req?.headers?.authorization as string);
+    // eslint-disable-next-line no-console
+    console.error("[whatsappsession] error", {
+      method: req?.method,
+      url: req?.originalUrl,
+      params: req?.params,
+      tenantId,
+      userId,
+      message: err?.message,
+      stack: err?.stack,
+      ...extra
+    });
+  } catch {
+    // ignore
+  }
+}
+
 function requireLegacyController(moduleRelPath: string): any | null {
   const candidates = [
     path.resolve(process.cwd(), moduleRelPath),
@@ -189,40 +209,18 @@ router.get("/debug/baileys-exports", (req, res) => {
 });
 
 router.post("/:id", async (req, res) => {
-  const id = Number(req.params.id);
-  const tenantId = extractTenantIdFromAuth(req.headers.authorization as string);
-  if (!tenantId) return res.status(401).json({ error: true, message: "missing tenantId" });
-
-  // Start real Baileys session (QR válido)
-  try {
-    await startOrRefreshBaileysSession({
-      companyId: tenantId,
-      whatsappId: id,
-      forceNewQr: true,
-      emit: (companyId, payload) => {
-        try {
-          const io = getIO();
-          io.emit(`company-${companyId}-whatsappSession`, payload);
-        } catch {}
-      }
-    });
-    const sess = getStoredQr(id);
-    return res.json({
-      id,
-      status: sess?.status || "OPENING",
-      qrcode: sess?.qrcode || "",
-      updatedAt: sess?.updatedAt || new Date().toISOString(),
-      retries: typeof sess?.retries === "number" ? sess.retries : 0
-    });
-  } catch (e: any) {
-    return res.status(500).json({ error: true, message: e?.message || "failed to start session" });
-  }
+  // POST /whatsappsession/:id NÃO deve ser usado (frontend deve usar GET para consultar e PUT para gerar novo QR)
+  return res.status(405).json({
+    error: true,
+    message: "Use GET /whatsappsession/:id para consultar e PUT /whatsappsession/:id para gerar novo QR"
+  });
 });
 
 router.put("/:id", async (req, res) => {
   const id = Number(req.params.id);
   const tenantId = extractTenantIdFromAuth(req.headers.authorization as string);
   if (!tenantId) return res.status(401).json({ error: true, message: "missing tenantId" });
+  if (!id) return res.status(400).json({ error: true, message: "invalid id" });
 
   // Refresh QR (Baileys)
   try {
@@ -246,7 +244,12 @@ router.put("/:id", async (req, res) => {
       retries: typeof sess?.retries === "number" ? sess.retries : 0
     });
   } catch (e: any) {
-    return res.status(500).json({ error: true, message: e?.message || "failed to refresh session" });
+    logWhatsappSessionError(req, e, { action: "put_generate_qr" });
+    return res.status(422).json({
+      error: true,
+      message: "could not generate qrcode",
+      details: e?.message || "unknown error"
+    });
   }
 });
 
