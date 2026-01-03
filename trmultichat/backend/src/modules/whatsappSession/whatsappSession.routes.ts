@@ -245,6 +245,14 @@ router.put("/:id", async (req, res) => {
     });
   } catch (e: any) {
     logWhatsappSessionError(req, e, { action: "put_generate_qr" });
+
+    // Fallback: try legacy WhatsAppSessionController update flow (older stacks generate QR correctly)
+    // If it handles the response, we stop here.
+    try {
+      const handled = tryRunLegacyWhatsAppSessionController("update", req, res);
+      if (handled) return;
+    } catch {}
+
     return res.status(422).json({
       error: true,
       message: "could not generate qrcode",

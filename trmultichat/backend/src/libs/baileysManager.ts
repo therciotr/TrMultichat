@@ -179,13 +179,11 @@ export async function startOrRefreshBaileysSession(opts: {
   // Runtime-safe Baileys exports (GitHub build can vary CJS/ESM exports)
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const baileysRuntime = require("@whiskeysockets/baileys");
-  // Some builds export the socket factory as the *default function* itself (ESM/CJS interop).
-  const makeWASocketFn = pickFn(
-    typeof baileysRuntime?.default === "function" ? baileysRuntime.default : null,
-    baileysRuntime?.makeWASocket,
-    baileysRuntime?.default?.makeWASocket,
-    makeWASocket
-  );
+  // IMPORTANT: Prefer explicit named exports first. Some builds expose a default *function* that is NOT makeWASocket.
+  // Only fall back to default function if no makeWASocket can be found.
+  const makeWASocketFn =
+    pickFn(baileysRuntime?.makeWASocket, baileysRuntime?.default?.makeWASocket, makeWASocket) ||
+    pickFn(typeof baileysRuntime?.default === "function" ? baileysRuntime.default : null);
   const useMultiFileAuthStateFn = pickFn(
     baileysRuntime?.useMultiFileAuthState,
     baileysRuntime?.default?.useMultiFileAuthState,
