@@ -155,8 +155,9 @@ export async function startOrRefreshBaileysSession(opts: {
   companyId: number;
   whatsappId: number;
   emit?: (companyId: number, payload: { action: string; session: SessionSnapshot }) => void;
+  forceNewQr?: boolean;
 }): Promise<void> {
-  const { companyId, whatsappId, emit } = opts;
+  const { companyId, whatsappId, emit, forceNewQr } = opts;
 
   // Runtime-safe Baileys exports (GitHub build can vary CJS/ESM exports)
   // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -186,6 +187,30 @@ export async function startOrRefreshBaileysSession(opts: {
   ensureDir(AUTH_DIR);
   const authPath = path.join(AUTH_DIR, String(companyId), String(whatsappId));
   ensureDir(authPath);
+
+  // Force a brand new QR code by wiping auth state (used by "Novo QR Code" in UI).
+  if (forceNewQr) {
+    try {
+      fs.rmSync(authPath, { recursive: true, force: true });
+    } catch {}
+    // Recreate folder for multi-file auth state
+    ensureDir(authPath);
+    // Reset session snapshot to prompt UI to wait for QR
+    try {
+      const all = readSessionsFile();
+      all[String(whatsappId)] = {
+        id: whatsappId,
+        status: "DISCONNECTED",
+        qrcode: "",
+        updatedAt: new Date().toISOString(),
+        retries: 0
+      };
+      writeSessionsFile(all);
+    } catch {}
+    try {
+      await updateWhatsAppStatus(companyId, whatsappId, "DISCONNECTED");
+    } catch {}
+  }
 
   const { state, saveCreds } = await useMultiFileAuthStateFn(authPath);
   let version: any = undefined;
