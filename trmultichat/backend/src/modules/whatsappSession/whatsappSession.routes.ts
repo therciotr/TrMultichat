@@ -206,7 +206,14 @@ router.post("/:id", async (req, res) => {
         } catch {}
       }
     });
-    return res.json({ ok: true });
+    const sess = getStoredQr(id);
+    return res.json({
+      id,
+      status: sess?.status || "OPENING",
+      qrcode: sess?.qrcode || "",
+      updatedAt: sess?.updatedAt || new Date().toISOString(),
+      retries: typeof sess?.retries === "number" ? sess.retries : 0
+    });
   } catch (e: any) {
     return res.status(500).json({ error: true, message: e?.message || "failed to start session" });
   }
@@ -230,7 +237,14 @@ router.put("/:id", async (req, res) => {
         } catch {}
       }
     });
-    return res.json({ ok: true });
+    const sess = getStoredQr(id);
+    return res.json({
+      id,
+      status: sess?.status || "OPENING",
+      qrcode: sess?.qrcode || "",
+      updatedAt: sess?.updatedAt || new Date().toISOString(),
+      retries: typeof sess?.retries === "number" ? sess.retries : 0
+    });
   } catch (e: any) {
     return res.status(500).json({ error: true, message: e?.message || "failed to refresh session" });
   }

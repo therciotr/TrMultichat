@@ -9,7 +9,28 @@ import { socketConnection } from "../../services/socket";
 
 const QrcodeModal = ({ open, onClose, whatsAppId }) => {
   const [qrCode, setQrCode] = useState("");
-  const [pollId, setPollId] = useState(null);
+  const [status, setStatus] = useState("");
+  const [timedOut, setTimedOut] = useState(false);
+
+  const extractQr = (payload) => {
+    if (!payload) return "";
+    return (
+      payload.qrcode ||
+      payload.qrCode ||
+      payload.qr ||
+      payload.session?.qrcode ||
+      ""
+    );
+  };
+
+  const extractStatus = (payload) => {
+    if (!payload) return "";
+    return (
+      payload.status ||
+      payload.session?.status ||
+      ""
+    );
+  };
 
   useEffect(() => {
     const fetchSession = async () => {
@@ -18,7 +39,8 @@ const QrcodeModal = ({ open, onClose, whatsAppId }) => {
       try {
         // QR code real é exposto em /whatsappsession/:id
         const { data } = await api.get(`/whatsappsession/${whatsAppId}`);
-        setQrCode(data?.qrcode || "");
+        setQrCode(extractQr(data));
+        setStatus(extractStatus(data));
       } catch (err) {
         toastError(err);
       }
@@ -33,10 +55,12 @@ const QrcodeModal = ({ open, onClose, whatsAppId }) => {
 
     socket.on(`company-${companyId}-whatsappSession`, (data) => {
       if (data.action === "update" && data.session.id === whatsAppId) {
-        setQrCode(data.session.qrcode);
+        setQrCode(extractQr(data));
+        setStatus(extractStatus(data));
       }
 
-      if (data.action === "update" && data.session.qrcode === "") {
+      // Fecha o modal quando conectar de fato
+      if (data.action === "update" && String(data.session?.status || "").toUpperCase() === "CONNECTED") {
         onClose();
       }
     });
@@ -50,20 +74,46 @@ const QrcodeModal = ({ open, onClose, whatsAppId }) => {
   useEffect(() => {
     if (!open || !whatsAppId) return;
     if (qrCode) return;
-    const id = setInterval(async () => {
+
+    setTimedOut(false);
+    const startedAt = Date.now();
+    const intervalId = setInterval(async () => {
+      const elapsed = Date.now() - startedAt;
+      if (elapsed > 60_000) {
+        setTimedOut(true);
+        clearInterval(intervalId);
+        return;
+      }
       try {
         const { data } = await api.get(`/whatsappsession/${whatsAppId}`);
-        if (data?.qrcode) {
-          setQrCode(data.qrcode);
+        const nextQr = extractQr(data);
+        const nextStatus = extractStatus(data);
+        if (nextStatus) setStatus(nextStatus);
+        if (nextQr) {
+          setQrCode(nextQr);
+          clearInterval(intervalId);
+          return;
+        }
+        if (String(nextStatus || "").toUpperCase() === "CONNECTED") {
+          clearInterval(intervalId);
+          onClose();
         }
       } catch (_) {}
-    }, 1000);
-    setPollId(id);
+    }, 2500);
+
     return () => {
-      if (id) clearInterval(id);
-      setPollId(null);
+      clearInterval(intervalId);
     };
-  }, [open, whatsAppId, qrCode]);
+  }, [open, whatsAppId, qrCode, onClose]);
+
+  // reset state on close/open changes
+  useEffect(() => {
+    if (!open) {
+      setQrCode("");
+      setStatus("");
+      setTimedOut(false);
+    }
+  }, [open]);
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="lg" scroll="paper">
@@ -75,7 +125,12 @@ const QrcodeModal = ({ open, onClose, whatsAppId }) => {
           {qrCode ? (
             <QRCode value={qrCode} size={256} />
           ) : (
-            <span>Waiting for QR Code</span>
+            <span>
+              {timedOut
+                ? "Não foi possível gerar o QR Code. Tente novamente."
+                : "Gerando QR Code…"}
+              {status ? ` (${String(status).toUpperCase()})` : ""}
+            </span>
           )}
         </Paper>
       </DialogContent>
