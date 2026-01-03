@@ -222,6 +222,7 @@ router.put("/:id", async (req, res) => {
     await startOrRefreshBaileysSession({
       companyId: tenantId,
       whatsappId: id,
+      forceNewQr: true,
       emit: (companyId, payload) => {
         try {
           const io = getIO();

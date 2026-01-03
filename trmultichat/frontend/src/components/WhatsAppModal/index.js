@@ -107,8 +107,10 @@ const WhatsAppModal = ({ open, onClose, whatsAppId }) => {
         setWhatsApp(data);
         data.promptId ? setSelectedPrompt(data.promptId) : setSelectedPrompt(null);
 
-        const whatsQueueIds = data.queues?.map((queue) => queue.id);
-        setSelectedQueueIds(whatsQueueIds);
+        const whatsQueueIds = Array.isArray(data?.queues)
+          ? data.queues.map((queue) => queue.id)
+          : [];
+        setSelectedQueueIds(Array.isArray(whatsQueueIds) ? whatsQueueIds : []);
       } catch (err) {
         toastError(err);
       }

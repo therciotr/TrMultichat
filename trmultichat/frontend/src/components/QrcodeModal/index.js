@@ -16,8 +16,9 @@ const QrcodeModal = ({ open, onClose, whatsAppId }) => {
       if (!whatsAppId) return;
 
       try {
-        const { data } = await api.get(`/whatsapp/${whatsAppId}`);
-        setQrCode(data.qrcode);
+        // QR code real é exposto em /whatsappsession/:id
+        const { data } = await api.get(`/whatsappsession/${whatsAppId}`);
+        setQrCode(data?.qrcode || "");
       } catch (err) {
         toastError(err);
       }
@@ -51,8 +52,8 @@ const QrcodeModal = ({ open, onClose, whatsAppId }) => {
     if (qrCode) return;
     const id = setInterval(async () => {
       try {
-        const { data } = await api.get(`/whatsapp/${whatsAppId}`);
-        if (data.qrcode) {
+        const { data } = await api.get(`/whatsappsession/${whatsAppId}`);
+        if (data?.qrcode) {
           setQrCode(data.qrcode);
         }
       } catch (_) {}
