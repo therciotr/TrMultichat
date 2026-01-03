@@ -212,7 +212,13 @@ export async function startOrRefreshBaileysSession(opts: {
     } catch {}
   }
 
-  const { state, saveCreds } = await useMultiFileAuthStateFn(authPath);
+  // Baileys builds differ: some return { state, saveCreds }, others return { authState, saveCreds }.
+  const authRes: any = await useMultiFileAuthStateFn(authPath);
+  const state: any = authRes?.state || authRes?.authState;
+  const saveCreds: any = authRes?.saveCreds || authRes?.saveState || authRes?.save;
+  if (!state || typeof state !== "object") {
+    throw new Error("Baileys auth state is undefined");
+  }
   let version: any = undefined;
   try {
     const v = await fetchLatestBaileysVersionFn();
@@ -263,7 +269,9 @@ export async function startOrRefreshBaileysSession(opts: {
   const managed: ManagedSession = { sock, store: store || undefined, companyId, retries: 0 };
   sessions.set(whatsappId, managed);
 
-  sock.ev.on("creds.update", saveCreds);
+  if (typeof saveCreds === "function") {
+    sock.ev.on("creds.update", saveCreds);
+  }
 
   sock.ev.on("messages.upsert", async (upsert: any) => {
     try {
