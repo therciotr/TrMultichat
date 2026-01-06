@@ -12,6 +12,114 @@ const PUBLIC_DIR = path.join(process.cwd(), "public");
 const SESS_FILE = path.join(PUBLIC_DIR, "dev-whatsapp-sessions.json");
 const ERR_LOG_FILE = path.join(PUBLIC_DIR, "whatsappsession-errors.log");
 
+// Inline Baileys starter (workaround): on this VPS build, importing Baileys inside baileysManager has been flaky.
+// This implementation mirrors the known-working "manual" makeWASocket flow.
+const REAL_SESS_FILE = path.join(PUBLIC_DIR, "whatsapp-sessions.json");
+const REAL_AUTH_DIR = path.join(PUBLIC_DIR, "baileys");
+const inlineSessions = new Map<number, any>();
+
+function readRealSessions(): Record<string, any> {
+  try {
+    ensurePublicDir();
+    if (!fs.existsSync(REAL_SESS_FILE)) return {};
+    return JSON.parse(fs.readFileSync(REAL_SESS_FILE, "utf8")) || {};
+  } catch {
+    return {};
+  }
+}
+
+function writeRealSessions(obj: Record<string, any>) {
+  try {
+    ensurePublicDir();
+    fs.writeFileSync(REAL_SESS_FILE, JSON.stringify(obj, null, 2), "utf8");
+  } catch {}
+}
+
+function saveSessionSnapshot(companyId: number, whatsappId: number, patch: Partial<any>) {
+  const all = readRealSessions();
+  const prev = all[String(whatsappId)] || {};
+  const next = {
+    ...prev,
+    ...patch,
+    id: whatsappId,
+    status: patch?.status ?? prev.status ?? "OPENING",
+    qrcode: patch?.qrcode ?? prev.qrcode ?? "",
+    retries: typeof (patch as any)?.retries === "number" ? (patch as any).retries : typeof prev.retries === "number" ? prev.retries : 0,
+    updatedAt: new Date().toISOString()
+  };
+  all[String(whatsappId)] = next;
+  writeRealSessions(all);
+  try {
+    const io = getIO();
+    io.emit(`company-${companyId}-whatsappSession`, { action: "update", session: next });
+  } catch {}
+  return next;
+}
+
+async function startBaileysInline(opts: { companyId: number; whatsappId: number; forceNewQr?: boolean }) {
+  const { companyId, whatsappId, forceNewQr } = opts;
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const baileys = require("@whiskeysockets/baileys");
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const P = require("pino");
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const NodeCache = require("node-cache");
+  const logger = P({ level: "warn" });
+
+  const authPath = path.join(REAL_AUTH_DIR, String(companyId), String(whatsappId));
+  try {
+    if (forceNewQr) fs.rmSync(authPath, { recursive: true, force: true });
+  } catch {}
+  try {
+    fs.mkdirSync(authPath, { recursive: true });
+  } catch {}
+
+  // close existing
+  try {
+    const existing = inlineSessions.get(whatsappId);
+    existing?.ws?.close?.();
+  } catch {}
+  inlineSessions.delete(whatsappId);
+
+  const { state, saveCreds } = await baileys.useMultiFileAuthState(authPath);
+  const msgRetryCounterCache = new NodeCache();
+  const wrapped = {
+    creds: state.creds,
+    keys: baileys.makeCacheableSignalKeyStore(state.keys, logger)
+  };
+
+  saveSessionSnapshot(companyId, whatsappId, { status: "OPENING", qrcode: "", retries: 0 });
+
+  const sock = baileys.makeWASocket({
+    logger,
+    printQRInTerminal: false,
+    msgRetryCounterCache,
+    generateHighQualityLinkPreview: true,
+    auth: wrapped
+  });
+  inlineSessions.set(whatsappId, sock);
+
+  if (typeof saveCreds === "function") {
+    sock.ev.on("creds.update", saveCreds);
+  }
+
+  sock.ev.on("connection.update", (u: any) => {
+    const connection = u?.connection;
+    const qr = u?.qr;
+    if (qr) {
+      const prev = readRealSessions()[String(whatsappId)] || {};
+      const retries = (typeof prev.retries === "number" ? prev.retries : 0) + 1;
+      saveSessionSnapshot(companyId, whatsappId, { status: "qrcode", qrcode: String(qr), retries });
+    }
+    if (connection === "open") {
+      saveSessionSnapshot(companyId, whatsappId, { status: "CONNECTED", qrcode: "" });
+    }
+    if (connection === "close") {
+      saveSessionSnapshot(companyId, whatsappId, { status: "DISCONNECTED", qrcode: "" });
+    }
+  });
+}
+
 function ensurePublicDir() {
   try {
     if (!fs.existsSync(PUBLIC_DIR)) fs.mkdirSync(PUBLIC_DIR);
@@ -276,18 +384,9 @@ router.put("/:id", async (req, res) => {
 
   // Refresh QR (Baileys)
   try {
-    await startOrRefreshBaileysSession({
-      companyId: tenantId,
-      whatsappId: id,
-      forceNewQr: true,
-      emit: (companyId, payload) => {
-        try {
-          const io = getIO();
-          io.emit(`company-${companyId}-whatsappSession`, payload);
-        } catch {}
-      }
-    });
-    const sess = getStoredQr(id);
+    // Prefer inline starter (known-working manual flow)
+    await startBaileysInline({ companyId: tenantId, whatsappId: id, forceNewQr: true });
+    const sess = getStoredQr(id) || readRealSessions()[String(id)] || {};
     return res.json({
       id,
       status: sess?.status || "OPENING",
