@@ -168,14 +168,10 @@ export async function startOrRefreshBaileysSession(opts: {
   const logger = P({ level: process.env.NODE_ENV === "production" ? "warn" : "info" });
   const msgRetryCounterCache = new NodeCache();
 
-  // Runtime-safe Baileys exports (GitHub build can vary CJS/ESM exports)
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const baileysRuntime = require("@whiskeysockets/baileys");
+  // Load Baileys via dynamic import to avoid CJS/ESM interop edge cases in production.
+  const baileysRuntime: any = await import("@whiskeysockets/baileys");
   const DisconnectReason = baileysRuntime?.DisconnectReason;
-  // In this project we pin to the runtime exports present in production:
-  // - makeWASocket is exported both as named + default function
-  // - useMultiFileAuthState is exported as named function
-  const makeWASocketFn = baileysRuntime?.makeWASocket;
+  const makeWASocketFn = baileysRuntime?.makeWASocket || baileysRuntime?.default;
   const useMultiFileAuthStateFn = baileysRuntime?.useMultiFileAuthState;
   const makeCacheableSignalKeyStoreFn = baileysRuntime?.makeCacheableSignalKeyStore;
   const fetchLatestBaileysVersionFn = baileysRuntime?.fetchLatestBaileysVersion;
