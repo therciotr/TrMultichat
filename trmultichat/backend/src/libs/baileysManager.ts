@@ -293,6 +293,22 @@ export async function startOrRefreshBaileysSession(opts: {
   const cfgForBaileys: any = { ...sockOptsBase, auth: wrapped };
   if (isDebugBaileys()) {
     try {
+      debugLog("cfg.auth descriptor", Object.getOwnPropertyDescriptor(cfgForBaileys, "auth"));
+      const defCfg = baileysRuntime?.DEFAULT_CONNECTION_CONFIG;
+      if (defCfg && typeof defCfg === "object") {
+        const merged = { ...defCfg, ...cfgForBaileys };
+        debugLog("merged auth check", {
+          mergedHasAuth: Boolean(merged?.auth),
+          mergedAuthType: typeof merged?.auth,
+          mergedAuthKeys: merged?.auth ? Object.keys(merged.auth) : []
+        });
+      } else {
+        debugLog("DEFAULT_CONNECTION_CONFIG missing or not object", typeof defCfg);
+      }
+    } catch {}
+  }
+  if (isDebugBaileys()) {
+    try {
       const orig = makeWASocketFn;
       // Wrap once per call (no global monkey patch)
       const wrappedFn = (config: any) => {
