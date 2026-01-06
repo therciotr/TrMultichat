@@ -290,7 +290,30 @@ export async function startOrRefreshBaileysSession(opts: {
     authHasCreds: Boolean(wrapped?.creds),
     authHasKeys: Boolean(wrapped?.keys)
   });
-  const sock = makeWASocketFn({ ...sockOptsBase, auth: wrapped } as any);
+  const cfgForBaileys: any = { ...sockOptsBase, auth: wrapped };
+  if (isDebugBaileys()) {
+    try {
+      const orig = makeWASocketFn;
+      // Wrap once per call (no global monkey patch)
+      const wrappedFn = (config: any) => {
+        debugLog("inside makeWASocket (entry)", {
+          keys: Object.keys(config || {}),
+          hasAuth: Boolean(config?.auth),
+          authKeys: config?.auth ? Object.keys(config.auth) : [],
+          hasAuthCreds: Boolean(config?.auth?.creds),
+          hasAuthKeys: Boolean(config?.auth?.keys)
+        });
+        return orig(config);
+      };
+      // Call through wrapper to capture what Baileys receives
+      const sock = wrappedFn(cfgForBaileys);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (cfgForBaileys as any).__sock = sock;
+    } catch {
+      // ignore wrapper failures
+    }
+  }
+  const sock = (cfgForBaileys as any).__sock || makeWASocketFn(cfgForBaileys);
 
   // Some Baileys builds export makeInMemoryStore as default-only; require it to be safe.
   // eslint-disable-next-line @typescript-eslint/no-var-requires
