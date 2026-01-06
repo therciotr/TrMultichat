@@ -3,11 +3,7 @@ import path from "path";
 import NodeCache from "node-cache";
 import P from "pino";
 import {
-  DisconnectReason,
-  fetchLatestBaileysVersion,
-  makeCacheableSignalKeyStore,
-  makeWASocket,
-  useMultiFileAuthState
+  DisconnectReason
 } from "@whiskeysockets/baileys";
 import { pgQuery } from "../utils/pgClient";
 import { ingestBaileysMessage } from "./ticketIngest";
@@ -112,13 +108,6 @@ type ManagedSession = {
 
 const sessions = new Map<number, ManagedSession>();
 
-function pickFn<T = any>(...candidates: any[]): T {
-  for (const c of candidates) {
-    if (typeof c === "function") return c as T;
-  }
-  return null as any;
-}
-
 function isDebugBaileys(): boolean {
   return String(process.env.DEBUG_BAILEYS || "").toLowerCase() === "true";
 }
@@ -179,34 +168,20 @@ export async function startOrRefreshBaileysSession(opts: {
   // Runtime-safe Baileys exports (GitHub build can vary CJS/ESM exports)
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const baileysRuntime = require("@whiskeysockets/baileys");
-  // IMPORTANT: Prefer explicit named exports first. Some builds expose a default *function* that is NOT makeWASocket.
-  // Only fall back to default function if no makeWASocket can be found.
+  // In this project we pin to the runtime exports present in production:
+  // - makeWASocket is exported both as named + default function
+  // - useMultiFileAuthState is exported as named function
   const makeWASocketFn =
-    pickFn(baileysRuntime?.makeWASocket, baileysRuntime?.default?.makeWASocket, makeWASocket) ||
-    pickFn(typeof baileysRuntime?.default === "function" ? baileysRuntime.default : null);
-  const useMultiFileAuthStateFn = pickFn(
-    baileysRuntime?.useMultiFileAuthState,
-    baileysRuntime?.default?.useMultiFileAuthState,
-    useMultiFileAuthState
-  );
-  const makeCacheableSignalKeyStoreFn = pickFn(
-    baileysRuntime?.makeCacheableSignalKeyStore,
-    baileysRuntime?.default?.makeCacheableSignalKeyStore,
-    makeCacheableSignalKeyStore
-  );
-  const fetchLatestBaileysVersionFn = pickFn(
-    baileysRuntime?.fetchLatestBaileysVersion,
-    baileysRuntime?.default?.fetchLatestBaileysVersion,
-    fetchLatestBaileysVersion
-  );
+    baileysRuntime?.makeWASocket || (typeof baileysRuntime?.default === "function" ? baileysRuntime.default : null);
+  const useMultiFileAuthStateFn = baileysRuntime?.useMultiFileAuthState;
+  const makeCacheableSignalKeyStoreFn = baileysRuntime?.makeCacheableSignalKeyStore;
+  const fetchLatestBaileysVersionFn = baileysRuntime?.fetchLatestBaileysVersion;
 
   if (typeof makeWASocketFn !== "function" || typeof useMultiFileAuthStateFn !== "function") {
     const keys = Object.keys(baileysRuntime || {});
-    const defKeys = Object.keys(baileysRuntime?.default || {});
+    const defType = typeof baileysRuntime?.default;
     throw new Error(
-      `Baileys exports mismatch (makeWASocket/useMultiFileAuthState not found). keys=${keys.join(
-        ","
-      )} defaultKeys=${defKeys.join(",")}`
+      `Baileys exports mismatch (makeWASocket/useMultiFileAuthState not found). keys=${keys.join(",")} defaultType=${defType}`
     );
   }
   debugLog("baileys exports ok", {
@@ -287,15 +262,13 @@ export async function startOrRefreshBaileysSession(opts: {
     if (typeof fetchLatestBaileysVersionFn === "function") {
       const v = await fetchLatestBaileysVersionFn();
       version = v?.version;
-    } else {
-      version = undefined;
     }
   } catch {
     // VPS pode não ter saída para internet; Baileys consegue operar sem buscar versão "latest".
     version = undefined;
   }
 
-  // Baileys (GitHub) pode variar a API; tentamos as 2 formas de passar auth.
+  // Baileys (atual) expects config.auth. Internally it aliases it as `authState`.
   const sockOptsBase: any = {
     ...(version ? { version } : {}),
     logger,
@@ -310,47 +283,13 @@ export async function startOrRefreshBaileysSession(opts: {
         ? makeCacheableSignalKeyStoreFn((state as any).keys, logger)
         : (state as any).keys
   };
-
-  const attempts: Array<{ label: string; cfg: any }> = [
-    // Preferred (Baileys >= 6): config.auth = { creds, keys }
-    { label: "auth_wrapped", cfg: { ...sockOptsBase, auth: wrapped } },
-    { label: "auth_raw", cfg: { ...sockOptsBase, auth: state as any } },
-    // Legacy/alt builds (some expect authState instead of auth)
-    { label: "authState_wrapped", cfg: { ...sockOptsBase, authState: wrapped } },
-    { label: "authState_raw", cfg: { ...sockOptsBase, authState: state as any } }
-  ];
-
-  let sock: any = null;
-  let lastErr: any = null;
-  for (const a of attempts) {
-    try {
-      debugLog("makeWASocket attempt", {
-        label: a.label,
-        keys: Object.keys(a.cfg || {}),
-        hasAuth: Boolean(a.cfg?.auth),
-        hasAuthState: Boolean(a.cfg?.authState)
-        ,
-        authType: typeof a.cfg?.auth,
-        authHasCreds: Boolean(a.cfg?.auth?.creds),
-        authHasKeys: Boolean(a.cfg?.auth?.keys),
-        authStateType: typeof a.cfg?.authState,
-        authStateHasCreds: Boolean(a.cfg?.authState?.creds),
-        authStateHasKeys: Boolean(a.cfg?.authState?.keys)
-      });
-      sock = makeWASocketFn(a.cfg as any);
-      lastErr = null;
-      break;
-    } catch (e: any) {
-      lastErr = e;
-      debugLog("makeWASocket attempt failed", a.label, e?.message);
-    }
-  }
-  if (!sock) {
-    const msg = String(lastErr?.message || "unknown");
-    throw new Error(
-      `Baileys makeWASocket failed after attempts (${attempts.map((a) => a.label).join(", ")}): ${msg}`
-    );
-  }
+  debugLog("makeWASocket cfg", {
+    keys: Object.keys({ ...sockOptsBase, auth: wrapped }),
+    authType: typeof wrapped,
+    authHasCreds: Boolean(wrapped?.creds),
+    authHasKeys: Boolean(wrapped?.keys)
+  });
+  const sock = makeWASocketFn({ ...sockOptsBase, auth: wrapped } as any);
 
   // Some Baileys builds export makeInMemoryStore as default-only; require it to be safe.
   // eslint-disable-next-line @typescript-eslint/no-var-requires
