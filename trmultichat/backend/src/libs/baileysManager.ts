@@ -173,8 +173,7 @@ export async function startOrRefreshBaileysSession(opts: {
   // In this project we pin to the runtime exports present in production:
   // - makeWASocket is exported both as named + default function
   // - useMultiFileAuthState is exported as named function
-  const makeWASocketFn =
-    baileysRuntime?.makeWASocket || (typeof baileysRuntime?.default === "function" ? baileysRuntime.default : null);
+  const makeWASocketFn = baileysRuntime?.makeWASocket;
   const useMultiFileAuthStateFn = baileysRuntime?.useMultiFileAuthState;
   const makeCacheableSignalKeyStoreFn = baileysRuntime?.makeCacheableSignalKeyStore;
   const fetchLatestBaileysVersionFn = baileysRuntime?.fetchLatestBaileysVersion;
