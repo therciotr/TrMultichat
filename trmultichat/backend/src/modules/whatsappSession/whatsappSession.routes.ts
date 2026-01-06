@@ -35,6 +35,16 @@ function writeRealSessions(obj: Record<string, any>) {
   } catch {}
 }
 
+function setNoCache(res: any) {
+  // Avoid 304/ETag caching on polling endpoints (QR changes quickly)
+  res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Expires", "0");
+  res.setHeader("Surrogate-Control", "no-store");
+  // Force a new ETag so clients won't get 304 based on If-None-Match
+  res.setHeader("ETag", `W/\"${Date.now()}\"`);
+}
+
 function saveSessionSnapshot(companyId: number, whatsappId: number, patch: Partial<any>) {
   const all = readRealSessions();
   const prev = all[String(whatsappId)] || {};
@@ -115,7 +125,19 @@ async function startBaileysInline(opts: { companyId: number; whatsappId: number;
       saveSessionSnapshot(companyId, whatsappId, { status: "CONNECTED", qrcode: "" });
     }
     if (connection === "close") {
-      saveSessionSnapshot(companyId, whatsappId, { status: "DISCONNECTED", qrcode: "" });
+      const statusCode = u?.lastDisconnect?.error?.output?.statusCode;
+      const shouldLogout = statusCode === baileys?.DisconnectReason?.loggedOut;
+      if (shouldLogout) {
+        try {
+          fs.rmSync(authPath, { recursive: true, force: true });
+        } catch {}
+        // On logout, clear QR
+        saveSessionSnapshot(companyId, whatsappId, { status: "DISCONNECTED", qrcode: "" });
+      } else {
+        // Keep last QR snapshot so the UI can still show it (and/or request new QR)
+        const prev = readRealSessions()[String(whatsappId)] || {};
+        saveSessionSnapshot(companyId, whatsappId, { status: "DISCONNECTED", qrcode: prev?.qrcode || "" });
+      }
     }
   });
 }
@@ -325,9 +347,10 @@ function tryRunLegacyWhatsAppSessionController(
 
 // Endpoints para compatibilidade com UI em produção
 router.get("/:id", (req, res) => {
+  setNoCache(res);
   const id = Number(req.params.id);
   // Prefer real Baileys session snapshot (if any)
-  const sess = getStoredQr(id) || (readSessions()[String(id)] || {});
+  const sess = getStoredQr(id) || (readRealSessions()[String(id)] || (readSessions()[String(id)] || {}));
   return res.json({
     id,
     status: sess.status || (sess.qrcode ? "qrcode" : "DISCONNECTED"),
@@ -384,6 +407,7 @@ router.put("/:id", async (req, res) => {
 
   // Refresh QR (Baileys)
   try {
+    setNoCache(res);
     // Prefer inline starter (known-working manual flow)
     await startBaileysInline({ companyId: tenantId, whatsappId: id, forceNewQr: true });
     const sess = getStoredQr(id) || readRealSessions()[String(id)] || {};
