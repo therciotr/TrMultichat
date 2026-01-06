@@ -22,8 +22,17 @@ npm install
 echo ">> npm run build (backend)"
 npm run build
 
-echo ">> pm2 restart trmultichat-backend"
-pm2 restart trmultichat-backend || pm2 start dist/server.js --name trmultichat-backend
+NODE20="/root/.nvm/versions/node/v20.18.3/bin/node"
+if [ -x "$NODE20" ]; then
+  NODE_BIN="$NODE20"
+else
+  NODE_BIN="$(command -v node)"
+fi
+
+echo ">> pm2 restart trmultichat-backend (node: $NODE_BIN)"
+# Always ensure correct cwd + interpreter (avoids Node 22/20 alternation)
+pm2 delete trmultichat-backend >/dev/null 2>&1 || true
+pm2 start dist/server.js --name trmultichat-backend --cwd "$REPO_ROOT/trmultichat/backend" --interpreter "$NODE_BIN" --update-env
 
 echo
 echo "==== TrMultichat deploy: frontend ===="
@@ -69,9 +78,19 @@ export REACT_APP_BACKEND_URL="https://api.trmultichat.com.br"
 NODE_OPTIONS=--openssl-legacy-provider npm run build
 
 echo ">> pm2 restart trmultichat-frontend"
-pm2 restart trmultichat-frontend || pm2 start server.js --name trmultichat-frontend
+# Ensure the frontend server entry exists (some VPS setups were missing it)
+if [ ! -f server.js ]; then
+  echo ">> ERRO: server.js não encontrado em $PWD (frontend)."
+  exit 1
+fi
+
+# Always ensure correct cwd + interpreter (avoids PM2 trying /home/deploy/trmultichat/frontend/server.js)
+pm2 delete trmultichat-frontend >/dev/null 2>&1 || true
+pm2 start server.js --name trmultichat-frontend --cwd "$REPO_ROOT/trmultichat/frontend" --interpreter "$NODE_BIN" --update-env
 
 echo ">> pm2 save"
+echo ">> pm2 update (best-effort)"
+pm2 update || true
 pm2 save || true
 
 echo
