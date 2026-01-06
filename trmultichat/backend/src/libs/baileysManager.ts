@@ -329,6 +329,13 @@ export async function startOrRefreshBaileysSession(opts: {
         keys: Object.keys(a.cfg || {}),
         hasAuth: Boolean(a.cfg?.auth),
         hasAuthState: Boolean(a.cfg?.authState)
+        ,
+        authType: typeof a.cfg?.auth,
+        authHasCreds: Boolean(a.cfg?.auth?.creds),
+        authHasKeys: Boolean(a.cfg?.auth?.keys),
+        authStateType: typeof a.cfg?.authState,
+        authStateHasCreds: Boolean(a.cfg?.authState?.creds),
+        authStateHasKeys: Boolean(a.cfg?.authState?.keys)
       });
       sock = makeWASocketFn(a.cfg as any);
       lastErr = null;
