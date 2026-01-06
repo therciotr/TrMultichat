@@ -2,9 +2,7 @@ import fs from "fs";
 import path from "path";
 import NodeCache from "node-cache";
 import P from "pino";
-import {
-  DisconnectReason
-} from "@whiskeysockets/baileys";
+// Avoid static imports from Baileys here to prevent dual-loading (ESM/CJS interop) in production.
 import { pgQuery } from "../utils/pgClient";
 import { ingestBaileysMessage } from "./ticketIngest";
 import { getIO } from "./socket";
@@ -170,6 +168,7 @@ export async function startOrRefreshBaileysSession(opts: {
   // Runtime-safe Baileys exports (GitHub build can vary CJS/ESM exports)
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const baileysRuntime = require("@whiskeysockets/baileys");
+  const DisconnectReason = baileysRuntime?.DisconnectReason;
   // In this project we pin to the runtime exports present in production:
   // - makeWASocket is exported both as named + default function
   // - useMultiFileAuthState is exported as named function
@@ -394,7 +393,7 @@ export async function startOrRefreshBaileysSession(opts: {
 
     if (connection === "close") {
       const statusCode = u?.lastDisconnect?.error?.output?.statusCode;
-      const shouldLogout = statusCode === DisconnectReason.loggedOut;
+      const shouldLogout = Boolean(DisconnectReason) && statusCode === DisconnectReason.loggedOut;
       if (shouldLogout) {
         // remove auth state
         try {
