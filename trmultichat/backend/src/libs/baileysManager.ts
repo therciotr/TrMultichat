@@ -1,7 +1,6 @@
 import fs from "fs";
 import path from "path";
-import NodeCache from "node-cache";
-import P from "pino";
+// Avoid ESM/CJS interop edge cases by requiring these at runtime inside the session start function.
 // Avoid static imports from Baileys here to prevent dual-loading (ESM/CJS interop) in production.
 import { pgQuery } from "../utils/pgClient";
 import { ingestBaileysMessage } from "./ticketIngest";
@@ -162,6 +161,10 @@ export async function startOrRefreshBaileysSession(opts: {
   forceNewQr?: boolean;
 }): Promise<void> {
   const { companyId, whatsappId, emit, forceNewQr } = opts;
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const P = require("pino");
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const NodeCache = require("node-cache");
   const logger = P({ level: process.env.NODE_ENV === "production" ? "warn" : "info" });
   const msgRetryCounterCache = new NodeCache();
 
