@@ -96,8 +96,8 @@ async function listWhatsappsBasic(): Promise<Array<{ id: number; companyId: numb
   return [];
 }
 
-const logger = P({ level: process.env.NODE_ENV === "production" ? "warn" : "info" });
-const msgRetryCounterCache = new NodeCache();
+// NOTE: We intentionally create logger/cache per-session start to avoid any cross-module weirdness
+// between CJS (our code) and ESM (Baileys) in production.
 
 type ManagedSession = {
   sock: any;
@@ -164,6 +164,8 @@ export async function startOrRefreshBaileysSession(opts: {
   forceNewQr?: boolean;
 }): Promise<void> {
   const { companyId, whatsappId, emit, forceNewQr } = opts;
+  const logger = P({ level: process.env.NODE_ENV === "production" ? "warn" : "info" });
+  const msgRetryCounterCache = new NodeCache();
 
   // Runtime-safe Baileys exports (GitHub build can vary CJS/ESM exports)
   // eslint-disable-next-line @typescript-eslint/no-var-requires
