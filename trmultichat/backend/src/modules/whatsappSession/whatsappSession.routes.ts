@@ -128,27 +128,66 @@ async function startBaileysInline(opts: { companyId: number; whatsappId: number;
   sock.ev.on("connection.update", (u: any) => {
     const connection = u?.connection;
     const qr = u?.qr;
+    const statusCode = u?.lastDisconnect?.error?.output?.statusCode;
+    const disconnectMessage = u?.lastDisconnect?.error?.message || u?.lastDisconnect?.error?.toString?.();
+
+    // Helpful server-side logs (no secrets)
+    try {
+      // eslint-disable-next-line no-console
+      console.log("[wa] connection.update", {
+        whatsappId,
+        connection,
+        hasQr: Boolean(qr),
+        statusCode,
+        disconnectMessage: disconnectMessage ? String(disconnectMessage).slice(0, 200) : undefined
+      });
+    } catch {}
+
     if (qr) {
       const prev = readRealSessions()[String(whatsappId)] || {};
       const retries = (typeof prev.retries === "number" ? prev.retries : 0) + 1;
-      saveSessionSnapshot(companyId, whatsappId, { status: "qrcode", qrcode: String(qr), retries });
+      saveSessionSnapshot(companyId, whatsappId, {
+        status: "qrcode",
+        qrcode: String(qr),
+        retries,
+        lastConnection: connection || "",
+        lastDisconnectStatusCode: null,
+        lastDisconnectMessage: null
+      });
     }
     if (connection === "open") {
-      saveSessionSnapshot(companyId, whatsappId, { status: "CONNECTED", qrcode: "" });
+      saveSessionSnapshot(companyId, whatsappId, {
+        status: "CONNECTED",
+        qrcode: "",
+        lastConnection: "open",
+        lastDisconnectStatusCode: null,
+        lastDisconnectMessage: null
+      });
     }
     if (connection === "close") {
-      const statusCode = u?.lastDisconnect?.error?.output?.statusCode;
       const shouldLogout = Boolean(DisconnectReason) && statusCode === DisconnectReason.loggedOut;
       if (shouldLogout) {
         try {
           fs.rmSync(authPath, { recursive: true, force: true });
         } catch {}
         // On logout, clear QR
-        saveSessionSnapshot(companyId, whatsappId, { status: "DISCONNECTED", qrcode: "" });
+        saveSessionSnapshot(companyId, whatsappId, {
+          status: "DISCONNECTED",
+          qrcode: "",
+          lastConnection: "close",
+          lastDisconnectStatusCode: statusCode ?? null,
+          lastDisconnectMessage: disconnectMessage ? String(disconnectMessage).slice(0, 500) : null
+        });
       } else {
         // Keep last QR snapshot so the UI can still show it (and/or request new QR)
         const prev = readRealSessions()[String(whatsappId)] || {};
-        saveSessionSnapshot(companyId, whatsappId, { status: "DISCONNECTED", qrcode: prev?.qrcode || "" });
+        saveSessionSnapshot(companyId, whatsappId, {
+          status: "DISCONNECTED",
+          qrcode: prev?.qrcode || "",
+          lastConnection: "close",
+          lastDisconnectStatusCode: statusCode ?? null,
+          lastDisconnectMessage: disconnectMessage ? String(disconnectMessage).slice(0, 500) : null
+        });
       }
     }
   });
@@ -368,7 +407,10 @@ router.get("/:id", (req, res) => {
     status: sess.status || (sess.qrcode ? "qrcode" : "DISCONNECTED"),
     qrcode: sess.qrcode || "",
     updatedAt: sess.updatedAt || new Date().toISOString(),
-    retries: typeof sess.retries === "number" ? sess.retries : 0
+    retries: typeof sess.retries === "number" ? sess.retries : 0,
+    lastConnection: sess.lastConnection || "",
+    lastDisconnectStatusCode: typeof sess.lastDisconnectStatusCode === "number" ? sess.lastDisconnectStatusCode : sess.lastDisconnectStatusCode ?? null,
+    lastDisconnectMessage: sess.lastDisconnectMessage || null
   });
 });
 
