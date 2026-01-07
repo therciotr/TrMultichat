@@ -68,8 +68,16 @@ function saveSessionSnapshot(companyId: number, whatsappId: number, patch: Parti
 
 async function startBaileysInline(opts: { companyId: number; whatsappId: number; forceNewQr?: boolean }) {
   const { companyId, whatsappId, forceNewQr } = opts;
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const baileys = require("@whiskeysockets/baileys");
+  // Baileys is ESM in production; must use dynamic import (Node 20 + CommonJS build).
+  const baileysMod: any = await import("@whiskeysockets/baileys");
+  const makeWASocket = baileysMod?.makeWASocket || baileysMod?.default;
+  const useMultiFileAuthState = baileysMod?.useMultiFileAuthState;
+  const makeCacheableSignalKeyStore = baileysMod?.makeCacheableSignalKeyStore;
+  const DisconnectReason = baileysMod?.DisconnectReason;
+
+  if (typeof makeWASocket !== "function" || typeof useMultiFileAuthState !== "function") {
+    throw new Error("Baileys module exports missing (makeWASocket/useMultiFileAuthState)");
+  }
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const P = require("pino");
   // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -91,16 +99,18 @@ async function startBaileysInline(opts: { companyId: number; whatsappId: number;
   } catch {}
   inlineSessions.delete(whatsappId);
 
-  const { state, saveCreds } = await baileys.useMultiFileAuthState(authPath);
+  const { state, saveCreds } = await useMultiFileAuthState(authPath);
   const msgRetryCounterCache = new NodeCache();
   const wrapped = {
     creds: state.creds,
-    keys: baileys.makeCacheableSignalKeyStore(state.keys, logger)
+    keys: typeof makeCacheableSignalKeyStore === "function"
+      ? makeCacheableSignalKeyStore(state.keys, logger)
+      : state.keys
   };
 
   saveSessionSnapshot(companyId, whatsappId, { status: "OPENING", qrcode: "", retries: 0 });
 
-  const sock = baileys.makeWASocket({
+  const sock = makeWASocket({
     logger,
     printQRInTerminal: false,
     msgRetryCounterCache,
@@ -126,7 +136,7 @@ async function startBaileysInline(opts: { companyId: number; whatsappId: number;
     }
     if (connection === "close") {
       const statusCode = u?.lastDisconnect?.error?.output?.statusCode;
-      const shouldLogout = statusCode === baileys?.DisconnectReason?.loggedOut;
+      const shouldLogout = Boolean(DisconnectReason) && statusCode === DisconnectReason.loggedOut;
       if (shouldLogout) {
         try {
           fs.rmSync(authPath, { recursive: true, force: true });
