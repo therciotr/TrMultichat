@@ -18,6 +18,7 @@ const ERR_LOG_FILE = path.join(PUBLIC_DIR, "whatsappsession-errors.log");
 const REAL_SESS_FILE = path.join(PUBLIC_DIR, "whatsapp-sessions-v2.json");
 const REAL_AUTH_DIR = path.join(PUBLIC_DIR, "baileys");
 const inlineSessions = new Map<number, any>();
+const inlineRestartAttempts = new Map<number, number>();
 
 function readRealSessions(): Record<string, any> {
   try {
@@ -180,6 +181,7 @@ async function startBaileysInline(opts: { companyId: number; whatsappId: number;
         lastDisconnectStatusCode: null,
         lastDisconnectMessage: null
       });
+      inlineRestartAttempts.delete(whatsappId);
     }
     if (connection === "close") {
       const shouldLogout = Boolean(DisconnectReason) && statusCode === DisconnectReason.loggedOut;
@@ -205,6 +207,25 @@ async function startBaileysInline(opts: { companyId: number; whatsappId: number;
           lastDisconnectStatusCode: statusCode ?? null,
           lastDisconnectMessage: disconnectMessage ? String(disconnectMessage).slice(0, 500) : null
         });
+
+        // Baileys sometimes returns stream error 515 ("restart required") right after scanning.
+        // In this case, restart the socket WITHOUT wiping auth to complete the login.
+        if (Number(statusCode) === 515) {
+          const attempts = (inlineRestartAttempts.get(whatsappId) || 0) + 1;
+          inlineRestartAttempts.set(whatsappId, attempts);
+
+          // mark as opening/reconnecting (keep qrcode so UI doesn't go blank)
+          saveSessionSnapshot(companyId, whatsappId, {
+            status: "OPENING",
+            qrcode: prev?.qrcode || "",
+            restartAttempts: attempts
+          } as any);
+
+          // restart in background with small delay to avoid tight loop
+          setTimeout(() => {
+            startBaileysInline({ companyId, whatsappId, forceNewQr: false }).catch(() => {});
+          }, Math.min(10_000, 1500 * attempts));
+        }
       }
     }
   });
@@ -430,7 +451,8 @@ router.get("/:id", (req, res) => {
     retries: typeof sess.retries === "number" ? sess.retries : 0,
     lastConnection: sess.lastConnection || "",
     lastDisconnectStatusCode: typeof sess.lastDisconnectStatusCode === "number" ? sess.lastDisconnectStatusCode : sess.lastDisconnectStatusCode ?? null,
-    lastDisconnectMessage: sess.lastDisconnectMessage || null
+    lastDisconnectMessage: sess.lastDisconnectMessage || null,
+    restartAttempts: typeof (sess as any).restartAttempts === "number" ? (sess as any).restartAttempts : 0
   });
 });
 
