@@ -14,7 +14,8 @@ const ERR_LOG_FILE = path.join(PUBLIC_DIR, "whatsappsession-errors.log");
 
 // Inline Baileys starter (workaround): on this VPS build, importing Baileys inside baileysManager has been flaky.
 // This implementation mirrors the known-working "manual" makeWASocket flow.
-const REAL_SESS_FILE = path.join(PUBLIC_DIR, "whatsapp-sessions.json");
+// Important: do NOT reuse "whatsapp-sessions.json" because other legacy flows may overwrite it.
+const REAL_SESS_FILE = path.join(PUBLIC_DIR, "whatsapp-sessions-v2.json");
 const REAL_AUTH_DIR = path.join(PUBLIC_DIR, "baileys");
 const inlineSessions = new Map<number, any>();
 
@@ -76,6 +77,7 @@ async function startBaileysInline(opts: { companyId: number; whatsappId: number;
   const useMultiFileAuthState = baileysMod?.useMultiFileAuthState;
   const makeCacheableSignalKeyStore = baileysMod?.makeCacheableSignalKeyStore;
   const DisconnectReason = baileysMod?.DisconnectReason;
+  const fetchLatestBaileysVersion = baileysMod?.fetchLatestBaileysVersion;
 
   if (typeof makeWASocket !== "function" || typeof useMultiFileAuthState !== "function") {
     throw new Error("Baileys module exports missing (makeWASocket/useMultiFileAuthState)");
@@ -102,6 +104,9 @@ async function startBaileysInline(opts: { companyId: number; whatsappId: number;
   inlineSessions.delete(whatsappId);
 
   const { state, saveCreds } = await useMultiFileAuthState(authPath);
+  if (!state || !state.creds || !state.keys) {
+    throw new Error("Auth state inválido: state/creds/keys ausente");
+  }
   const msgRetryCounterCache = new NodeCache();
   const wrapped = {
     creds: state.creds,
@@ -112,11 +117,23 @@ async function startBaileysInline(opts: { companyId: number; whatsappId: number;
 
   saveSessionSnapshot(companyId, whatsappId, { status: "OPENING", qrcode: "", retries: 0 });
 
+  let version: any = undefined;
+  try {
+    if (typeof fetchLatestBaileysVersion === "function") {
+      const v = await fetchLatestBaileysVersion();
+      version = v?.version;
+    }
+  } catch {
+    version = undefined;
+  }
+
   const sock = makeWASocket({
+    ...(version ? { version } : {}),
     logger,
     printQRInTerminal: false,
     msgRetryCounterCache,
     generateHighQualityLinkPreview: true,
+    browser: ["TR Multichat", "Chrome", "1.0.0"],
     auth: wrapped
   });
   inlineSessions.set(whatsappId, sock);
@@ -401,7 +418,10 @@ router.get("/:id", (req, res) => {
   setNoCache(res);
   const id = Number(req.params.id);
   // Prefer real Baileys session snapshot (if any)
-  const sess = getStoredQr(id) || (readRealSessions()[String(id)] || (readSessions()[String(id)] || {}));
+  const sess =
+    readRealSessions()[String(id)] ||
+    getStoredQr(id) ||
+    (readSessions()[String(id)] || {});
   return res.json({
     id,
     status: sess.status || (sess.qrcode ? "qrcode" : "DISCONNECTED"),
