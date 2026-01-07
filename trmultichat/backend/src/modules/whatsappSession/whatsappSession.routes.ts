@@ -5,6 +5,7 @@ import jwt from "jsonwebtoken";
 import env from "../../config/env";
 import { getIO } from "../../libs/socket";
 import { getStoredQr, startOrRefreshBaileysSession } from "../../libs/baileysManager";
+import { pgQuery } from "../../utils/pgClient";
 
 const router = Router();
 
@@ -19,6 +20,17 @@ const REAL_SESS_FILE = path.join(PUBLIC_DIR, "whatsapp-sessions-v2.json");
 const REAL_AUTH_DIR = path.join(PUBLIC_DIR, "baileys");
 const inlineSessions = new Map<number, any>();
 const inlineRestartAttempts = new Map<number, number>();
+
+async function updateWhatsAppStatus(companyId: number, whatsappId: number, status: string) {
+  try {
+    await pgQuery(
+      `UPDATE "Whatsapps" SET status = $1, "updatedAt" = NOW() WHERE id = $2 AND "companyId" = $3`,
+      [status, whatsappId, companyId]
+    );
+  } catch {
+    // do not crash session flow if DB is unavailable
+  }
+}
 
 function readRealSessions(): Record<string, any> {
   try {
@@ -117,6 +129,7 @@ async function startBaileysInline(opts: { companyId: number; whatsappId: number;
   };
 
   saveSessionSnapshot(companyId, whatsappId, { status: "OPENING", qrcode: "", retries: 0 });
+  void updateWhatsAppStatus(companyId, whatsappId, "OPENING");
 
   let version: any = undefined;
   try {
@@ -172,6 +185,7 @@ async function startBaileysInline(opts: { companyId: number; whatsappId: number;
         lastDisconnectStatusCode: null,
         lastDisconnectMessage: null
       });
+      void updateWhatsAppStatus(companyId, whatsappId, "qrcode");
     }
     if (connection === "open") {
       saveSessionSnapshot(companyId, whatsappId, {
@@ -182,6 +196,7 @@ async function startBaileysInline(opts: { companyId: number; whatsappId: number;
         lastDisconnectMessage: null
       });
       inlineRestartAttempts.delete(whatsappId);
+      void updateWhatsAppStatus(companyId, whatsappId, "CONNECTED");
     }
     if (connection === "close") {
       const shouldLogout = Boolean(DisconnectReason) && statusCode === DisconnectReason.loggedOut;
@@ -197,6 +212,7 @@ async function startBaileysInline(opts: { companyId: number; whatsappId: number;
           lastDisconnectStatusCode: statusCode ?? null,
           lastDisconnectMessage: disconnectMessage ? String(disconnectMessage).slice(0, 500) : null
         });
+        void updateWhatsAppStatus(companyId, whatsappId, "DISCONNECTED");
       } else {
         // Keep last QR snapshot so the UI can still show it (and/or request new QR)
         const prev = readRealSessions()[String(whatsappId)] || {};
@@ -207,6 +223,7 @@ async function startBaileysInline(opts: { companyId: number; whatsappId: number;
           lastDisconnectStatusCode: statusCode ?? null,
           lastDisconnectMessage: disconnectMessage ? String(disconnectMessage).slice(0, 500) : null
         });
+        void updateWhatsAppStatus(companyId, whatsappId, "DISCONNECTED");
 
         // Baileys sometimes returns stream error 515 ("restart required") right after scanning.
         // In this case, restart the socket WITHOUT wiping auth to complete the login.
@@ -220,6 +237,7 @@ async function startBaileysInline(opts: { companyId: number; whatsappId: number;
             qrcode: prev?.qrcode || "",
             restartAttempts: attempts
           } as any);
+          void updateWhatsAppStatus(companyId, whatsappId, "OPENING");
 
           // restart in background with small delay to avoid tight loop
           setTimeout(() => {
