@@ -68,8 +68,10 @@ function saveSessionSnapshot(companyId: number, whatsappId: number, patch: Parti
 
 async function startBaileysInline(opts: { companyId: number; whatsappId: number; forceNewQr?: boolean }) {
   const { companyId, whatsappId, forceNewQr } = opts;
-  // Baileys is ESM in production; must use dynamic import (Node 20 + CommonJS build).
-  const baileysMod: any = await import("@whiskeysockets/baileys");
+  // Baileys is ESM in production; TypeScript (CommonJS output) rewrites `import()` into `require()`.
+  // Use a native dynamic import via Function to avoid TS downleveling.
+  // eslint-disable-next-line no-new-func
+  const baileysMod: any = await (new Function('return import("@whiskeysockets/baileys")'))();
   const makeWASocket = baileysMod?.makeWASocket || baileysMod?.default;
   const useMultiFileAuthState = baileysMod?.useMultiFileAuthState;
   const makeCacheableSignalKeyStore = baileysMod?.makeCacheableSignalKeyStore;
