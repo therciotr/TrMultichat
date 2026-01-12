@@ -4,7 +4,7 @@ import path from "path";
 import jwt from "jsonwebtoken";
 import env from "../../config/env";
 import { getIO } from "../../libs/socket";
-import { getStoredQr, startOrRefreshBaileysSession } from "../../libs/baileysManager";
+import { getSessionSock, getStoredQr, startOrRefreshBaileysSession } from "../../libs/baileysManager";
 import { pgQuery } from "../../utils/pgClient";
 
 const router = Router();
@@ -528,8 +528,8 @@ router.put("/:id", async (req, res) => {
     const authDir = path.join(REAL_AUTH_DIR, String(tenantId), String(id));
     const hasAuthCreds = fs.existsSync(path.join(authDir, "creds.json"));
 
-    // Prefer our v2 snapshot; fall back to legacy snapshot providers.
-    const snap: any = readRealSessions()[String(id)] || getStoredQr(id) || {};
+    // Prefer BaileysManager snapshot (it also powers message ingestion); fall back to v2 + legacy snapshot providers.
+    const snap: any = getStoredQr(id) || readRealSessions()[String(id)] || {};
     const lastDiscCode = Number(snap?.lastDisconnectStatusCode || 0);
     const snapStatus = String(snap?.status || "");
 
@@ -550,9 +550,9 @@ router.put("/:id", async (req, res) => {
 
     // If already connected and we have auth, do NOT force a new QR.
     // Also avoid restarting a running in-memory socket on refresh.
-    const hasRunningSocket = Boolean(inlineSessions.get(id));
+    const hasRunningSocket = Boolean(getSessionSock(id));
     if (isConnected && hasAuthCreds && hasRunningSocket) {
-      const sessNow: any = readRealSessions()[String(id)] || snap || {};
+      const sessNow: any = getStoredQr(id) || readRealSessions()[String(id)] || snap || {};
       return res.json({
         id,
         status: sessNow?.status || "CONNECTED",
@@ -562,10 +562,10 @@ router.put("/:id", async (req, res) => {
       });
     }
 
-    // Prefer inline starter (known-working manual flow)
-    await startBaileysInline({ companyId: tenantId, whatsappId: id, forceNewQr: shouldForceNewQr });
+    // Start / refresh the real session manager (this one ingests incoming messages).
+    await startOrRefreshBaileysSession({ companyId: tenantId, whatsappId: id, forceNewQr: shouldForceNewQr });
 
-    const sess = readRealSessions()[String(id)] || getStoredQr(id) || {};
+    const sess = getStoredQr(id) || readRealSessions()[String(id)] || {};
     return res.json({
       id,
       status: sess?.status || "OPENING",
