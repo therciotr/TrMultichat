@@ -522,9 +522,50 @@ router.put("/:id", async (req, res) => {
   // Refresh QR (Baileys)
   try {
     setNoCache(res);
+    // IMPORTANT:
+    // - Frontend may call PUT on page refresh (to "ensure session"), so PUT cannot always wipe auth.
+    // - Only force new QR if there is no saved auth (creds.json) OR the last disconnect was loggedOut (401).
+    const authDir = path.join(REAL_AUTH_DIR, String(tenantId), String(id));
+    const hasAuthCreds = fs.existsSync(path.join(authDir, "creds.json"));
+
+    // Prefer our v2 snapshot; fall back to legacy snapshot providers.
+    const snap: any = readRealSessions()[String(id)] || getStoredQr(id) || {};
+    const lastDiscCode = Number(snap?.lastDisconnectStatusCode || 0);
+    const snapStatus = String(snap?.status || "");
+
+    // Also check DB status so refresh won't "think" it's disconnected.
+    let dbStatus = "";
+    try {
+      const rows = await pgQuery<{ status: string }>(
+        `SELECT status FROM "Whatsapps" WHERE id = $1 AND "companyId" = $2 LIMIT 1`,
+        [id, tenantId]
+      );
+      dbStatus = String(rows?.[0]?.status || "");
+    } catch {
+      dbStatus = "";
+    }
+
+    const isConnected = snapStatus === "CONNECTED" || dbStatus === "CONNECTED";
+    const shouldForceNewQr = !hasAuthCreds || lastDiscCode === 401;
+
+    // If already connected and we have auth, do NOT force a new QR.
+    // Also avoid restarting a running in-memory socket on refresh.
+    const hasRunningSocket = Boolean(inlineSessions.get(id));
+    if (isConnected && hasAuthCreds && hasRunningSocket) {
+      const sessNow: any = readRealSessions()[String(id)] || snap || {};
+      return res.json({
+        id,
+        status: sessNow?.status || "CONNECTED",
+        qrcode: sessNow?.qrcode || "",
+        updatedAt: sessNow?.updatedAt || new Date().toISOString(),
+        retries: typeof sessNow?.retries === "number" ? sessNow.retries : 0
+      });
+    }
+
     // Prefer inline starter (known-working manual flow)
-    await startBaileysInline({ companyId: tenantId, whatsappId: id, forceNewQr: true });
-    const sess = getStoredQr(id) || readRealSessions()[String(id)] || {};
+    await startBaileysInline({ companyId: tenantId, whatsappId: id, forceNewQr: shouldForceNewQr });
+
+    const sess = readRealSessions()[String(id)] || getStoredQr(id) || {};
     return res.json({
       id,
       status: sess?.status || "OPENING",
