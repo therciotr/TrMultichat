@@ -168,8 +168,10 @@ export async function startOrRefreshBaileysSession(opts: {
   const logger = P({ level: process.env.NODE_ENV === "production" ? "warn" : "info" });
   const msgRetryCounterCache = new NodeCache();
 
-  // Load Baileys via dynamic import to avoid CJS/ESM interop edge cases in production.
-  const baileysRuntime: any = await import("@whiskeysockets/baileys");
+  // Baileys is ESM. TypeScript (CommonJS output) may rewrite `import()` into `require()`.
+  // Use a native dynamic import via Function to avoid TS downleveling.
+  // eslint-disable-next-line no-new-func
+  const baileysRuntime: any = await (new Function('return import("@whiskeysockets/baileys")'))();
   const DisconnectReason = baileysRuntime?.DisconnectReason;
   const makeWASocketFn = baileysRuntime?.makeWASocket || baileysRuntime?.default;
   const useMultiFileAuthStateFn = baileysRuntime?.useMultiFileAuthState;
@@ -329,11 +331,11 @@ export async function startOrRefreshBaileysSession(opts: {
   }
   const sock = (cfgForBaileys as any).__sock || makeWASocketFn(cfgForBaileys);
 
-  // Some Baileys builds export makeInMemoryStore as default-only; require it to be safe.
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const baileysAny = require("@whiskeysockets/baileys");
+  // makeInMemoryStore is also ESM-exported; do not require() it.
   const makeInMemoryStore =
-    baileysAny.makeInMemoryStore || baileysAny.default?.makeInMemoryStore || baileysAny.default;
+    baileysRuntime?.makeInMemoryStore ||
+    baileysRuntime?.default?.makeInMemoryStore ||
+    baileysRuntime?.default;
   const store = typeof makeInMemoryStore === "function" ? makeInMemoryStore({ logger }) : null;
   if (store && typeof store.bind === "function") {
     store.bind(sock.ev);
