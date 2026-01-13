@@ -363,11 +363,28 @@ export async function startOrRefreshBaileysSession(opts: {
   }
   let sock: any = (cfgForBaileys as any).__sock;
   if (!sock) {
+    const callMakeWASocket = (config: any) => {
+      try {
+        const desc = Object.getOwnPropertyDescriptor(config || {}, "auth");
+        // eslint-disable-next-line no-console
+        console.log("[baileysManager] inside makeWASocket(entry)", {
+          companyId,
+          whatsappId,
+          topKeys: Object.keys(config || {}),
+          hasAuth: Boolean(config?.auth),
+          authEnumerable: desc ? Boolean(desc.enumerable) : null,
+          authKeys: config?.auth ? Object.keys(config.auth) : [],
+          hasAuthCreds: Boolean(config?.auth?.creds),
+          hasAuthKeys: Boolean(config?.auth?.keys)
+        });
+      } catch {}
+      return makeWASocketFn(config);
+    };
     try {
-      sock = makeWASocketFn(cfgAuth);
+      sock = callMakeWASocket(cfgAuth);
     } catch (e1: any) {
       debugLog("makeWASocket(auth) failed", e1?.message);
-      sock = makeWASocketFn(cfgAuthRaw);
+      sock = callMakeWASocket(cfgAuthRaw);
     }
   }
 
