@@ -6,6 +6,7 @@ import env from "../../config/env";
 import { getIO } from "../../libs/socket";
 import { getSessionSock, getStoredQr, startOrRefreshBaileysSession } from "../../libs/baileysManager";
 import { pgQuery } from "../../utils/pgClient";
+import { ingestBaileysMessage } from "../../libs/ticketIngest";
 
 const router = Router();
 
@@ -155,6 +156,16 @@ async function startBaileysInline(opts: { companyId: number; whatsappId: number;
   if (typeof saveCreds === "function") {
     sock.ev.on("creds.update", saveCreds);
   }
+
+  // IMPORTANT: inline session must also ingest incoming messages, otherwise "connected but no messages" happens.
+  sock.ev.on("messages.upsert", async (upsert: any) => {
+    try {
+      const msgs = Array.isArray(upsert?.messages) ? upsert.messages : [];
+      for (const m of msgs) {
+        await ingestBaileysMessage({ companyId, whatsappId, msg: m });
+      }
+    } catch {}
+  });
 
   sock.ev.on("connection.update", (u: any) => {
     const connection = u?.connection;
