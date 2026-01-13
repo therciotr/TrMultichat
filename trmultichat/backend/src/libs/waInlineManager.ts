@@ -22,6 +22,7 @@ const REAL_AUTH_DIR = path.join(PUBLIC_DIR, "baileys");
 
 const inlineSessions = new Map<number, any>();
 const inlineRestartAttempts = new Map<number, number>();
+const startLocks = new Map<number, Promise<void>>();
 
 function ensurePublicDir() {
   try {
@@ -94,6 +95,15 @@ export function getInlineSock(whatsappId: number): any | null {
 
 export async function startOrRefreshInlineSession(opts: { companyId: number; whatsappId: number; forceNewQr?: boolean }) {
   const { companyId, whatsappId, forceNewQr } = opts;
+
+  // Prevent concurrent starts for the same whatsappId (this can cause 440 conflict)
+  const existingLock = startLocks.get(whatsappId);
+  if (existingLock) {
+    await existingLock;
+    return;
+  }
+
+  const run = (async () => {
 
   // eslint-disable-next-line no-new-func
   const baileysMod: any = await (new Function('return import("@whiskeysockets/baileys")'))();
@@ -215,7 +225,7 @@ export async function startOrRefreshInlineSession(opts: { companyId: number; wha
       void updateWhatsAppStatus(companyId, whatsappId, "DISCONNECTED");
 
       // Restart required / transient stream errors
-      if (Number(statusCode) === 515 || Number(statusCode) === 503) {
+      if (Number(statusCode) === 515 || Number(statusCode) === 503 || Number(statusCode) === 440) {
         const attempts = (inlineRestartAttempts.get(whatsappId) || 0) + 1;
         inlineRestartAttempts.set(whatsappId, attempts);
         saveSessionSnapshot(companyId, whatsappId, {
@@ -230,6 +240,14 @@ export async function startOrRefreshInlineSession(opts: { companyId: number; wha
       }
     }
   });
+  })();
+
+  startLocks.set(whatsappId, run);
+  try {
+    await run;
+  } finally {
+    startLocks.delete(whatsappId);
+  }
 }
 
 export async function startAllInlineSessions() {

@@ -2,6 +2,7 @@ import { Router } from "express";
 import { authMiddleware } from "../../middleware/authMiddleware";
 import { pgQuery } from "../../utils/pgClient";
 import { getIO } from "../../libs/socket";
+import { getInlineSock, startOrRefreshInlineSession } from "../../libs/waInlineManager";
 
 const router = Router();
 
@@ -201,6 +202,7 @@ router.get("/:id", authMiddleware, async (req, res) => {
 
 // PUT /tickets/:id (accept ticket, change status, etc)
 router.put("/:id", authMiddleware, async (req, res) => {
+  setNoCache(res);
   const companyId = tenantIdFromReq(req);
   const id = Number(req.params.id);
   if (!companyId) return res.status(401).json({ error: true, message: "missing tenantId" });
@@ -209,6 +211,16 @@ router.put("/:id", authMiddleware, async (req, res) => {
   const nextStatus = body.status ? String(body.status) : undefined;
   const nextUserId = body.userId !== undefined && body.userId !== null ? Number(body.userId) : null;
   const nextQueueId = body.queueId !== undefined && body.queueId !== null ? Number(body.queueId) : null;
+
+  // Capture previous state (needed for greeting automation)
+  let prevTicket: any = null;
+  try {
+    const prevRows = await pgQuery<any>(
+      `SELECT id, status, "queueId", "whatsappId", "contactId", "userId" FROM "Tickets" WHERE id = $1 AND "companyId" = $2 LIMIT 1`,
+      [id, companyId]
+    );
+    prevTicket = prevRows?.[0] || null;
+  } catch {}
 
   await pgQuery(
     `
@@ -226,6 +238,98 @@ router.put("/:id", authMiddleware, async (req, res) => {
 
   const ticket = await loadTicketWithRelations(id, companyId);
   if (!ticket) return res.status(404).json({ error: true, message: "not found" });
+
+  // Auto greeting message on accept (pending -> open), using queue/whatsapp configured greeting when available.
+  const becameOpen =
+    String(prevTicket?.status || "").toLowerCase() !== "open" &&
+    String(ticket?.status || "").toLowerCase() === "open" &&
+    Boolean(ticket?.userId);
+  if (becameOpen) {
+    (async () => {
+      try {
+        const whatsappId = Number(ticket?.whatsappId || prevTicket?.whatsappId || 0);
+        const contactId = Number(ticket?.contactId || prevTicket?.contactId || 0);
+        if (!whatsappId || !contactId) return;
+
+        // Find remoteJid
+        let remoteJid = "";
+        try {
+          const m = await pgQuery<{ remoteJid: string }>(
+            `SELECT "remoteJid" FROM "Messages" WHERE "ticketId" = $1 AND "companyId" = $2 ORDER BY "createdAt" DESC LIMIT 1`,
+            [id, companyId]
+          );
+          remoteJid = String(m?.[0]?.remoteJid || "").trim();
+        } catch {}
+        if (!remoteJid) {
+          const c = await pgQuery<{ number: string }>(
+            `SELECT number FROM "Contacts" WHERE id = $1 AND "companyId" = $2 LIMIT 1`,
+            [contactId, companyId]
+          );
+          const number = String(c?.[0]?.number || "").replace(/\D/g, "");
+          if (number) remoteJid = `${number}@s.whatsapp.net`;
+        }
+        if (!remoteJid) return;
+
+        // Resolve greeting text (try queue first, then whatsapp)
+        let greeting = "";
+        const queueId = Number(ticket?.queueId || prevTicket?.queueId || 0) || null;
+        if (queueId) {
+          try {
+            const q = await pgQuery<any>(
+              `SELECT "greetingMessage" as gm, "welcomeMessage" as wm FROM "Queues" WHERE id = $1 AND "companyId" = $2 LIMIT 1`,
+              [queueId, companyId]
+            );
+            greeting = String(q?.[0]?.gm || q?.[0]?.wm || "").trim();
+          } catch {}
+        }
+        if (!greeting) {
+          try {
+            const w = await pgQuery<any>(
+              `SELECT "greetingMessage" as gm, "welcomeMessage" as wm FROM "Whatsapps" WHERE id = $1 AND "companyId" = $2 LIMIT 1`,
+              [whatsappId, companyId]
+            );
+            greeting = String(w?.[0]?.gm || w?.[0]?.wm || "").trim();
+          } catch {}
+        }
+        if (!greeting) return;
+
+        // Avoid sending greeting twice: only if there's no previous fromMe message on this ticket
+        try {
+          const already = await pgQuery<{ c: number }>(
+            `SELECT COUNT(1)::int as c FROM "Messages" WHERE "ticketId" = $1 AND "companyId" = $2 AND "fromMe" = true`,
+            [id, companyId]
+          );
+          if (Number(already?.[0]?.c || 0) > 0) return;
+        } catch {}
+
+        let sock = getInlineSock(whatsappId);
+        if (!sock) {
+          startOrRefreshInlineSession({ companyId, whatsappId, forceNewQr: false }).catch(() => {});
+          const startedAt = Date.now();
+          while (!sock && Date.now() - startedAt < 5000) {
+            await new Promise((r) => setTimeout(r, 250));
+            sock = getInlineSock(whatsappId);
+          }
+        }
+        if (!sock) return;
+
+        const result = await sock.sendMessage(remoteJid, { text: greeting });
+        const sentId = String(result?.key?.id || `greet-${Date.now()}`);
+
+        await pgQuery(
+          `
+            INSERT INTO "Messages"
+              (id, body, ack, read, "ticketId", "createdAt", "updatedAt", "fromMe", "isDeleted",
+               "contactId", "companyId", "remoteJid", "dataJson")
+            VALUES
+              ($1, $2, 0, true, $3, NOW(), NOW(), true, false, $4, $5, $6, $7)
+            ON CONFLICT (id) DO NOTHING
+          `,
+          [sentId, greeting, id, contactId, companyId, remoteJid, JSON.stringify({ system: "greeting" })]
+        );
+      } catch {}
+    })();
+  }
 
   try {
     const io = getIO();

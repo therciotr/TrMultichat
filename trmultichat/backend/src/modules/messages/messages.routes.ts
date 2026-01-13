@@ -2,7 +2,7 @@ import { Router } from "express";
 import { authMiddleware } from "../../middleware/authMiddleware";
 import { pgQuery } from "../../utils/pgClient";
 import { getIO } from "../../libs/socket";
-import { getSessionSock, listSessionIds, startOrRefreshBaileysSession } from "../../libs/baileysManager";
+import { getInlineSock, startOrRefreshInlineSession } from "../../libs/waInlineManager";
 import path from "path";
 
 const router = Router();
@@ -118,31 +118,34 @@ router.post("/:ticketId", authMiddleware, async (req, res) => {
   const whatsappId = Number(ticket.whatsappId || 0);
   if (!whatsappId) return res.status(400).json({ error: true, message: "ticket has no whatsappId" });
 
-  // Send via Baileys (auto-start session if needed)
-  let sock = getSessionSock(whatsappId);
+  // Send via inline session (auto-start if needed)
+  let sock = getInlineSock(whatsappId);
   if (!sock) {
     // Try to start/reconnect session on-demand (same behavior as /whatsappsession/:id)
     try {
-      startOrRefreshBaileysSession({ companyId, whatsappId }).catch(() => {});
+      startOrRefreshInlineSession({ companyId, whatsappId }).catch(() => {});
     } catch {}
     const startedAt = Date.now();
     while (!sock && Date.now() - startedAt < 5000) {
       await new Promise((r) => setTimeout(r, 250));
-      sock = getSessionSock(whatsappId);
+      sock = getInlineSock(whatsappId);
     }
   }
   if (!sock) {
-    const payload: any = {
-      error: true,
-      message: "whatsapp session not ready yet, retry in a few seconds"
-    };
-    if (String(process.env.ENABLE_DEBUG_ENDPOINTS || "").toLowerCase() === "true") {
-      payload.debug = { whatsappId, knownSessions: listSessionIds() };
-    }
-    return res.status(409).json(payload);
+    return res.status(409).json({ error: true, message: "whatsapp session not ready yet, retry in a few seconds" });
   }
 
-  const remoteJid = `${String(contact.number).replace(/\D/g, "")}@s.whatsapp.net`;
+  // Prefer the ticket's last known remoteJid (more reliable than reformatting number)
+  let remoteJid = `${String(contact.number).replace(/\D/g, "")}@s.whatsapp.net`;
+  try {
+    const r = await pgQuery<{ remoteJid: string }>(
+      `SELECT "remoteJid" FROM "Messages" WHERE "ticketId" = $1 AND "companyId" = $2 ORDER BY "createdAt" DESC LIMIT 1`,
+      [ticketId, companyId]
+    );
+    const last = String(r?.[0]?.remoteJid || "").trim();
+    if (last) remoteJid = last;
+  } catch {}
+
   let sentId = `local-${Date.now()}`;
   try {
     const result = await sock.sendMessage(remoteJid, { text: bodyText });
