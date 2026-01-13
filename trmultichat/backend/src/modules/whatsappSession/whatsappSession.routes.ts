@@ -4,7 +4,7 @@ import path from "path";
 import jwt from "jsonwebtoken";
 import env from "../../config/env";
 import { getIO } from "../../libs/socket";
-import { getSessionSock, getStoredQr, startOrRefreshBaileysSession } from "../../libs/baileysManager";
+import { getInlineSock, getInlineSnapshot, startOrRefreshInlineSession } from "../../libs/waInlineManager";
 import { pgQuery } from "../../utils/pgClient";
 
 const router = Router();
@@ -292,20 +292,17 @@ router.get("/:id", (req, res) => {
   // If the UI is loading and we have auth creds, ensure the real session is running in memory.
   // (Without a running socket, messages won't arrive.)
   try {
-    if (tenantId && id && !getSessionSock(id)) {
+    if (tenantId && id && !getInlineSock(id)) {
       const authDir = path.join(REAL_AUTH_DIR, String(tenantId), String(id));
       const hasAuthCreds = fs.existsSync(path.join(authDir, "creds.json"));
       if (hasAuthCreds) {
-        startOrRefreshBaileysSession({ companyId: tenantId, whatsappId: id, forceNewQr: false }).catch(() => {});
+        startOrRefreshInlineSession({ companyId: tenantId, whatsappId: id, forceNewQr: false }).catch(() => {});
       }
     }
   } catch {}
 
-  // Prefer BaileysManager snapshot (powers message ingestion); v2/dev snapshots are fallback-only.
-  const sess =
-    getStoredQr(id) ||
-    readRealSessions()[String(id)] ||
-    (readSessions()[String(id)] || {});
+  // Inline manager snapshot is the authoritative one.
+  const sess = getInlineSnapshot(id) || (readSessions()[String(id)] || {});
   return res.json({
     id,
     status: sess.status || (sess.qrcode ? "qrcode" : "DISCONNECTED"),
@@ -353,8 +350,7 @@ router.put("/:id", async (req, res) => {
     const authDir = path.join(REAL_AUTH_DIR, String(tenantId), String(id));
     const hasAuthCreds = fs.existsSync(path.join(authDir, "creds.json"));
 
-    // Prefer BaileysManager snapshot (it also powers message ingestion); fall back to v2 + legacy snapshot providers.
-    const snap: any = getStoredQr(id) || readRealSessions()[String(id)] || {};
+    const snap: any = getInlineSnapshot(id) || {};
     const lastDiscCode = Number(snap?.lastDisconnectStatusCode || 0);
     const snapStatus = String(snap?.status || "");
 
@@ -375,9 +371,9 @@ router.put("/:id", async (req, res) => {
 
     // If already connected and we have auth, do NOT force a new QR.
     // Also avoid restarting a running in-memory socket on refresh.
-    const hasRunningSocket = Boolean(getSessionSock(id));
+    const hasRunningSocket = Boolean(getInlineSock(id));
     if (isConnected && hasAuthCreds && hasRunningSocket) {
-      const sessNow: any = getStoredQr(id) || readRealSessions()[String(id)] || snap || {};
+      const sessNow: any = getInlineSnapshot(id) || snap || {};
       return res.json({
         id,
         status: sessNow?.status || "CONNECTED",
@@ -387,10 +383,10 @@ router.put("/:id", async (req, res) => {
       });
     }
 
-    // Start / refresh the real session manager (this one ingests incoming messages).
-    await startOrRefreshBaileysSession({ companyId: tenantId, whatsappId: id, forceNewQr: shouldForceNewQr });
+    // Start / refresh the inline manager (this one ingests incoming messages).
+    await startOrRefreshInlineSession({ companyId: tenantId, whatsappId: id, forceNewQr: shouldForceNewQr });
 
-    const sess = getStoredQr(id) || readRealSessions()[String(id)] || {};
+    const sess: any = getInlineSnapshot(id) || {};
     return res.json({
       id,
       status: sess?.status || "OPENING",

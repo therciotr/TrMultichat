@@ -43,7 +43,7 @@ import path from "path";
 import { createSubscriptionPreference } from "./services/mercadoPagoService";
 import { getSequelize } from "./utils/legacyModel";
 import { initIO } from "./libs/socket";
-import { startAllBaileysSessions } from "./libs/baileysManager";
+import { startAllInlineSessions } from "./libs/waInlineManager";
 
 // Create a fresh app so we can register our routes first
 const app: express.Express = express();
@@ -994,11 +994,11 @@ server.listen(env.PORT, async () => {
     logger.warn("Socket initialization skipped", e);
   }
 
-  // Start Baileys sessions on boot so incoming messages create tickets even after restarts
+  // Start WhatsApp sessions (inline manager) on boot so incoming messages create tickets even after restarts
   try {
-    await startAllBaileysSessions();
+    await startAllInlineSessions();
   } catch (e) {
-    logger.warn("Baileys sessions startup skipped", e as any);
+    logger.warn("WhatsApp inline sessions startup skipped", e as any);
   }
 
   // Start WhatsApp sessions for each company (tenant)
