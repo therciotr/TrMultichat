@@ -6,7 +6,6 @@ import env from "../../config/env";
 import { getIO } from "../../libs/socket";
 import { getSessionSock, getStoredQr, startOrRefreshBaileysSession } from "../../libs/baileysManager";
 import { pgQuery } from "../../utils/pgClient";
-import { ingestBaileysMessage } from "../../libs/ticketIngest";
 
 const router = Router();
 
@@ -14,13 +13,9 @@ const PUBLIC_DIR = path.join(process.cwd(), "public");
 const SESS_FILE = path.join(PUBLIC_DIR, "dev-whatsapp-sessions.json");
 const ERR_LOG_FILE = path.join(PUBLIC_DIR, "whatsappsession-errors.log");
 
-// Inline Baileys starter (workaround): on this VPS build, importing Baileys inside baileysManager has been flaky.
-// This implementation mirrors the known-working "manual" makeWASocket flow.
-// Important: do NOT reuse "whatsapp-sessions.json" because other legacy flows may overwrite it.
+// Legacy snapshot file kept for backward compatibility only.
 const REAL_SESS_FILE = path.join(PUBLIC_DIR, "whatsapp-sessions-v2.json");
 const REAL_AUTH_DIR = path.join(PUBLIC_DIR, "baileys");
-const inlineSessions = new Map<number, any>();
-const inlineRestartAttempts = new Map<number, number>();
 
 async function updateWhatsAppStatus(companyId: number, whatsappId: number, status: string) {
   try {
@@ -81,184 +76,9 @@ function saveSessionSnapshot(companyId: number, whatsappId: number, patch: Parti
   return next;
 }
 
-async function startBaileysInline(opts: { companyId: number; whatsappId: number; forceNewQr?: boolean }) {
-  const { companyId, whatsappId, forceNewQr } = opts;
-  // Baileys is ESM in production; TypeScript (CommonJS output) rewrites `import()` into `require()`.
-  // Use a native dynamic import via Function to avoid TS downleveling.
-  // eslint-disable-next-line no-new-func
-  const baileysMod: any = await (new Function('return import("@whiskeysockets/baileys")'))();
-  const makeWASocket = baileysMod?.makeWASocket || baileysMod?.default;
-  const useMultiFileAuthState = baileysMod?.useMultiFileAuthState;
-  const makeCacheableSignalKeyStore = baileysMod?.makeCacheableSignalKeyStore;
-  const DisconnectReason = baileysMod?.DisconnectReason;
-  const fetchLatestBaileysVersion = baileysMod?.fetchLatestBaileysVersion;
-
-  if (typeof makeWASocket !== "function" || typeof useMultiFileAuthState !== "function") {
-    throw new Error("Baileys module exports missing (makeWASocket/useMultiFileAuthState)");
-  }
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const P = require("pino");
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const NodeCache = require("node-cache");
-  const logger = P({ level: "warn" });
-
-  const authPath = path.join(REAL_AUTH_DIR, String(companyId), String(whatsappId));
-  try {
-    if (forceNewQr) fs.rmSync(authPath, { recursive: true, force: true });
-  } catch {}
-  try {
-    fs.mkdirSync(authPath, { recursive: true });
-  } catch {}
-
-  // close existing
-  try {
-    const existing = inlineSessions.get(whatsappId);
-    existing?.ws?.close?.();
-  } catch {}
-  inlineSessions.delete(whatsappId);
-
-  const { state, saveCreds } = await useMultiFileAuthState(authPath);
-  if (!state || !state.creds || !state.keys) {
-    throw new Error("Auth state inválido: state/creds/keys ausente");
-  }
-  const msgRetryCounterCache = new NodeCache();
-  const wrapped = {
-    creds: state.creds,
-    keys: typeof makeCacheableSignalKeyStore === "function"
-      ? makeCacheableSignalKeyStore(state.keys, logger)
-      : state.keys
-  };
-
-  saveSessionSnapshot(companyId, whatsappId, { status: "OPENING", qrcode: "", retries: 0 });
-  void updateWhatsAppStatus(companyId, whatsappId, "OPENING");
-
-  let version: any = undefined;
-  try {
-    if (typeof fetchLatestBaileysVersion === "function") {
-      const v = await fetchLatestBaileysVersion();
-      version = v?.version;
-    }
-  } catch {
-    version = undefined;
-  }
-
-  const sock = makeWASocket({
-    ...(version ? { version } : {}),
-    logger,
-    printQRInTerminal: false,
-    msgRetryCounterCache,
-    generateHighQualityLinkPreview: true,
-    browser: ["TR Multichat", "Chrome", "1.0.0"],
-    auth: wrapped
-  });
-  inlineSessions.set(whatsappId, sock);
-
-  if (typeof saveCreds === "function") {
-    sock.ev.on("creds.update", saveCreds);
-  }
-
-  // IMPORTANT: inline session must also ingest incoming messages, otherwise "connected but no messages" happens.
-  sock.ev.on("messages.upsert", async (upsert: any) => {
-    try {
-      const msgs = Array.isArray(upsert?.messages) ? upsert.messages : [];
-      for (const m of msgs) {
-        await ingestBaileysMessage({ companyId, whatsappId, msg: m });
-      }
-    } catch {}
-  });
-
-  sock.ev.on("connection.update", (u: any) => {
-    const connection = u?.connection;
-    const qr = u?.qr;
-    const statusCode = u?.lastDisconnect?.error?.output?.statusCode;
-    const disconnectMessage = u?.lastDisconnect?.error?.message || u?.lastDisconnect?.error?.toString?.();
-
-    // Helpful server-side logs (no secrets)
-    try {
-      // eslint-disable-next-line no-console
-      console.log("[wa] connection.update", {
-        whatsappId,
-        connection,
-        hasQr: Boolean(qr),
-        statusCode,
-        disconnectMessage: disconnectMessage ? String(disconnectMessage).slice(0, 200) : undefined
-      });
-    } catch {}
-
-    if (qr) {
-      const prev = readRealSessions()[String(whatsappId)] || {};
-      const retries = (typeof prev.retries === "number" ? prev.retries : 0) + 1;
-      saveSessionSnapshot(companyId, whatsappId, {
-        status: "qrcode",
-        qrcode: String(qr),
-        retries,
-        lastConnection: connection || "",
-        lastDisconnectStatusCode: null,
-        lastDisconnectMessage: null
-      });
-      void updateWhatsAppStatus(companyId, whatsappId, "qrcode");
-    }
-    if (connection === "open") {
-      saveSessionSnapshot(companyId, whatsappId, {
-        status: "CONNECTED",
-        qrcode: "",
-        lastConnection: "open",
-        lastDisconnectStatusCode: null,
-        lastDisconnectMessage: null
-      });
-      inlineRestartAttempts.delete(whatsappId);
-      void updateWhatsAppStatus(companyId, whatsappId, "CONNECTED");
-    }
-    if (connection === "close") {
-      const shouldLogout = Boolean(DisconnectReason) && statusCode === DisconnectReason.loggedOut;
-      if (shouldLogout) {
-        try {
-          fs.rmSync(authPath, { recursive: true, force: true });
-        } catch {}
-        // On logout, clear QR
-        saveSessionSnapshot(companyId, whatsappId, {
-          status: "DISCONNECTED",
-          qrcode: "",
-          lastConnection: "close",
-          lastDisconnectStatusCode: statusCode ?? null,
-          lastDisconnectMessage: disconnectMessage ? String(disconnectMessage).slice(0, 500) : null
-        });
-        void updateWhatsAppStatus(companyId, whatsappId, "DISCONNECTED");
-      } else {
-        // Keep last QR snapshot so the UI can still show it (and/or request new QR)
-        const prev = readRealSessions()[String(whatsappId)] || {};
-        saveSessionSnapshot(companyId, whatsappId, {
-          status: "DISCONNECTED",
-          qrcode: prev?.qrcode || "",
-          lastConnection: "close",
-          lastDisconnectStatusCode: statusCode ?? null,
-          lastDisconnectMessage: disconnectMessage ? String(disconnectMessage).slice(0, 500) : null
-        });
-        void updateWhatsAppStatus(companyId, whatsappId, "DISCONNECTED");
-
-        // Baileys sometimes returns stream error 515 ("restart required") right after scanning.
-        // In this case, restart the socket WITHOUT wiping auth to complete the login.
-        if (Number(statusCode) === 515) {
-          const attempts = (inlineRestartAttempts.get(whatsappId) || 0) + 1;
-          inlineRestartAttempts.set(whatsappId, attempts);
-
-          // mark as opening/reconnecting (keep qrcode so UI doesn't go blank)
-          saveSessionSnapshot(companyId, whatsappId, {
-            status: "OPENING",
-            qrcode: prev?.qrcode || "",
-            restartAttempts: attempts
-          } as any);
-          void updateWhatsAppStatus(companyId, whatsappId, "OPENING");
-
-          // restart in background with small delay to avoid tight loop
-          setTimeout(() => {
-            startBaileysInline({ companyId, whatsappId, forceNewQr: false }).catch(() => {});
-          }, Math.min(10_000, 1500 * attempts));
-        }
-      }
-    }
-  });
-}
+// NOTE: previously we had an "inline Baileys starter" here.
+// It was removed to avoid running multiple sockets for the same WhatsApp (causes conflicts/device_removed)
+// and to centralize message ingestion in `baileysManager`.
 
 function ensurePublicDir() {
   try {
@@ -467,10 +287,24 @@ function tryRunLegacyWhatsAppSessionController(
 router.get("/:id", (req, res) => {
   setNoCache(res);
   const id = Number(req.params.id);
-  // Prefer real Baileys session snapshot (if any)
+  const tenantId = extractTenantIdFromAuth(req.headers.authorization as string);
+
+  // If the UI is loading and we have auth creds, ensure the real session is running in memory.
+  // (Without a running socket, messages won't arrive.)
+  try {
+    if (tenantId && id && !getSessionSock(id)) {
+      const authDir = path.join(REAL_AUTH_DIR, String(tenantId), String(id));
+      const hasAuthCreds = fs.existsSync(path.join(authDir, "creds.json"));
+      if (hasAuthCreds) {
+        startOrRefreshBaileysSession({ companyId: tenantId, whatsappId: id, forceNewQr: false }).catch(() => {});
+      }
+    }
+  } catch {}
+
+  // Prefer BaileysManager snapshot (powers message ingestion); v2/dev snapshots are fallback-only.
   const sess =
-    readRealSessions()[String(id)] ||
     getStoredQr(id) ||
+    readRealSessions()[String(id)] ||
     (readSessions()[String(id)] || {});
   return res.json({
     id,
@@ -483,26 +317,6 @@ router.get("/:id", (req, res) => {
     lastDisconnectMessage: sess.lastDisconnectMessage || null,
     restartAttempts: typeof (sess as any).restartAttempts === "number" ? (sess as any).restartAttempts : 0
   });
-});
-
-// Debug helper (admin only): inspect Baileys exports in production
-router.get("/debug/baileys-exports", (req, res) => {
-  if (String(process.env.ENABLE_DEBUG_ENDPOINTS || "").toLowerCase() !== "true") {
-    return res.status(404).json({ error: true, message: "not found" });
-  }
-  const tenantId = extractTenantIdFromAuth(req.headers.authorization as string);
-  if (!tenantId) return res.status(401).json({ error: true, message: "missing tenantId" });
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const b = require("@whiskeysockets/baileys");
-    const keys = Object.keys(b || {});
-    const d = (b && (b.default || b)) || {};
-    const defaultType = typeof d;
-    const defaultKeys = (d && typeof d === "object") ? Object.keys(d) : [];
-    return res.json({ keys, defaultType, defaultKeys });
-  } catch (e: any) {
-    return res.status(500).json({ error: true, message: e?.message || "failed" });
-  }
 });
 
 // Debug helper (admin only): last whatsappsession errors
