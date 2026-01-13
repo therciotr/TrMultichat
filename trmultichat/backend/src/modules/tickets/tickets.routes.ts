@@ -9,6 +9,17 @@ function tenantIdFromReq(req: any): number {
   return Number(req?.tenantId || 0);
 }
 
+function setNoCache(res: any) {
+  try {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+    res.setHeader("Surrogate-Control", "no-store");
+    // Ensure we never hit 304 Not Modified on list/detail endpoints
+    res.setHeader("ETag", `W/\"${Date.now()}\"`);
+  } catch {}
+}
+
 async function loadTicketWithRelations(ticketId: number, companyId: number) {
   const rows = await pgQuery<any>(
     `
@@ -69,6 +80,7 @@ async function loadTicketTags(ticketId: number, companyId: number) {
 
 // GET /tickets
 router.get("/", authMiddleware, async (req, res) => {
+  setNoCache(res);
   const companyId = tenantIdFromReq(req);
   if (!companyId) return res.status(401).json({ error: true, message: "missing tenantId" });
 
@@ -143,6 +155,7 @@ router.get("/", authMiddleware, async (req, res) => {
 
 // GET /tickets/u/:uuid (frontend uses this when opening a ticket)
 router.get("/u/:uuid", authMiddleware, async (req, res) => {
+  setNoCache(res);
   const companyId = tenantIdFromReq(req);
   if (!companyId) return res.status(401).json({ error: true, message: "missing tenantId" });
 
@@ -177,6 +190,7 @@ router.get("/u/:uuid", authMiddleware, async (req, res) => {
 
 // GET /tickets/:id
 router.get("/:id", authMiddleware, async (req, res) => {
+  setNoCache(res);
   const companyId = tenantIdFromReq(req);
   const id = Number(req.params.id);
   if (!companyId) return res.status(401).json({ error: true, message: "missing tenantId" });
