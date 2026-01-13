@@ -290,7 +290,13 @@ export async function startOrRefreshBaileysSession(opts: {
     authHasCreds: Boolean(wrapped?.creds),
     authHasKeys: Boolean(wrapped?.keys)
   });
-  const cfgForBaileys: any = { ...sockOptsBase, auth: wrapped };
+  // Different Baileys builds expect either `auth` or `authState`.
+  // Always try `auth` first, then fall back to `authState`, then raw state variants.
+  const cfgAuth: any = { ...sockOptsBase, auth: wrapped };
+  const cfgAuthState: any = { ...sockOptsBase, authState: wrapped };
+  const cfgAuthRaw: any = { ...sockOptsBase, auth: state as any };
+  const cfgAuthStateRaw: any = { ...sockOptsBase, authState: state as any };
+  const cfgForBaileys: any = cfgAuth;
   if (isDebugBaileys()) {
     try {
       debugLog("cfg.auth descriptor", Object.getOwnPropertyDescriptor(cfgForBaileys, "auth"));
@@ -329,7 +335,25 @@ export async function startOrRefreshBaileysSession(opts: {
       // ignore wrapper failures
     }
   }
-  const sock = (cfgForBaileys as any).__sock || makeWASocketFn(cfgForBaileys);
+  let sock: any = (cfgForBaileys as any).__sock;
+  if (!sock) {
+    try {
+      sock = makeWASocketFn(cfgAuth);
+    } catch (e1: any) {
+      debugLog("makeWASocket(auth) failed", e1?.message);
+      try {
+        sock = makeWASocketFn(cfgAuthState);
+      } catch (e2: any) {
+        debugLog("makeWASocket(authState) failed", e2?.message);
+        try {
+          sock = makeWASocketFn(cfgAuthRaw);
+        } catch (e3: any) {
+          debugLog("makeWASocket(auth raw) failed", e3?.message);
+          sock = makeWASocketFn(cfgAuthStateRaw);
+        }
+      }
+    }
+  }
 
   // makeInMemoryStore is also ESM-exported; do not require() it.
   const makeInMemoryStore =
@@ -401,10 +425,12 @@ export async function startOrRefreshBaileysSession(opts: {
           fs.rmSync(authPath, { recursive: true, force: true });
         } catch {}
       }
+      // Keep last QR on disconnect unless loggedOut; it helps the UI and avoids "QR disappears".
+      const prevSnap = readSessionsFile()[String(whatsappId)] || ({} as any);
       const snap: SessionSnapshot = {
         id: whatsappId,
         status: "DISCONNECTED",
-        qrcode: "",
+        qrcode: shouldLogout ? "" : String(prevSnap?.qrcode || ""),
         updatedAt: new Date().toISOString(),
         retries: managed.retries
       };
@@ -413,6 +439,13 @@ export async function startOrRefreshBaileysSession(opts: {
       writeSessionsFile(all);
       await updateWhatsAppStatus(companyId, whatsappId, "DISCONNECTED");
       emit?.(companyId, { action: "update", session: snap });
+
+      // Auto-restart on transient stream errors without wiping auth
+      if (!shouldLogout && (Number(statusCode) === 515 || Number(statusCode) === 503)) {
+        setTimeout(() => {
+          startOrRefreshBaileysSession({ companyId, whatsappId, emit, forceNewQr: false }).catch(() => {});
+        }, 1500);
+      }
     }
   });
 }
