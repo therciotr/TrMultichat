@@ -291,19 +291,35 @@ export async function startOrRefreshBaileysSession(opts: {
         ? makeCacheableSignalKeyStoreFn((state as any).keys, logger)
         : (state as any).keys
   };
+  // Some Baileys builds are picky about auth shape; ensure we always pass { creds, keys }.
+  const authForBaileys: any = {
+    creds: (state as any).creds,
+    keys: wrapped?.keys || (state as any).keys
+  };
   debugLog("makeWASocket cfg", {
-    keys: Object.keys({ ...sockOptsBase, auth: wrapped }),
-    authType: typeof wrapped,
-    authHasCreds: Boolean(wrapped?.creds),
-    authHasKeys: Boolean(wrapped?.keys)
+    keys: Object.keys({ ...sockOptsBase, auth: authForBaileys }),
+    authType: typeof authForBaileys,
+    authHasCreds: Boolean(authForBaileys?.creds),
+    authHasKeys: Boolean(authForBaileys?.keys)
   });
   // Different Baileys builds expect either `auth` or `authState`.
   // Always try `auth` first, then fall back to `authState`, then raw state variants.
-  const cfgAuth: any = { ...sockOptsBase, auth: wrapped };
-  const cfgAuthState: any = { ...sockOptsBase, authState: wrapped };
+  const cfgAuth: any = { ...sockOptsBase, auth: authForBaileys };
+  const cfgAuthState: any = { ...sockOptsBase, authState: authForBaileys };
   const cfgAuthRaw: any = { ...sockOptsBase, auth: state as any };
   const cfgAuthStateRaw: any = { ...sockOptsBase, authState: state as any };
   const cfgForBaileys: any = cfgAuth;
+
+  // Always log one-line signal on session start attempts (helps diagnose "connected but no messages")
+  try {
+    // eslint-disable-next-line no-console
+    console.log("[baileysManager] makeWASocket attempt", {
+      companyId,
+      whatsappId,
+      authHasCreds: Boolean(cfgAuth?.auth?.creds),
+      authHasKeys: Boolean(cfgAuth?.auth?.keys)
+    });
+  } catch {}
   if (isDebugBaileys()) {
     try {
       debugLog("cfg.auth descriptor", Object.getOwnPropertyDescriptor(cfgForBaileys, "auth"));
