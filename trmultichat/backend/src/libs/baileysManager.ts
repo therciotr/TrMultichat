@@ -284,43 +284,22 @@ export async function startOrRefreshBaileysSession(opts: {
     msgRetryCounterCache,
     generateHighQualityLinkPreview: true
   };
-  const wrapped = {
-    creds: (state as any).creds,
-    keys:
-      typeof makeCacheableSignalKeyStoreFn === "function"
-        ? makeCacheableSignalKeyStoreFn((state as any).keys, logger)
-        : (state as any).keys
-  };
-  // Some Baileys builds are picky about auth shape; ensure we always pass { creds, keys }.
-  const authForBaileys: any = {
-    creds: (state as any).creds,
-    keys: wrapped?.keys || (state as any).keys
-  };
-  debugLog("makeWASocket cfg", {
-    keys: Object.keys({ ...sockOptsBase, auth: authForBaileys }),
-    authType: typeof authForBaileys,
-    authHasCreds: Boolean(authForBaileys?.creds),
-    authHasKeys: Boolean(authForBaileys?.keys)
-  });
-  // This Baileys build expects `config.auth` (see lib/Socket/socket.js).
-  // Some environments are picky about key store wrappers, so we try:
-  // 1) authForBaileys (cacheable keys when available)
-  // 2) raw `state` (as returned by useMultiFileAuthState)
-  const cfgAuth: any = { ...sockOptsBase, auth: authForBaileys };
-  const cfgAuthRaw: any = { ...sockOptsBase, auth: state as any };
-  const cfgForBaileys: any = cfgAuth;
+  // IMPORTANT: keep the auth object EXACTLY as returned by useMultiFileAuthState.
+  // In this VPS build, wrapping keys via makeCacheableSignalKeyStore has caused auth to
+  // become undefined inside Baileys (leading to "Cannot destructure creds of authState").
+  const cfgForBaileys: any = { ...sockOptsBase, auth: state as any };
 
   // Always log one-line signal on session start attempts (helps diagnose "connected but no messages")
   try {
-    const desc = Object.getOwnPropertyDescriptor(cfgAuth, "auth");
+    const desc = Object.getOwnPropertyDescriptor(cfgForBaileys, "auth");
     // eslint-disable-next-line no-console
     console.log("[baileysManager] makeWASocket attempt", {
       companyId,
       whatsappId,
-      authHasCreds: Boolean(cfgAuth?.auth?.creds),
-      authHasKeys: Boolean(cfgAuth?.auth?.keys),
+      authHasCreds: Boolean(cfgForBaileys?.auth?.creds),
+      authHasKeys: Boolean(cfgForBaileys?.auth?.keys),
       authEnumerable: desc ? Boolean(desc.enumerable) : null,
-      cfgKeys: Object.keys(cfgAuth || {})
+      cfgKeys: Object.keys(cfgForBaileys || {})
     });
   } catch {}
   if (isDebugBaileys()) {
@@ -380,12 +359,7 @@ export async function startOrRefreshBaileysSession(opts: {
       } catch {}
       return makeWASocketFn(config);
     };
-    try {
-      sock = callMakeWASocket(cfgAuth);
-    } catch (e1: any) {
-      debugLog("makeWASocket(auth) failed", e1?.message);
-      sock = callMakeWASocket(cfgAuthRaw);
-    }
+    sock = callMakeWASocket(cfgForBaileys);
   }
 
   // makeInMemoryStore is also ESM-exported; do not require() it.
