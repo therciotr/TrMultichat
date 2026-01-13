@@ -150,7 +150,14 @@ export async function startAllBaileysSessions(): Promise<void> {
           io.emit(`company-${cId}-whatsappSession`, payload);
         } catch {}
       }
-    }).catch(() => {});
+    }).catch((e: any) => {
+      // eslint-disable-next-line no-console
+      console.error("[baileysManager] start session failed", {
+        companyId,
+        whatsappId,
+        message: e?.message || String(e),
+      });
+    });
   }
 }
 
