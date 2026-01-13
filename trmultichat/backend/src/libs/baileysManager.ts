@@ -407,6 +407,16 @@ export async function startOrRefreshBaileysSession(opts: {
   sock.ev.on("messages.upsert", async (upsert: any) => {
     try {
       const msgs = Array.isArray(upsert?.messages) ? upsert.messages : [];
+      try {
+        // eslint-disable-next-line no-console
+        console.log("[wa] messages.upsert", {
+          whatsappId,
+          count: msgs.length,
+          firstRemoteJid: msgs?.[0]?.key?.remoteJid || null,
+          firstId: msgs?.[0]?.key?.id || null,
+          firstFromMe: Boolean(msgs?.[0]?.key?.fromMe),
+        });
+      } catch {}
       for (const m of msgs) {
         // Only ingest real messages that belong to this whatsapp session
         await ingestBaileysMessage({ companyId, whatsappId, msg: m });
@@ -417,6 +427,15 @@ export async function startOrRefreshBaileysSession(opts: {
   sock.ev.on("connection.update", async (u: any) => {
     const connection = u?.connection;
     const qr = u?.qr;
+    try {
+      // eslint-disable-next-line no-console
+      console.log("[wa] connection.update", {
+        whatsappId,
+        connection,
+        hasQr: Boolean(qr),
+        statusCode: u?.lastDisconnect?.error?.output?.statusCode ?? null,
+      });
+    } catch {}
 
     if (qr) {
       managed.retries += 1;
