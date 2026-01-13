@@ -18,7 +18,18 @@ function extractTenantIdFromAuth(authorization?: string): number {
   }
 }
 
+function setNoCache(res: any) {
+  try {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+    res.setHeader("Surrogate-Control", "no-store");
+    res.setHeader("ETag", `W/\"${Date.now()}\"`);
+  } catch {}
+}
+
 router.get("/", async (req, res) => {
+  setNoCache(res);
   const tenantId = extractTenantIdFromAuth(req.headers.authorization as string) || 1;
   try {
     const Setting = getLegacyModel("Setting");

@@ -265,8 +265,9 @@ export async function startAllInlineSessions() {
       const hasAuthCreds = fs.existsSync(path.join(authDir, "creds.json"));
       if (!hasAuthCreds) continue;
 
-      // Start for connected/opening sessions so messages are received after restarts
-      if (String(w.status || "").toUpperCase() === "CONNECTED") {
+      // Always start if creds exist. This keeps the session alive even if the DB status is stale.
+      // Also avoid restarting if we already have a running socket.
+      if (!getInlineSock(whatsappId)) {
         startOrRefreshInlineSession({ companyId, whatsappId, forceNewQr: false }).catch(() => {});
       }
     }

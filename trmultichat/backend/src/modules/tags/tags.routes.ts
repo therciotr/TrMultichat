@@ -9,8 +9,19 @@ function tenantIdFromReq(req: any): number {
   return Number(req?.tenantId || 0);
 }
 
+function setNoCache(res: any) {
+  try {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+    res.setHeader("Surrogate-Control", "no-store");
+    res.setHeader("ETag", `W/\"${Date.now()}\"`);
+  } catch {}
+}
+
 // Legacy/UI compatibility: returns ARRAY (not wrapped)
 router.get("/list", authMiddleware, async (req, res) => {
+  setNoCache(res);
   const companyId = tenantIdFromReq(req);
   if (!companyId) return res.status(401).json({ error: true, message: "missing tenantId" });
   const rows = await pgQuery<any>(
@@ -22,6 +33,7 @@ router.get("/list", authMiddleware, async (req, res) => {
 
 // Keep existing endpoint but return in old shape
 router.get("/", authMiddleware, async (req, res) => {
+  setNoCache(res);
   const companyId = tenantIdFromReq(req);
   if (!companyId) return res.status(401).json({ error: true, message: "missing tenantId" });
   const pageNumber = Number(req.query.pageNumber || 1);

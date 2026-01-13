@@ -367,7 +367,8 @@ router.put("/:id", async (req, res) => {
     }
 
     const isConnected = snapStatus === "CONNECTED" || dbStatus === "CONNECTED";
-    const shouldForceNewQr = !hasAuthCreds || lastDiscCode === 401;
+    // 401 (logged out) or 440 (conflict) require generating a new QR to recover quickly.
+    const shouldForceNewQr = !hasAuthCreds || lastDiscCode === 401 || lastDiscCode === 440;
 
     // If already connected and we have auth, do NOT force a new QR.
     // Also avoid restarting a running in-memory socket on refresh.
