@@ -265,29 +265,14 @@ export async function startOrRefreshBaileysSession(opts: {
       `Baileys auth state missing creds/keys (state keys: ${stateKeys.join(",")})`
     );
   }
-  let version: any = undefined;
-  try {
-    if (typeof fetchLatestBaileysVersionFn === "function") {
-      const v = await fetchLatestBaileysVersionFn();
-      version = v?.version;
-    }
-  } catch {
-    // VPS pode não ter saída para internet; Baileys consegue operar sem buscar versão "latest".
-    version = undefined;
-  }
-
-  // Baileys (atual) expects config.auth. Internally it aliases it as `authState`.
-  const sockOptsBase: any = {
-    ...(version ? { version } : {}),
-    logger,
+  // IMPORTANT: keep config minimal.
+  // We found that passing additional options (logger/cache/version wrappers) can trigger an
+  // odd interop issue where Baileys sees config.auth as undefined (authState undefined).
+  // The most reliable config in this environment is the minimal one:
+  const cfgForBaileys: any = {
     printQRInTerminal: false,
-    msgRetryCounterCache,
-    generateHighQualityLinkPreview: true
+    auth: state as any
   };
-  // IMPORTANT: keep the auth object EXACTLY as returned by useMultiFileAuthState.
-  // In this VPS build, wrapping keys via makeCacheableSignalKeyStore has caused auth to
-  // become undefined inside Baileys (leading to "Cannot destructure creds of authState").
-  const cfgForBaileys: any = { ...sockOptsBase, auth: state as any };
 
   // Always log one-line signal on session start attempts (helps diagnose "connected but no messages")
   try {
