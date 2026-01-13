@@ -302,12 +302,12 @@ export async function startOrRefreshBaileysSession(opts: {
     authHasCreds: Boolean(authForBaileys?.creds),
     authHasKeys: Boolean(authForBaileys?.keys)
   });
-  // Different Baileys builds expect either `auth` or `authState`.
-  // Always try `auth` first, then fall back to `authState`, then raw state variants.
+  // This Baileys build expects `config.auth` (see lib/Socket/socket.js).
+  // Some environments are picky about key store wrappers, so we try:
+  // 1) authForBaileys (cacheable keys when available)
+  // 2) raw `state` (as returned by useMultiFileAuthState)
   const cfgAuth: any = { ...sockOptsBase, auth: authForBaileys };
-  const cfgAuthState: any = { ...sockOptsBase, authState: authForBaileys };
   const cfgAuthRaw: any = { ...sockOptsBase, auth: state as any };
-  const cfgAuthStateRaw: any = { ...sockOptsBase, authState: state as any };
   const cfgForBaileys: any = cfgAuth;
 
   // Always log one-line signal on session start attempts (helps diagnose "connected but no messages")
@@ -364,17 +364,7 @@ export async function startOrRefreshBaileysSession(opts: {
       sock = makeWASocketFn(cfgAuth);
     } catch (e1: any) {
       debugLog("makeWASocket(auth) failed", e1?.message);
-      try {
-        sock = makeWASocketFn(cfgAuthState);
-      } catch (e2: any) {
-        debugLog("makeWASocket(authState) failed", e2?.message);
-        try {
-          sock = makeWASocketFn(cfgAuthRaw);
-        } catch (e3: any) {
-          debugLog("makeWASocket(auth raw) failed", e3?.message);
-          sock = makeWASocketFn(cfgAuthStateRaw);
-        }
-      }
+      sock = makeWASocketFn(cfgAuthRaw);
     }
   }
 
