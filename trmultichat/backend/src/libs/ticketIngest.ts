@@ -98,16 +98,42 @@ async function findOrCreateTicket(opts: {
   );
   if (existing[0]) return existing[0];
 
+  // Try to infer a default queue for this WhatsApp connection (keeps tickets "in the queue").
+  // We keep this best-effort and compatible across varying schemas.
+  let defaultQueueId: number | null = null;
+  const joinTableCandidates = [
+    `"WhatsappsQueues"`,
+    `"WhatsappQueues"`,
+    `"WhatsAppQueues"`,
+    "whatsapps_queues",
+    "whatsapp_queues"
+  ];
+  for (const tbl of joinTableCandidates) {
+    try {
+      const rows = await pgQuery<{ queueId: number }>(
+        `SELECT "queueId" as "queueId" FROM ${tbl} WHERE ("whatsappId" = $1 OR "whatsAppId" = $1) AND ("companyId" = $2 OR "tenantId" = $2) LIMIT 1`,
+        [opts.whatsappId, opts.companyId]
+      );
+      const qid = Number(rows?.[0]?.queueId || 0);
+      if (qid) {
+        defaultQueueId = qid;
+        break;
+      }
+    } catch {
+      // ignore and try next candidate
+    }
+  }
+
   const created = await pgQuery<TicketRow>(
     `
       INSERT INTO "Tickets"
-        (status, "lastMessage", "contactId", "createdAt", "updatedAt", "whatsappId", "isGroup", "unreadMessages", "companyId")
+        (status, "lastMessage", "contactId", "createdAt", "updatedAt", "whatsappId", "isGroup", "unreadMessages", "companyId", "queueId")
       VALUES
-        ('pending', '', $1, NOW(), NOW(), $2, $3, 0, $4)
+        ('pending', '', $1, NOW(), NOW(), $2, $3, 0, $4, $5)
       RETURNING id, status, "lastMessage", "contactId", "userId", "whatsappId", "isGroup",
                 "unreadMessages", "queueId", "companyId", "updatedAt", "createdAt", "fromMe"
     `,
-    [opts.contactId, opts.whatsappId, opts.isGroup, opts.companyId]
+    [opts.contactId, opts.whatsappId, opts.isGroup, opts.companyId, defaultQueueId]
   );
   return created[0];
 }
@@ -177,6 +203,42 @@ export async function ingestBaileysMessage(opts: {
     contactId: contact.id,
     isGroup
   });
+
+  // If ticket exists without a queue, try to assign the first queue linked to this WhatsApp.
+  if (!ticket.queueId) {
+    let defaultQueueId: number | null = null;
+    const joinTableCandidates = [
+      `"WhatsappsQueues"`,
+      `"WhatsappQueues"`,
+      `"WhatsAppQueues"`,
+      "whatsapps_queues",
+      "whatsapp_queues"
+    ];
+    for (const tbl of joinTableCandidates) {
+      try {
+        const rows = await pgQuery<{ queueId: number }>(
+          `SELECT "queueId" as "queueId" FROM ${tbl} WHERE ("whatsappId" = $1 OR "whatsAppId" = $1) AND ("companyId" = $2 OR "tenantId" = $2) LIMIT 1`,
+          [whatsappId, companyId]
+        );
+        const qid = Number(rows?.[0]?.queueId || 0);
+        if (qid) {
+          defaultQueueId = qid;
+          break;
+        }
+      } catch {
+        // ignore
+      }
+    }
+    if (defaultQueueId) {
+      try {
+        await pgQuery(`UPDATE "Tickets" SET "queueId" = $1 WHERE id = $2 AND "companyId" = $3 AND "queueId" IS NULL`, [
+          defaultQueueId,
+          ticket.id,
+          companyId
+        ]);
+      } catch {}
+    }
+  }
 
   // insert message idempotently
   await pgQuery(
