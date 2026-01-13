@@ -312,12 +312,15 @@ export async function startOrRefreshBaileysSession(opts: {
 
   // Always log one-line signal on session start attempts (helps diagnose "connected but no messages")
   try {
+    const desc = Object.getOwnPropertyDescriptor(cfgAuth, "auth");
     // eslint-disable-next-line no-console
     console.log("[baileysManager] makeWASocket attempt", {
       companyId,
       whatsappId,
       authHasCreds: Boolean(cfgAuth?.auth?.creds),
-      authHasKeys: Boolean(cfgAuth?.auth?.keys)
+      authHasKeys: Boolean(cfgAuth?.auth?.keys),
+      authEnumerable: desc ? Boolean(desc.enumerable) : null,
+      cfgKeys: Object.keys(cfgAuth || {})
     });
   } catch {}
   if (isDebugBaileys()) {
