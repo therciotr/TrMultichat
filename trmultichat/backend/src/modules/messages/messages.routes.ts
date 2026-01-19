@@ -175,11 +175,45 @@ router.post("/:ticketId", authMiddleware, async (req, res) => {
   // Emit updates for ticket list
   try {
     const io = getIO();
-    io.emit(`company-${companyId}-appMessage`, { action: "create", ticket: { id: ticketId } });
-    io.emit(`company-${companyId}-ticket`, { action: "update", ticket: { id: ticketId, lastMessage: bodyText, updatedAt: new Date().toISOString(), fromMe: true, unreadMessages: 0 } });
+    const msgRows = await pgQuery<any>(
+      `
+        SELECT id, body, ack, read, "mediaType", "mediaUrl", "ticketId", "createdAt", "updatedAt",
+               "fromMe", "isDeleted", "contactId", "companyId", "quotedMsgId", "remoteJid", "dataJson", participant
+        FROM "Messages"
+        WHERE id = $1 AND "companyId" = $2
+        LIMIT 1
+      `,
+      [sentId, companyId]
+    );
+    const message = msgRows?.[0] || {
+      id: sentId,
+      body: bodyText,
+      ack: 0,
+      read: true,
+      mediaType: null,
+      mediaUrl: null,
+      ticketId,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      fromMe: true,
+      isDeleted: false,
+      contactId: Number(contact.id),
+      companyId,
+      quotedMsgId: null,
+      remoteJid,
+      dataJson: JSON.stringify(req.body || {}),
+      participant: null
+    };
+
+    // MessagesList expects { action, message }
+    io.emit(`company-${companyId}-appMessage`, { action: "create", message });
+    io.emit(`company-${companyId}-ticket`, {
+      action: "update",
+      ticket: { id: ticketId, lastMessage: bodyText, updatedAt: new Date().toISOString(), fromMe: true, unreadMessages: 0 }
+    });
   } catch {}
 
-  return res.status(201).json({ ok: true, id: sentId });
+  return res.status(201).json({ id: sentId });
 });
 
 export default router;

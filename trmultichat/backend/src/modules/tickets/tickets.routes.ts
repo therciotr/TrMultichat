@@ -293,10 +293,10 @@ router.put("/:id", authMiddleware, async (req, res) => {
         }
         if (!greeting) return;
 
-        // Avoid sending greeting twice: only if there's no previous fromMe message on this ticket
+        // Avoid sending greeting twice: only if we already sent our system greeting
         try {
           const already = await pgQuery<{ c: number }>(
-            `SELECT COUNT(1)::int as c FROM "Messages" WHERE "ticketId" = $1 AND "companyId" = $2 AND "fromMe" = true`,
+            `SELECT COUNT(1)::int as c FROM "Messages" WHERE "ticketId" = $1 AND "companyId" = $2 AND "dataJson"::text ILIKE '%\"system\":\"greeting\"%'`,
             [id, companyId]
           );
           if (Number(already?.[0]?.c || 0) > 0) return;

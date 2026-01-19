@@ -338,14 +338,16 @@ const useStyles = makeStyles((theme) => ({
             try {
                 const { data } = await api.get("/settings/");
                 
-                settingIndex = data.filter((s) => s.key === "sendGreetingAccepted");
+                const settingsList = Array.isArray(data) ? data : [];
+                settingIndex = settingsList.filter((s) => s.key === "sendGreetingAccepted");
                 
             } catch (err) {
                 toastError(err);
                    
             }
             
-            if (settingIndex[0].value === "enabled" && !ticket.isGroup) {
+            // Guard: settings might not include this key
+            if (settingIndex?.[0]?.value === "enabled" && !ticket.isGroup) {
                 handleSendMessage(ticket.id);
                 
             }

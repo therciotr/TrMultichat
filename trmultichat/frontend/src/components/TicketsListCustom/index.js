@@ -249,6 +249,14 @@ const TicketsListCustom = (props) => {
         });
       }
 
+      if (data.action === "update") {
+        // If the ticket changed status, ensure it does NOT remain in the wrong list
+        if (status && String(data.ticket?.status || "") !== String(status)) {
+          dispatch({ type: "DELETE_TICKET", payload: data.ticket.id });
+          return;
+        }
+      }
+
       if (data.action === "update" && shouldUpdateTicket(data.ticket)) {
         dispatch({
           type: "UPDATE_TICKET",
