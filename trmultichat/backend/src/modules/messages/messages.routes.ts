@@ -11,6 +11,17 @@ function tenantIdFromReq(req: any): number {
   return Number(req?.tenantId || 0);
 }
 
+function setNoCache(res: any) {
+  try {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+    res.setHeader("Surrogate-Control", "no-store");
+    // Prevent 304 based on If-None-Match
+    res.setHeader("ETag", `W/\"${Date.now()}\"`);
+  } catch {}
+}
+
 function requireLegacyController(moduleRelPath: string): any | null {
   const cwd = process.cwd();
   const candidates = [
@@ -63,6 +74,7 @@ function tryRunLegacyMessageController(action: "store" | "index", req: any, res:
 }
 
 router.get("/:ticketId", authMiddleware, async (req, res) => {
+  setNoCache(res);
   const companyId = tenantIdFromReq(req);
   if (!companyId) return res.status(401).json({ error: true, message: "missing tenantId" });
 
@@ -84,12 +96,71 @@ router.get("/:ticketId", authMiddleware, async (req, res) => {
     `,
     [ticketId, companyId, limit, offset]
   );
-  const messages = Array.isArray(rows) ? rows : [];
+  let messages = Array.isArray(rows) ? rows : [];
+
+  // Attach contact objects (UI uses message.contact?.name)
+  try {
+    const ids = Array.from(new Set(messages.map((m: any) => Number(m.contactId || 0)).filter(Boolean)));
+    if (ids.length) {
+      const contacts = await pgQuery<any>(
+        `
+          SELECT id, name, number, "profilePicUrl"
+          FROM "Contacts"
+          WHERE "companyId" = $1 AND id = ANY($2::int[])
+        `,
+        [companyId, ids]
+      );
+      const map = new Map<number, any>();
+      for (const c of contacts || []) {
+        map.set(Number(c.id), { id: c.id, name: c.name, number: c.number, profilePicUrl: c.profilePicUrl });
+      }
+      messages = messages.map((m: any) => ({ ...m, contact: map.get(Number(m.contactId)) || null }));
+    }
+  } catch {}
+
+  // Provide placeholder body for media messages when body is empty (so UI doesn't look blank)
+  try {
+    messages = messages.map((m: any) => {
+      const body = String(m?.body || "");
+      if (body.trim()) return m;
+      if (m?.mediaUrl) return m;
+      const dj = String(m?.dataJson || "");
+      if (!dj) return m;
+      let kind = "";
+      // Fast string checks (avoid heavy JSON parse for huge payloads)
+      if (dj.includes("audioMessage")) kind = "audio";
+      else if (dj.includes("imageMessage")) kind = "image";
+      else if (dj.includes("videoMessage")) kind = "video";
+      else if (dj.includes("documentMessage") || dj.includes("documentWithCaptionMessage")) kind = "application";
+      else if (dj.includes("stickerMessage")) kind = "sticker";
+      else if (dj.includes("reactionMessage")) kind = "reaction";
+
+      if (!kind) return m;
+      const placeholder =
+        kind === "audio"
+          ? "[Áudio]"
+          : kind === "image"
+            ? "[Imagem]"
+            : kind === "video"
+              ? "[Vídeo]"
+              : kind === "application"
+                ? "[Documento]"
+                : kind === "sticker"
+                  ? "[Sticker]"
+                  : kind === "reaction"
+                    ? "[Reação]"
+                    : "";
+      if (!placeholder) return m;
+      return { ...m, body: placeholder, mediaType: m.mediaType || kind };
+    });
+  } catch {}
+
   return res.json({ messages, hasMore: messages.length === limit });
 });
 
 // POST /messages/:ticketId (send message)
 router.post("/:ticketId", authMiddleware, async (req, res) => {
+  setNoCache(res);
   const companyId = tenantIdFromReq(req);
   if (!companyId) return res.status(401).json({ error: true, message: "missing tenantId" });
 
