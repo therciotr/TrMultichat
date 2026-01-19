@@ -85,7 +85,7 @@ async function findOrCreateTicket(opts: {
   whatsappId: number;
   contactId: number;
   isGroup: boolean;
-}): Promise<TicketRow> {
+}): Promise<{ ticket: TicketRow; created: boolean }> {
   const existing = await pgQuery<TicketRow>(
     `
       SELECT id, status, "lastMessage", "contactId", "userId", "whatsappId", "isGroup",
@@ -96,7 +96,7 @@ async function findOrCreateTicket(opts: {
     `,
     [opts.contactId, opts.companyId, opts.whatsappId]
   );
-  if (existing[0]) return existing[0];
+  if (existing[0]) return { ticket: existing[0], created: false };
 
   // Try to infer a default queue for this WhatsApp connection (keeps tickets "in the queue").
   // We keep this best-effort and compatible across varying schemas.
@@ -135,7 +135,7 @@ async function findOrCreateTicket(opts: {
     `,
     [opts.contactId, opts.whatsappId, opts.isGroup, opts.companyId, defaultQueueId]
   );
-  return created[0];
+  return { ticket: created[0], created: true };
 }
 
 async function loadTicketWithContact(ticketId: number) {
@@ -174,7 +174,17 @@ export async function ingestBaileysMessage(opts: {
   companyId: number;
   whatsappId: number;
   msg: any;
-}): Promise<void> {
+}): Promise<{
+  ticketId: number;
+  contactId: number;
+  whatsappId: number;
+  companyId: number;
+  isGroup: boolean;
+  remoteJid: string;
+  queueId: number | null;
+  fromMe: boolean;
+  isNewTicket: boolean;
+}> {
   const { companyId, whatsappId, msg } = opts;
 
   // ignore empty or protocol/status messages
@@ -203,9 +213,11 @@ export async function ingestBaileysMessage(opts: {
     contactId: contact.id,
     isGroup
   });
+  const isNewTicket = Boolean((ticket as any)?.created);
+  const ticketRow: TicketRow = (ticket as any)?.ticket || (ticket as any);
 
   // If ticket exists without a queue, try to assign the first queue linked to this WhatsApp.
-  if (!ticket.queueId) {
+  if (!ticketRow.queueId) {
     let defaultQueueId: number | null = null;
     const joinTableCandidates = [
       `"WhatsappsQueues"`,
@@ -233,7 +245,7 @@ export async function ingestBaileysMessage(opts: {
       try {
         await pgQuery(`UPDATE "Tickets" SET "queueId" = $1 WHERE id = $2 AND "companyId" = $3 AND "queueId" IS NULL`, [
           defaultQueueId,
-          ticket.id,
+          ticketRow.id,
           companyId
         ]);
       } catch {}
@@ -253,7 +265,7 @@ export async function ingestBaileysMessage(opts: {
     [
       messageId,
       body || "",
-      ticket.id,
+      ticketRow.id,
       fromMe,
       contact.id,
       companyId,
@@ -274,12 +286,24 @@ export async function ingestBaileysMessage(opts: {
         "unreadMessages" = COALESCE("unreadMessages", 0) + $3
       WHERE id = $4
     `,
-    [body || "", fromMe, fromMe ? 0 : 1, ticket.id]
+    [body || "", fromMe, fromMe ? 0 : 1, ticketRow.id]
   );
 
   // emit socket events to refresh ticket list
-  const payloadTicket = await loadTicketWithContact(ticket.id);
-  if (!payloadTicket) return;
+  const payloadTicket = await loadTicketWithContact(ticketRow.id);
+  if (!payloadTicket) {
+    return {
+      ticketId: ticketRow.id,
+      contactId: contact.id,
+      whatsappId,
+      companyId,
+      isGroup,
+      remoteJid,
+      queueId: ticketRow.queueId || null,
+      fromMe,
+      isNewTicket
+    };
+  }
 
   try {
     const io = getIO();
@@ -290,6 +314,18 @@ export async function ingestBaileysMessage(opts: {
 
   // keep Typescript happy; used for debugging if needed
   void nowIso();
+
+  return {
+    ticketId: payloadTicket.id,
+    contactId: contact.id,
+    whatsappId,
+    companyId,
+    isGroup,
+    remoteJid,
+    queueId: (payloadTicket as any)?.queueId ?? ticketRow.queueId ?? null,
+    fromMe,
+    isNewTicket
+  };
 }
 
 
