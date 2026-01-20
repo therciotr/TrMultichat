@@ -1,5 +1,17 @@
 import { pgQuery } from "../utils/pgClient";
 import { getIO } from "./socket";
+import fs from "fs";
+import path from "path";
+
+function isWaDebug(): boolean {
+  return String(process.env.DEBUG_WA_MESSAGES || "").toLowerCase() === "true";
+}
+
+function waLog(...args: any[]) {
+  if (!isWaDebug()) return;
+  // eslint-disable-next-line no-console
+  console.log("[wa]", ...args);
+}
 
 type ContactRow = {
   id: number;
@@ -49,6 +61,119 @@ export function extractTextBody(msg: any): string {
     m?.listResponseMessage?.title ||
     ""
   );
+}
+
+function detectMedia(msg: any): {
+  kind: "audio" | "image" | "video" | "application" | "sticker" | "";
+  mimetype?: string;
+  fileName?: string;
+} {
+  const m = msg?.message || {};
+  if (m?.audioMessage) return { kind: "audio", mimetype: m.audioMessage.mimetype, fileName: "audio" };
+  if (m?.imageMessage) return { kind: "image", mimetype: m.imageMessage.mimetype, fileName: "image" };
+  if (m?.videoMessage) return { kind: "video", mimetype: m.videoMessage.mimetype, fileName: "video" };
+  if (m?.documentMessage) return { kind: "application", mimetype: m.documentMessage.mimetype, fileName: m.documentMessage.fileName || "document" };
+  // Some Baileys messages wrap doc with caption
+  if (m?.documentWithCaptionMessage?.message?.documentMessage) {
+    const d = m.documentWithCaptionMessage.message.documentMessage;
+    return { kind: "application", mimetype: d.mimetype, fileName: d.fileName || "document" };
+  }
+  if (m?.stickerMessage) return { kind: "sticker", mimetype: m.stickerMessage.mimetype, fileName: "sticker" };
+  return { kind: "" };
+}
+
+function placeholderForKind(kind: string): string {
+  if (kind === "audio") return "[Áudio]";
+  if (kind === "image") return "[Imagem]";
+  if (kind === "video") return "[Vídeo]";
+  if (kind === "application") return "[Documento]";
+  if (kind === "sticker") return "[Sticker]";
+  return "";
+}
+
+function safeExtFromMimetype(mimetype?: string): string {
+  const mt = String(mimetype || "").toLowerCase();
+  if (mt.includes("ogg")) return "ogg";
+  if (mt.includes("opus")) return "ogg";
+  if (mt.includes("jpeg") || mt.includes("jpg")) return "jpg";
+  if (mt.includes("png")) return "png";
+  if (mt.includes("webp")) return "webp";
+  if (mt.includes("mp4")) return "mp4";
+  if (mt.includes("pdf")) return "pdf";
+  const slash = mt.indexOf("/");
+  if (slash > -1) {
+    const ext = mt.slice(slash + 1).replace(/[^a-z0-9]/g, "");
+    if (ext) return ext.slice(0, 10);
+  }
+  return "bin";
+}
+
+function ensureDir(p: string) {
+  try {
+    fs.mkdirSync(p, { recursive: true });
+  } catch {}
+}
+
+function safeFileName(input: string): string {
+  const s = String(input || "file").trim() || "file";
+  return s.replace(/[^\w.\-]+/g, "_").slice(0, 120);
+}
+
+async function downloadAndStoreMedia(opts: {
+  companyId: number;
+  ticketId: number;
+  messageId: string;
+  msg: any;
+  mimetype?: string;
+  fileNameBase?: string;
+  sock?: any;
+}): Promise<{ mediaUrl: string | null; mediaType: string | null }> {
+  const { companyId, ticketId, messageId, msg, mimetype, fileNameBase, sock } = opts;
+  const det = detectMedia(msg);
+  const kind = det.kind;
+  if (!kind) return { mediaUrl: null, mediaType: null };
+  if (!sock) return { mediaUrl: null, mediaType: kind === "application" ? "application" : kind };
+
+  try {
+    // Native dynamic import (avoid TS downlevel require())
+    // eslint-disable-next-line no-new-func
+    const baileysMod: any = await (new Function('return import("@whiskeysockets/baileys")'))();
+    const downloadMediaMessage =
+      baileysMod?.downloadMediaMessage || baileysMod?.default?.downloadMediaMessage;
+    if (typeof downloadMediaMessage !== "function") {
+      waLog("downloadMediaMessage export missing");
+      return { mediaUrl: null, mediaType: kind === "application" ? "application" : kind };
+    }
+
+    const ext = safeExtFromMimetype(mimetype || det.mimetype);
+    const baseName = safeFileName(fileNameBase || det.fileName || kind);
+    const dir = path.join(process.cwd(), "public", "uploads", "messages", String(companyId), String(ticketId));
+    ensureDir(dir);
+    const file = `${baseName}-${String(messageId).slice(0, 25)}-${Date.now()}.${ext}`;
+    const abs = path.join(dir, file);
+
+    // Baileys can reupload if needed
+    const buffer: Buffer = await downloadMediaMessage(
+      msg,
+      "buffer",
+      {},
+      {
+        logger: undefined,
+        reuploadRequest: sock?.updateMediaMessage
+          ? (m: any) => sock.updateMediaMessage(m)
+          : undefined
+      }
+    );
+    if (!buffer || !Buffer.isBuffer(buffer) || buffer.length === 0) {
+      return { mediaUrl: null, mediaType: kind === "application" ? "application" : kind };
+    }
+    fs.writeFileSync(abs, buffer);
+    const mediaUrl = `/uploads/messages/${companyId}/${ticketId}/${file}`;
+    return { mediaUrl, mediaType: kind === "application" ? "application" : kind };
+  } catch (e: any) {
+    waLog("media download failed", { message: e?.message });
+    return { mediaUrl: null, mediaType: kind === "application" ? "application" : kind };
+  }
 }
 
 async function findOrCreateContact(opts: {
@@ -174,6 +299,7 @@ export async function ingestBaileysMessage(opts: {
   companyId: number;
   whatsappId: number;
   msg: any;
+  sock?: any;
 }): Promise<{
   ticketId: number;
   contactId: number;
@@ -185,7 +311,7 @@ export async function ingestBaileysMessage(opts: {
   fromMe: boolean;
   isNewTicket: boolean;
 }> {
-  const { companyId, whatsappId, msg } = opts;
+  const { companyId, whatsappId, msg, sock } = opts;
 
   // ignore empty or protocol/status messages
   const remoteJid = String(msg?.key?.remoteJid || "");
@@ -197,7 +323,9 @@ export async function ingestBaileysMessage(opts: {
   const fromMe = Boolean(msg?.key?.fromMe);
   const participant = msg?.key?.participant ? String(msg.key.participant) : null;
   const pushName = String(msg?.pushName || "").trim();
-  const body = extractTextBody(msg);
+  const det = detectMedia(msg);
+  const baseBody = extractTextBody(msg);
+  const body = baseBody || placeholderForKind(det.kind);
 
   const contact = await findOrCreateContact({
     companyId,
@@ -215,6 +343,24 @@ export async function ingestBaileysMessage(opts: {
   });
   const isNewTicket = Boolean((ticket as any)?.created);
   const ticketRow: TicketRow = (ticket as any)?.ticket || (ticket as any);
+
+  // Media download (best-effort). Never drop the message if this fails.
+  const { mediaUrl, mediaType } = await downloadAndStoreMedia({
+    companyId,
+    ticketId: ticketRow.id,
+    messageId,
+    msg,
+    mimetype: det.mimetype,
+    fileNameBase: det.fileName,
+    sock
+  });
+  waLog("messages.upsert received", {
+    ticketId: ticketRow.id,
+    fromMe,
+    hasMedia: Boolean(det.kind),
+    mediaType: mediaType || null,
+    hasMediaUrl: Boolean(mediaUrl)
+  });
 
   // If ticket exists without a queue, try to assign the first queue linked to this WhatsApp.
   if (!ticketRow.queueId) {
@@ -256,15 +402,17 @@ export async function ingestBaileysMessage(opts: {
   await pgQuery(
     `
       INSERT INTO "Messages"
-        (id, body, ack, read, "ticketId", "createdAt", "updatedAt", "fromMe", "isDeleted",
+        (id, body, ack, read, "mediaType", "mediaUrl", "ticketId", "createdAt", "updatedAt", "fromMe", "isDeleted",
          "contactId", "companyId", "remoteJid", "dataJson", participant)
       VALUES
-        ($1, $2, 0, false, $3, NOW(), NOW(), $4, false, $5, $6, $7, $8, $9)
+        ($1, $2, 0, false, $3, $4, $5, NOW(), NOW(), $6, false, $7, $8, $9, $10, $11)
       ON CONFLICT (id) DO NOTHING
     `,
     [
       messageId,
       body || "",
+      mediaType,
+      mediaUrl,
       ticketRow.id,
       fromMe,
       contact.id,

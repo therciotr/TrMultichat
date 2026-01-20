@@ -376,7 +376,7 @@ export async function startOrRefreshInlineSession(opts: { companyId: number; wha
     try {
       const msgs = Array.isArray(upsert?.messages) ? upsert.messages : [];
       for (const m of msgs) {
-        const meta = await ingestBaileysMessage({ companyId, whatsappId, msg: m });
+        const meta = await ingestBaileysMessage({ companyId, whatsappId, msg: m, sock });
         // Only on first inbound message (new ticket), send greeting/menu to the client
         if (meta && meta.isNewTicket && !meta.fromMe && !meta.isGroup) {
           await maybeSendGreetingAndMenu({

@@ -378,7 +378,7 @@ export async function startOrRefreshBaileysSession(opts: {
       } catch {}
       for (const m of msgs) {
         // Only ingest real messages that belong to this whatsapp session
-        await ingestBaileysMessage({ companyId, whatsappId, msg: m });
+        await ingestBaileysMessage({ companyId, whatsappId, msg: m, sock });
       }
     } catch {}
   });

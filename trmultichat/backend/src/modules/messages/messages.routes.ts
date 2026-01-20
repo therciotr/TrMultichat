@@ -13,14 +13,26 @@ function tenantIdFromReq(req: any): number {
 
 function setNoCache(res: any) {
   try {
-    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
     res.setHeader("Pragma", "no-cache");
     res.setHeader("Expires", "0");
     res.setHeader("Surrogate-Control", "no-store");
-    // Prevent 304 based on If-None-Match
-    res.setHeader("ETag", `W/\"${Date.now()}\"`);
+    // Do NOT allow cache validation for this resource.
+    res.setHeader("ETag", "0");
+    res.setHeader("Last-Modified", "0");
   } catch {}
 }
+
+// IMPORTANT: Prevent conditional requests from ever producing 304 on /messages/*
+router.use((req, res, next) => {
+  try {
+    delete (req as any).headers?.["if-none-match"];
+    delete (req as any).headers?.["if-modified-since"];
+    delete (req as any).headers?.["if-match"];
+  } catch {}
+  setNoCache(res);
+  next();
+});
 
 function requireLegacyController(moduleRelPath: string): any | null {
   const cwd = process.cwd();
@@ -74,7 +86,6 @@ function tryRunLegacyMessageController(action: "store" | "index", req: any, res:
 }
 
 router.get("/:ticketId", authMiddleware, async (req, res) => {
-  setNoCache(res);
   const companyId = tenantIdFromReq(req);
   if (!companyId) return res.status(401).json({ error: true, message: "missing tenantId" });
 
@@ -96,7 +107,8 @@ router.get("/:ticketId", authMiddleware, async (req, res) => {
     `,
     [ticketId, companyId, limit, offset]
   );
-  let messages = Array.isArray(rows) ? rows : [];
+  // Page using DESC windows but return ASC for UI rendering
+  let messages = Array.isArray(rows) ? rows.slice().reverse() : [];
 
   // Attach contact objects (UI uses message.contact?.name)
   try {
@@ -123,9 +135,8 @@ router.get("/:ticketId", authMiddleware, async (req, res) => {
     messages = messages.map((m: any) => {
       const body = String(m?.body || "");
       if (body.trim()) return m;
-      if (m?.mediaUrl) return m;
       const dj = String(m?.dataJson || "");
-      if (!dj) return m;
+      if (!dj && !m?.mediaUrl) return m;
       let kind = "";
       // Fast string checks (avoid heavy JSON parse for huge payloads)
       if (dj.includes("audioMessage")) kind = "audio";
@@ -160,7 +171,6 @@ router.get("/:ticketId", authMiddleware, async (req, res) => {
 
 // POST /messages/:ticketId (send message)
 router.post("/:ticketId", authMiddleware, async (req, res) => {
-  setNoCache(res);
   const companyId = tenantIdFromReq(req);
   if (!companyId) return res.status(401).json({ error: true, message: "missing tenantId" });
 
