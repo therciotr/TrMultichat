@@ -1,10 +1,16 @@
-import React, { useState, useEffect, useReducer, useContext } from "react";
+import React, { useState, useEffect, useReducer, useContext, useMemo } from "react";
 
 import { makeStyles } from "@material-ui/core/styles";
 import List from "@material-ui/core/List";
 import Paper from "@material-ui/core/Paper";
 import InboxOutlinedIcon from "@material-ui/icons/InboxOutlined";
 import Typography from "@material-ui/core/Typography";
+import IconButton from "@material-ui/core/IconButton";
+import Checkbox from "@material-ui/core/Checkbox";
+import Tooltip from "@material-ui/core/Tooltip";
+import DeleteOutlineIcon from "@material-ui/icons/DeleteOutline";
+import SelectAllIcon from "@material-ui/icons/SelectAll";
+import CloseIcon from "@material-ui/icons/Close";
 
 import TicketListItem from "../TicketListItemCustom";
 import TicketsListSkeleton from "../TicketsListSkeleton";
@@ -13,6 +19,9 @@ import useTickets from "../../hooks/useTickets";
 import { i18n } from "../../translate/i18n";
 import { AuthContext } from "../../context/Auth/AuthContext";
 import { socketConnection } from "../../services/socket";
+import api from "../../services/api";
+import toastError from "../../errors/toastError";
+import ConfirmationModal from "../ConfirmationModal";
 
 const useStyles = makeStyles((theme) => ({
   ticketsListWrapper: {
@@ -41,6 +50,7 @@ const useStyles = makeStyles((theme) => ({
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
+    minHeight: 48,
   },
 
   ticketsCount: {
@@ -192,10 +202,20 @@ const TicketsListCustom = (props) => {
   const { user } = useContext(AuthContext);
   const profile = user?.profile;
   const queues = user?.queues || [];
+  const isAdmin = useMemo(() => {
+    const p = String(user?.profile || "").toLowerCase();
+    return Boolean(user?.admin) || p === "admin" || p === "super";
+  }, [user]);
+
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [confirmBulkOpen, setConfirmBulkOpen] = useState(false);
 
   useEffect(() => {
     dispatch({ type: "RESET" });
     setPageNumber(1);
+    setSelectionMode(false);
+    setSelectedIds([]);
   }, [status, searchParam, dispatch, showAll, tags, users, selectedQueueIds]);
 
   const { tickets, hasMore, loading } = useTickets({
@@ -269,7 +289,7 @@ const TicketsListCustom = (props) => {
       }
 
       if (data.action === "delete") {
-        dispatch({ type: "DELETE_TICKET", payload: data.ticketId });
+        dispatch({ type: "DELETE_TICKET", payload: data?.ticket?.id || data?.ticketId });
       }
     });
 
@@ -305,6 +325,46 @@ const TicketsListCustom = (props) => {
     };
   }, [status, showAll, user, selectedQueueIds, tags, users, profile, queues]);
 
+  const visibleTicketIds = useMemo(() => (Array.isArray(ticketsList) ? ticketsList.map((t) => t.id) : []), [ticketsList]);
+  const allVisibleSelected = useMemo(() => {
+    if (!visibleTicketIds.length) return false;
+    return visibleTicketIds.every((id) => selectedIds.includes(id));
+  }, [visibleTicketIds, selectedIds]);
+
+  const toggleSelect = (id) => {
+    setSelectedIds((prev) => {
+      const has = prev.includes(id);
+      if (has) return prev.filter((x) => x !== id);
+      return [...prev, id];
+    });
+  };
+
+  const handleSelectAllVisible = () => {
+    setSelectedIds((prev) => {
+      if (!visibleTicketIds.length) return prev;
+      const allSelected = visibleTicketIds.every((id) => prev.includes(id));
+      if (allSelected) return prev.filter((id) => !visibleTicketIds.includes(id));
+      const next = new Set(prev);
+      visibleTicketIds.forEach((id) => next.add(id));
+      return Array.from(next);
+    });
+  };
+
+  const handleBulkDelete = async () => {
+    const ids = Array.isArray(selectedIds) ? selectedIds : [];
+    if (!ids.length) return;
+    try {
+      await api.request({ method: "DELETE", url: "/tickets/bulk", data: { ids } });
+      ids.forEach((id) => dispatch({ type: "DELETE_TICKET", payload: id }));
+      setSelectedIds([]);
+      setSelectionMode(false);
+      setConfirmBulkOpen(false);
+    } catch (err) {
+      setConfirmBulkOpen(false);
+      toastError(err);
+    }
+  };
+
   useEffect(() => {
     if (typeof updateCount === "function") {
       updateCount(ticketsList.length);
@@ -328,6 +388,60 @@ const TicketsListCustom = (props) => {
 
   return (
     <Paper className={classes.ticketsListWrapper} style={style}>
+      {isAdmin && (
+        <>
+          <ConfirmationModal
+            title={`Excluir ${selectedIds.length} ticket(s)?`}
+            open={confirmBulkOpen}
+            onClose={setConfirmBulkOpen}
+            onConfirm={handleBulkDelete}
+          >
+            Essa ação é permanente e remove mensagens/anotações relacionadas.
+          </ConfirmationModal>
+          <div className={classes.ticketsListHeader} style={{ padding: "10px 12px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              {!selectionMode ? (
+                <Tooltip title="Selecionar tickets">
+                  <IconButton size="small" onClick={() => setSelectionMode(true)}>
+                    <SelectAllIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              ) : (
+                <>
+                  <Tooltip title="Sair da seleção">
+                    <IconButton size="small" onClick={() => { setSelectionMode(false); setSelectedIds([]); }}>
+                      <CloseIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                  <Checkbox
+                    checked={allVisibleSelected}
+                    onChange={handleSelectAllVisible}
+                    color="primary"
+                    inputProps={{ "aria-label": "Selecionar todos" }}
+                  />
+                  <Typography variant="body2" style={{ fontWeight: 700 }}>
+                    {selectedIds.length} selecionado(s)
+                  </Typography>
+                </>
+              )}
+            </div>
+            {selectionMode && (
+              <Tooltip title="Excluir selecionados">
+                <span>
+                  <IconButton
+                    size="small"
+                    onClick={() => setConfirmBulkOpen(true)}
+                    disabled={!selectedIds.length}
+                    style={{ color: selectedIds.length ? "#DC2626" : undefined }}
+                  >
+                    <DeleteOutlineIcon fontSize="small" />
+                  </IconButton>
+                </span>
+              </Tooltip>
+            )}
+          </div>
+        </>
+      )}
       <Paper
         square
         name="closed"
@@ -350,7 +464,13 @@ const TicketsListCustom = (props) => {
             <>
               <div className={classes.listPad}>
                 {ticketsList.map((ticket) => (
-                  <TicketListItem ticket={ticket} key={ticket.id} />
+                  <TicketListItem
+                    ticket={ticket}
+                    key={ticket.id}
+                    selectionMode={selectionMode}
+                    selected={selectedIds.includes(ticket.id)}
+                    onToggleSelect={toggleSelect}
+                  />
                 ))}
               </div>
             </>

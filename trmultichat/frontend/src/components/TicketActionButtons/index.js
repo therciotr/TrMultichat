@@ -12,6 +12,9 @@ import ButtonWithSpinner from "../ButtonWithSpinner";
 import toastError from "../../errors/toastError";
 import { AuthContext } from "../../context/Auth/AuthContext";
 import { Can } from "../Can";
+import DeleteOutlineIcon from "@material-ui/icons/DeleteOutline";
+import ConfirmationModal from "../ConfirmationModal";
+import { toast } from "react-toastify";
 
 const useStyles = makeStyles(theme => ({
 	actionButtons: {
@@ -31,6 +34,7 @@ const TicketActionButtons = ({ ticket }) => {
 	const history = useHistory();
 	const [anchorEl, setAnchorEl] = useState(null);
 	const [loading, setLoading] = useState(false);
+	const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 	const ticketOptionsMenuOpen = Boolean(anchorEl);
 	const { user } = useContext(AuthContext);
 
@@ -63,6 +67,21 @@ const TicketActionButtons = ({ ticket }) => {
 	};
 
 	const isAdmin = String(user?.profile || "").toLowerCase() === "admin" || String(user?.profile || "").toLowerCase() === "super" || Boolean(user?.admin);
+
+	const handleDeleteTicket = async () => {
+		setLoading(true);
+		try {
+			await api.delete(`/tickets/${ticket.id}`);
+			setLoading(false);
+			setDeleteConfirmOpen(false);
+			try { toast.success("Ticket excluído com sucesso."); } catch {}
+			history.push("/tickets");
+		} catch (err) {
+			setLoading(false);
+			setDeleteConfirmOpen(false);
+			toastError(err);
+		}
+	};
 
 	return (
 		<div className={classes.actionButtons}>
@@ -133,6 +152,11 @@ const TicketActionButtons = ({ ticket }) => {
 					>
 						{i18n.t("messagesList.header.buttons.accept")}
 					</ButtonWithSpinner>
+					{isAdmin && (
+						<IconButton onClick={() => setDeleteConfirmOpen(true)}>
+							<DeleteOutlineIcon />
+						</IconButton>
+					)}
 					{/* Allow admins to open options (delete) even while pending */}
 					<Can
 						role={user?.profile || "user"}
@@ -151,6 +175,14 @@ const TicketActionButtons = ({ ticket }) => {
 					/>
 				</>
 			)}
+			<ConfirmationModal
+				title={`Excluir o ticket #${ticket?.id}?`}
+				open={deleteConfirmOpen}
+				onClose={setDeleteConfirmOpen}
+				onConfirm={handleDeleteTicket}
+			>
+				Essa ação é permanente e remove mensagens/anotações relacionadas.
+			</ConfirmationModal>
 		</div>
 	);
 };

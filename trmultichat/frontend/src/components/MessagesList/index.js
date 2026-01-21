@@ -419,6 +419,17 @@ const MessagesList = ({ ticket, ticketId, isGroup }) => {
   };
 
   const checkMessageMedia = (message) => {
+    const guessAudioType = (url) => {
+      const u = String(url || "").toLowerCase();
+      if (u.endsWith(".mp3")) return "audio/mpeg";
+      if (u.endsWith(".wav")) return "audio/wav";
+      if (u.endsWith(".m4a")) return "audio/mp4";
+      if (u.endsWith(".mp4")) return "audio/mp4";
+      if (u.endsWith(".ogg") || u.endsWith(".opus")) return "audio/ogg";
+      // when storage fell back to .bin
+      if (u.endsWith(".bin")) return "audio/ogg";
+      return "audio/ogg";
+    };
     if (message.mediaType === "locationMessage" && message.body.split('|').length >= 2) {
       let locationParts = message.body.split('|')
       let imageLocation = locationParts[0]
@@ -470,8 +481,8 @@ const MessagesList = ({ ticket, ticketId, isGroup }) => {
       return <ModalImageCors imageUrl={message.mediaUrl} />;
     } else if (message.mediaType === "audio") {
       return (
-        <audio controls>
-          <source src={message.mediaUrl} type="audio/ogg"></source>
+        <audio controls preload="metadata" style={{ maxWidth: "100%" }} crossOrigin="anonymous">
+          <source src={message.mediaUrl} type={guessAudioType(message.mediaUrl)}></source>
         </audio>
       );
     } else if (message.mediaType === "video") {
@@ -595,6 +606,16 @@ const MessagesList = ({ ticket, ticketId, isGroup }) => {
   };
 
   const renderQuotedMessage = (message) => {
+    const guessAudioType = (url) => {
+      const u = String(url || "").toLowerCase();
+      if (u.endsWith(".mp3")) return "audio/mpeg";
+      if (u.endsWith(".wav")) return "audio/wav";
+      if (u.endsWith(".m4a")) return "audio/mp4";
+      if (u.endsWith(".mp4")) return "audio/mp4";
+      if (u.endsWith(".ogg") || u.endsWith(".opus")) return "audio/ogg";
+      if (u.endsWith(".bin")) return "audio/ogg";
+      return "audio/ogg";
+    };
     return (
       <div
         className={clsx(classes.quotedContainerLeft, {
@@ -616,8 +637,8 @@ const MessagesList = ({ ticket, ticketId, isGroup }) => {
           {message.quotedMsg.mediaType === "audio"
             && (
               <div className={classes.downloadMedia}>
-                <audio controls>
-                  <source src={message.quotedMsg.mediaUrl} type="audio/ogg"></source>
+                <audio controls preload="metadata" style={{ maxWidth: "100%" }} crossOrigin="anonymous">
+                  <source src={message.quotedMsg.mediaUrl} type={guessAudioType(message.quotedMsg.mediaUrl)}></source>
                 </audio>
               </div>
             )

@@ -15,6 +15,8 @@ import Avatar from "@material-ui/core/Avatar";
 import Divider from "@material-ui/core/Divider";
 import Badge from "@material-ui/core/Badge";
 import Box from "@material-ui/core/Box";
+import Checkbox from "@material-ui/core/Checkbox";
+import IconButton from "@material-ui/core/IconButton";
 
 import { i18n } from "../../translate/i18n";
 
@@ -30,9 +32,12 @@ import { v4 as uuidv4 } from "uuid";
 import WhatsAppIcon from "@material-ui/icons/WhatsApp";
 import AndroidIcon from "@material-ui/icons/Android";
 import VisibilityIcon from "@material-ui/icons/Visibility";
+import DeleteOutlineIcon from "@material-ui/icons/DeleteOutline";
 import TicketMessagesDialog from "../TicketMessagesDialog";
 import contrastColor from "../../helpers/contrastColor";
 import ContactTag from "../ContactTag";
+import ConfirmationModal from "../ConfirmationModal";
+import { toast } from "react-toastify";
 
 const useStyles = makeStyles((theme) => ({
   ticket: {
@@ -248,10 +253,11 @@ const useStyles = makeStyles((theme) => ({
   },
 }));
   {/*PLW DESIGN INSERIDO O dentro do const handleChangeTab*/}
-  const TicketListItemCustom = ({ ticket }) => {
+  const TicketListItemCustom = ({ ticket, selectionMode = false, selected = false, onToggleSelect }) => {
   const classes = useStyles();
   const history = useHistory();
   const [loading, setLoading] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [ticketUser, setTicketUser] = useState(null);
   const [ticketQueueName, setTicketQueueName] = useState(null);
   const [ticketQueueColor, setTicketQueueColor] = useState(null);
@@ -264,6 +270,7 @@ const useStyles = makeStyles((theme) => ({
   const { setCurrentTicket } = useContext(TicketsContext);
   const { user } = useContext(AuthContext);
   const { profile } = user;
+  const isAdmin = String(user?.profile || "").toLowerCase() === "admin" || String(user?.profile || "").toLowerCase() === "super" || Boolean(user?.admin);
 
   useEffect(() => {
     if (ticket.userId && ticket.user) {
@@ -390,6 +397,21 @@ const useStyles = makeStyles((theme) => ({
     setCurrentTicket({ id, uuid, code });
   };
 
+  const handleDeleteTicket = async () => {
+    setLoading(true);
+    try {
+      await api.delete(`/tickets/${ticket.id}`);
+      setLoading(false);
+      setDeleteConfirmOpen(false);
+      try { toast.success("Ticket excluído com sucesso."); } catch {}
+      try { history.push("/tickets"); } catch {}
+    } catch (err) {
+      setLoading(false);
+      setDeleteConfirmOpen(false);
+      toastError(err);
+    }
+  };
+
 
   const renderTicketInfo = () => {
     if (ticketUser) {
@@ -426,6 +448,14 @@ const useStyles = makeStyles((theme) => ({
 
   return (
     <React.Fragment key={ticket.id}>
+      <ConfirmationModal
+        title={`Excluir o ticket #${ticket?.id}?`}
+        open={deleteConfirmOpen}
+        onClose={setDeleteConfirmOpen}
+        onConfirm={handleDeleteTicket}
+      >
+        Essa ação é permanente e remove mensagens/anotações relacionadas.
+      </ConfirmationModal>
       <TicketMessagesDialog
         open={openTicketMessageDialog}
 
@@ -436,6 +466,10 @@ const useStyles = makeStyles((theme) => ({
         dense
         button
         onClick={(e) => {
+          if (selectionMode) {
+            if (typeof onToggleSelect === "function") onToggleSelect(ticket.id);
+            return;
+          }
           if (ticket.status === "pending") return;
           handleSelectTicket(ticket);
         }}
@@ -447,6 +481,16 @@ const useStyles = makeStyles((theme) => ({
         <Tooltip arrow placement="right" title={ticket.queue?.name?.toUpperCase() || "SEM FILA"} >
           <span style={{ backgroundColor: ticket.queue?.color || "#7C7C7C" }} className={classes.ticketQueueColor}></span>
         </Tooltip>
+        {selectionMode && (
+          <Checkbox
+            checked={Boolean(selected)}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (typeof onToggleSelect === "function") onToggleSelect(ticket.id);
+            }}
+            color="primary"
+          />
+        )}
         <ListItemAvatar>
           <Avatar className={classes.avatar} src={ticket?.contact?.profilePicUrl} />
         </ListItemAvatar>
@@ -464,18 +508,34 @@ const useStyles = makeStyles((theme) => ({
               >
                 {ticket.contact.name}
                 {profile === "admin" && (
-                  <Tooltip title="Espiar Conversa">
-                    <VisibilityIcon
-                      onClick={() => setOpenTicketMessageDialog(true)}
-                      fontSize="small"
-                      style={{
-                        color: blue[700],
-                        cursor: "pointer",
-                        marginLeft: 10,
-                        verticalAlign: "middle"
-                      }}
-                    />
-                  </Tooltip>
+                  <>
+                    <Tooltip title="Espiar Conversa">
+                      <VisibilityIcon
+                        onClick={() => setOpenTicketMessageDialog(true)}
+                        fontSize="small"
+                        style={{
+                          color: blue[700],
+                          cursor: "pointer",
+                          marginLeft: 10,
+                          verticalAlign: "middle"
+                        }}
+                      />
+                    </Tooltip>
+                    {isAdmin && !selectionMode && (
+                      <Tooltip title="Excluir ticket">
+                        <IconButton
+                          size="small"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDeleteConfirmOpen(true);
+                          }}
+                          style={{ marginLeft: 6 }}
+                        >
+                          <DeleteOutlineIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    )}
+                  </>
                 )}
               </Typography>
               <ListItemSecondaryAction>

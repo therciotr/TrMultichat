@@ -399,6 +399,67 @@ router.put("/:id", authMiddleware, async (req, res) => {
   return res.json(ticket);
 });
 
+// DELETE /tickets/bulk (admin only) - delete many tickets at once
+// IMPORTANT: must be declared BEFORE DELETE /tickets/:id, otherwise ":id" would match "bulk".
+router.delete("/bulk", authMiddleware, async (req, res) => {
+  const companyId = tenantIdFromReq(req);
+  if (!companyId) return res.status(401).json({ error: true, message: "missing tenantId" });
+
+  // only admin/super can delete tickets
+  const requesterId = Number((req as any).userId || 0);
+  if (!requesterId) return res.status(401).json({ error: true, message: "missing userId" });
+  const requesterRows = await pgQuery<any>(
+    `SELECT id, profile FROM "Users" WHERE id = $1 AND "companyId" = $2 LIMIT 1`,
+    [requesterId, companyId]
+  );
+  const requester = requesterRows?.[0];
+  const isAdmin = isAdminProfile(requester?.profile);
+  if (!isAdmin) return res.status(403).json({ error: true, message: "Only admins can delete tickets" });
+
+  const bodyIds = (req.body as any)?.ids;
+  const queryIds = String((req.query as any)?.ids || "").trim();
+  const ids: number[] = Array.isArray(bodyIds)
+    ? bodyIds.map((n: any) => Number(n)).filter((n: any) => Number.isFinite(n) && n > 0)
+    : queryIds
+      ? queryIds.split(",").map((s) => Number(String(s).trim())).filter((n) => Number.isFinite(n) && n > 0)
+      : [];
+
+  if (!ids.length) return res.status(400).json({ error: true, message: "ids is required" });
+
+  const deletedIds: number[] = [];
+  const failed: Array<{ id: number; error: string }> = [];
+
+  for (const id of ids) {
+    try {
+      // ensure ticket belongs to company
+      const exists = await pgQuery<{ id: number }>(
+        `SELECT id FROM "Tickets" WHERE id = $1 AND "companyId" = $2 LIMIT 1`,
+        [id, companyId]
+      );
+      if (!exists?.[0]?.id) {
+        failed.push({ id, error: "not_found" });
+        continue;
+      }
+
+      await deleteTicketCascade(id, companyId);
+      try { await pgQuery(`DELETE FROM "TicketTags" WHERE "ticketId" = $1`, [id]); } catch {}
+      try { await pgQuery(`DELETE FROM "TicketNotes" WHERE "ticketId" = $1`, [id]); } catch {}
+      try { await pgQuery(`DELETE FROM "Messages" WHERE "ticketId" = $1`, [id]); } catch {}
+      await pgQuery(`DELETE FROM "Tickets" WHERE id = $1 AND "companyId" = $2`, [id, companyId]);
+
+      deletedIds.push(id);
+      try {
+        const io = getIO();
+        io.emit(`company-${companyId}-ticket`, { action: "delete", ticket: { id } });
+      } catch {}
+    } catch (e: any) {
+      failed.push({ id, error: String(e?.message || "delete_failed") });
+    }
+  }
+
+  return res.json({ deletedIds, failed });
+});
+
 // DELETE /tickets/:id (delete ticket)
 router.delete("/:id", authMiddleware, async (req, res) => {
   const companyId = tenantIdFromReq(req);

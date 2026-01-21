@@ -190,6 +190,13 @@ const TicketActionButtonsCustom = ({ ticket }) => {
 					>
 						{i18n.t("messagesList.header.buttons.accept")}
 					</ButtonWithSpinner>
+					{isAdmin && (
+						<Tooltip title="Excluir ticket">
+							<IconButton onClick={() => setDeleteConfirmOpen(true)}>
+								<DeleteOutlineIcon />
+							</IconButton>
+						</Tooltip>
+					)}
 					{/* Allow admins to open options (delete) even while pending */}
 					<Can
 						role={user?.profile || "user"}
