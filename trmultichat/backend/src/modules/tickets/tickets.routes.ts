@@ -3,6 +3,7 @@ import { authMiddleware } from "../../middleware/authMiddleware";
 import { pgQuery } from "../../utils/pgClient";
 import { getIO } from "../../libs/socket";
 import { getInlineSock, startOrRefreshInlineSession } from "../../libs/waInlineManager";
+import { getSettingValue } from "../../utils/settingsStore";
 
 const router = Router();
 
@@ -351,7 +352,28 @@ router.put("/:id", authMiddleware, async (req, res) => {
             greeting = String(w?.[0]?.gm || w?.[0]?.wm || "").trim();
           } catch {}
         }
-        if (!greeting) return;
+        // Fallback: if no greeting configured, use sendGreetingAccepted setting default message
+        if (!greeting) {
+          try {
+            const enabled = String((await getSettingValue(companyId, "sendGreetingAccepted")) || "").toLowerCase() === "enabled";
+            if (!enabled) return;
+            const hour = new Date().getHours();
+            const ms = hour < 12 ? "Bom dia" : hour < 18 ? "Boa tarde" : "Boa noite";
+            let agentName = "";
+            try {
+              const u = await pgQuery<any>(`SELECT name FROM "Users" WHERE id = $1 AND "companyId" = $2 LIMIT 1`, [
+                Number(ticket?.userId || 0),
+                companyId
+              ]);
+              agentName = String(u?.[0]?.name || "").trim();
+            } catch {}
+            const clientName = String(ticket?.contact?.name || "Cliente").trim() || "Cliente";
+            const agentPart = agentName ? `*${agentName}*` : "*Atendente*";
+            greeting = `${ms} *${clientName}*, meu nome é ${agentPart} e agora vou prosseguir com seu atendimento!`;
+          } catch {
+            return;
+          }
+        }
 
         // Avoid sending greeting twice: only if we already sent our system greeting
         try {
