@@ -13,6 +13,7 @@ import Typography from "@material-ui/core/Typography";
 import Avatar from "@material-ui/core/Avatar";
 import Divider from "@material-ui/core/Divider";
 import Badge from "@material-ui/core/Badge";
+import Checkbox from "@material-ui/core/Checkbox";
 
 import { i18n } from "../../translate/i18n";
 
@@ -101,7 +102,7 @@ const useStyles = makeStyles((theme) => ({
   },
 }));
 
-const TicketListItem = ({ ticket }) => {
+const TicketListItem = ({ ticket, selectionMode = false, selected = false, onToggleSelect }) => {
   const classes = useStyles();
   const history = useHistory();
   const [loading, setLoading] = useState(false);
@@ -143,6 +144,10 @@ const TicketListItem = ({ ticket }) => {
         dense
         button
         onClick={(e) => {
+          if (selectionMode) {
+            if (typeof onToggleSelect === "function") onToggleSelect(ticket.id);
+            return;
+          }
           if (ticket.status === "pending") return;
           handleSelectTicket(ticket);
         }}
@@ -161,6 +166,16 @@ const TicketListItem = ({ ticket }) => {
             className={classes.ticketQueueColor}
           ></span>
         </Tooltip>
+        {selectionMode && (
+          <Checkbox
+            checked={Boolean(selected)}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (typeof onToggleSelect === "function") onToggleSelect(ticket.id);
+            }}
+            color="primary"
+          />
+        )}
         <ListItemAvatar>
           <Avatar src={ticket?.contact?.profilePicUrl} />
         </ListItemAvatar>
