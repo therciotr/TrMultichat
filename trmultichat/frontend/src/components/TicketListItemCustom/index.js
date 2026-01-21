@@ -553,7 +553,7 @@ const useStyles = makeStyles((theme) => ({
                 component="span"
                 variant="body2"
                 color="textSecondary"
-              > {ticket.lastMessage.includes('data:image/png;base64') ? <MarkdownWrapper> Localização</MarkdownWrapper> : <MarkdownWrapper>{ticket.lastMessage}</MarkdownWrapper>}
+              > {String(ticket.lastMessage || "").includes('data:image/png;base64') ? <MarkdownWrapper> Localização</MarkdownWrapper> : <MarkdownWrapper>{ticket.lastMessage || ""}</MarkdownWrapper>}
                 <span className={clsx(classes.secondaryContentSecond, classes.secondaryLine)} >
                   {ticket?.whatsapp?.name ? <span className={classes.connectionTag}>{ticket?.whatsapp?.name?.toUpperCase()}</span> : <br></br>}
                   {ticketUser ? <span style={{ backgroundColor: "#0F172A", color: "#fff" }} className={classes.connectionTag}>{ticketUser}</span> : <br></br>}

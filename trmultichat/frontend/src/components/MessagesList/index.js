@@ -23,13 +23,13 @@ import {
 
 import MarkdownWrapper from "../MarkdownWrapper";
 import ModalImageCors from "../ModalImageCors";
+import api from "../../services/api";
 import MessageOptionsMenu from "../MessageOptionsMenu";
 import whatsBackground from "../../assets/wa-background.png";
 import LocationPreview from "../LocationPreview";
 
 import whatsBackgroundDark from "../../assets/wa-background-dark.png"; //DARK MODE PLW DESIGN//
 
-import api from "../../services/api";
 import toastError from "../../errors/toastError";
 import { socketConnection } from "../../services/socket";
 
@@ -419,6 +419,14 @@ const MessagesList = ({ ticket, ticketId, isGroup }) => {
   };
 
   const checkMessageMedia = (message) => {
+    const resolveMediaUrl = (url) => {
+      const u = String(url || "").trim();
+      if (!u) return "";
+      if (/^https?:\/\//i.test(u)) return u;
+      const base = String(api?.defaults?.baseURL || "").replace(/\/$/, "");
+      if (!base) return u;
+      return `${base}${u.startsWith("/") ? u : `/${u}`}`;
+    };
     const guessAudioType = (url) => {
       const u = String(url || "").toLowerCase();
       if (u.endsWith(".mp3")) return "audio/mpeg";
@@ -478,18 +486,18 @@ const MessagesList = ({ ticket, ticketId, isGroup }) => {
       } else return (<></>)
     }*/
     else if (message.mediaType === "image") {
-      return <ModalImageCors imageUrl={message.mediaUrl} />;
+      return <ModalImageCors imageUrl={resolveMediaUrl(message.mediaUrl)} />;
     } else if (message.mediaType === "audio") {
       return (
         <audio controls preload="metadata" style={{ maxWidth: "100%" }} crossOrigin="anonymous">
-          <source src={message.mediaUrl} type={guessAudioType(message.mediaUrl)}></source>
+          <source src={resolveMediaUrl(message.mediaUrl)} type={guessAudioType(message.mediaUrl)}></source>
         </audio>
       );
     } else if (message.mediaType === "video") {
       return (
         <video
           className={classes.messageMedia}
-          src={message.mediaUrl}
+          src={resolveMediaUrl(message.mediaUrl)}
           controls
         />
       );
@@ -502,7 +510,7 @@ const MessagesList = ({ ticket, ticketId, isGroup }) => {
               color="primary"
               variant="outlined"
               target="_blank"
-              href={message.mediaUrl}
+              href={resolveMediaUrl(message.mediaUrl)}
             >
               Download
             </Button>
@@ -606,6 +614,16 @@ const MessagesList = ({ ticket, ticketId, isGroup }) => {
   };
 
   const renderQuotedMessage = (message) => {
+    const quoted = message?.quotedMsg;
+    if (!quoted) return null;
+    const resolveMediaUrl = (url) => {
+      const u = String(url || "").trim();
+      if (!u) return "";
+      if (/^https?:\/\//i.test(u)) return u;
+      const base = String(api?.defaults?.baseURL || "").replace(/\/$/, "");
+      if (!base) return u;
+      return `${base}${u.startsWith("/") ? u : `/${u}`}`;
+    };
     const guessAudioType = (url) => {
       const u = String(url || "").toLowerCase();
       if (u.endsWith(".mp3")) return "audio/mpeg";
@@ -624,54 +642,49 @@ const MessagesList = ({ ticket, ticketId, isGroup }) => {
       >
         <span
           className={clsx(classes.quotedSideColorLeft, {
-            [classes.quotedSideColorRight]: message.quotedMsg?.fromMe,
+            [classes.quotedSideColorRight]: quoted?.fromMe,
           })}
         ></span>
         <div className={classes.quotedMsg}>
-          {!message.quotedMsg?.fromMe && (
+          {!quoted?.fromMe && (
             <span className={classes.messageContactName}>
-              {message.quotedMsg?.contact?.name}
+              {quoted?.contact?.name}
             </span>
           )}
 
-          {message.quotedMsg.mediaType === "audio"
-            && (
+          {quoted?.mediaType === "audio" && (
               <div className={classes.downloadMedia}>
                 <audio controls preload="metadata" style={{ maxWidth: "100%" }} crossOrigin="anonymous">
-                  <source src={message.quotedMsg.mediaUrl} type={guessAudioType(message.quotedMsg.mediaUrl)}></source>
+                  <source src={resolveMediaUrl(quoted.mediaUrl)} type={guessAudioType(quoted.mediaUrl)}></source>
                 </audio>
               </div>
-            )
-          }
-          {message.quotedMsg.mediaType === "video"
-            && (
+          )}
+          {quoted?.mediaType === "video" && (
               <video
                 className={classes.messageMedia}
-                src={message.quotedMsg.mediaUrl}
+                src={resolveMediaUrl(quoted.mediaUrl)}
                 controls
               />
-            )
-          }
-          {message.quotedMsg.mediaType === "application"
-            && (
+          )}
+          {quoted?.mediaType === "application" && (
               <div className={classes.downloadMedia}>
                 <Button
                   startIcon={<GetApp />}
                   color="primary"
                   variant="outlined"
                   target="_blank"
-                  href={message.quotedMsg.mediaUrl}
+                  href={resolveMediaUrl(quoted.mediaUrl)}
                 >
                   Download
                 </Button>
               </div>
-            )
-          }
+          )}
 
-          {message.quotedMsg.mediaType === "image"
-            && (
-              <ModalImageCors imageUrl={message.quotedMsg.mediaUrl} />)
-            || message.quotedMsg?.body}
+          {quoted?.mediaType === "image" ? (
+            <ModalImageCors imageUrl={resolveMediaUrl(quoted.mediaUrl)} />
+          ) : (
+            quoted?.body
+          )}
 
         </div>
       </div>
