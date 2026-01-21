@@ -17,6 +17,9 @@ import UndoRoundedIcon from '@material-ui/icons/UndoRounded';
 import Tooltip from '@material-ui/core/Tooltip';
 import { green } from '@material-ui/core/colors';
 import { Can } from "../Can";
+import DeleteOutlineIcon from "@material-ui/icons/DeleteOutline";
+import ConfirmationModal from "../ConfirmationModal";
+import { toast } from "react-toastify";
 
 
 const useStyles = makeStyles(theme => ({
@@ -36,6 +39,7 @@ const TicketActionButtonsCustom = ({ ticket }) => {
 	const history = useHistory();
 	const [anchorEl, setAnchorEl] = useState(null);
 	const [loading, setLoading] = useState(false);
+	const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 	const ticketOptionsMenuOpen = Boolean(anchorEl);
 	const { user } = useContext(AuthContext);
 	const { setCurrentTicket } = useContext(TicketsContext);
@@ -80,6 +84,24 @@ const TicketActionButtonsCustom = ({ ticket }) => {
 
 	const isAdmin = String(user?.profile || "").toLowerCase() === "admin" || String(user?.profile || "").toLowerCase() === "super" || Boolean(user?.admin);
 
+	const handleDeleteTicket = async () => {
+		setLoading(true);
+		try {
+			await api.delete(`/tickets/${ticket.id}`);
+			setLoading(false);
+			setDeleteConfirmOpen(false);
+			try {
+				toast.success("Ticket excluído com sucesso.");
+			} catch {}
+			setCurrentTicket({ id: null, code: null });
+			history.push("/tickets");
+		} catch (err) {
+			setLoading(false);
+			setDeleteConfirmOpen(false);
+			toastError(err);
+		}
+	};
+
 	return (
 		<div className={classes.actionButtons}>
 			{ticket.status === "closed" && (
@@ -122,6 +144,13 @@ const TicketActionButtonsCustom = ({ ticket }) => {
 							</IconButton>
 						</Tooltip>
 					</ThemeProvider>
+					{isAdmin && (
+						<Tooltip title="Excluir ticket">
+							<IconButton onClick={() => setDeleteConfirmOpen(true)}>
+								<DeleteOutlineIcon />
+							</IconButton>
+						</Tooltip>
+					)}
 					{/* <ButtonWithSpinner
 						loading={loading}
 						startIcon={<Replay />}
@@ -179,6 +208,14 @@ const TicketActionButtonsCustom = ({ ticket }) => {
 					/>
 				</>
 			)}
+			<ConfirmationModal
+				title={`Excluir o ticket #${ticket?.id}?`}
+				open={deleteConfirmOpen}
+				onClose={setDeleteConfirmOpen}
+				onConfirm={handleDeleteTicket}
+			>
+				Essa ação é permanente e remove mensagens/anotações relacionadas.
+			</ConfirmationModal>
 		</div>
 	);
 };

@@ -410,11 +410,12 @@ router.delete("/:id", authMiddleware, async (req, res) => {
   const requesterId = Number((req as any).userId || 0);
   if (!requesterId) return res.status(401).json({ error: true, message: "missing userId" });
   const requesterRows = await pgQuery<any>(
-    `SELECT id, admin, profile FROM "Users" WHERE id = $1 AND "companyId" = $2 LIMIT 1`,
+    // Some schemas do NOT have "admin" boolean column; rely on "profile" (admin/super).
+    `SELECT id, profile FROM "Users" WHERE id = $1 AND "companyId" = $2 LIMIT 1`,
     [requesterId, companyId]
   );
   const requester = requesterRows?.[0];
-  const isAdmin = Boolean(requester?.admin) || isAdminProfile(requester?.profile);
+  const isAdmin = isAdminProfile(requester?.profile);
   if (!isAdmin) {
     return res.status(403).json({ error: true, message: "Only admins can delete tickets" });
   }
