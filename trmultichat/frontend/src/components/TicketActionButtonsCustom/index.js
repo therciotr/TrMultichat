@@ -78,17 +78,35 @@ const TicketActionButtonsCustom = ({ ticket }) => {
 		}
 	};
 
+	const isAdmin = String(user?.profile || "").toLowerCase() === "admin" || String(user?.profile || "").toLowerCase() === "super" || Boolean(user?.admin);
+
 	return (
 		<div className={classes.actionButtons}>
 			{ticket.status === "closed" && (
-				<ButtonWithSpinner
-					loading={loading}
-					startIcon={<Replay />}
-					size="small"
-					onClick={e => handleUpdateTicketStatus(e, "open", user?.id)}
-				>
-					{i18n.t("messagesList.header.buttons.reopen")}
-				</ButtonWithSpinner>
+				<>
+					<ButtonWithSpinner
+						loading={loading}
+						startIcon={<Replay />}
+						size="small"
+						onClick={e => handleUpdateTicketStatus(e, "open", user?.id)}
+					>
+						{i18n.t("messagesList.header.buttons.reopen")}
+					</ButtonWithSpinner>
+					{/* Admin can access options (delete) on closed tickets too */}
+					{isAdmin && (
+						<>
+							<IconButton onClick={handleOpenTicketOptionsMenu}>
+								<MoreVert />
+							</IconButton>
+							<TicketOptionsMenu
+								ticket={ticket}
+								anchorEl={anchorEl}
+								menuOpen={ticketOptionsMenuOpen}
+								handleClose={handleCloseTicketOptionsMenu}
+							/>
+						</>
+					)}
+				</>
 			)}
 			{ticket.status === "open" && (
 				<>

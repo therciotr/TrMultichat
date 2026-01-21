@@ -1,4 +1,6 @@
-import React, { useContext, useEffect, useRef, useState } from "react";
+import React, { useContext, useEffect, useRef, useState, useMemo } from "react";
+import { useHistory } from "react-router-dom";
+import { toast } from "react-toastify";
 
 import MenuItem from "@material-ui/core/MenuItem";
 import Menu from "@material-ui/core/Menu";
@@ -18,9 +20,15 @@ const TicketOptionsMenu = ({ ticket, menuOpen, handleClose, anchorEl }) => {
 	const [transferTicketModalOpen, setTransferTicketModalOpen] = useState(false);
 	const isMounted = useRef(true);
 	const { user } = useContext(AuthContext);
+	const history = useHistory();
 
 	const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
 	const [contactId, setContactId] = useState(null);
+
+	const isAdmin = useMemo(() => {
+		const profile = String(user?.profile || "").toLowerCase();
+		return Boolean(user?.admin) || profile === "admin" || profile === "super";
+	}, [user]);
 
 	useEffect(() => {
 		return () => {
@@ -31,6 +39,11 @@ const TicketOptionsMenu = ({ ticket, menuOpen, handleClose, anchorEl }) => {
 	const handleDeleteTicket = async () => {
 		try {
 			await api.delete(`/tickets/${ticket.id}`);
+			toast.success(i18n.t("ticketOptionsMenu.deleteSuccess") || "Ticket excluído com sucesso.");
+			// If user is currently inside the ticket, go back to list
+			try {
+				history.push("/tickets");
+			} catch {}
 		} catch (err) {
 			toastError(err);
 		}
@@ -54,7 +67,7 @@ const TicketOptionsMenu = ({ ticket, menuOpen, handleClose, anchorEl }) => {
 
 	const handleOpenScheduleModal = () => {
 		handleClose();
-		setContactId(ticket.contact.id);
+		setContactId(ticket?.contact?.id || null);
 		setScheduleModalOpen(true);
 	}
 
@@ -87,21 +100,28 @@ const TicketOptionsMenu = ({ ticket, menuOpen, handleClose, anchorEl }) => {
 				<MenuItem onClick={handleOpenTransferModal}>
 					{i18n.t("ticketOptionsMenu.transfer")}
 				</MenuItem>
-				<Can
+				{/* Admin-friendly delete: show for admin even if permission matrix is misconfigured */}
+				{isAdmin ? (
+					<MenuItem onClick={handleOpenConfirmationModal}>
+						{i18n.t("ticketOptionsMenu.delete")}
+					</MenuItem>
+				) : (
+					<Can
 						role={user?.profile || "user"}
-					perform="ticket-options:deleteTicket"
-					yes={() => (
-						<MenuItem onClick={handleOpenConfirmationModal}>
-							{i18n.t("ticketOptionsMenu.delete")}
-						</MenuItem>
-					)}
-				/>
+						perform="ticket-options:deleteTicket"
+						yes={() => (
+							<MenuItem onClick={handleOpenConfirmationModal}>
+								{i18n.t("ticketOptionsMenu.delete")}
+							</MenuItem>
+						)}
+					/>
+				)}
 			</Menu>
 			<ConfirmationModal
 				title={`${i18n.t("ticketOptionsMenu.confirmationModal.title")}${
 					ticket.id
 				} ${i18n.t("ticketOptionsMenu.confirmationModal.titleFrom")} ${
-					ticket.contact.name
+					ticket?.contact?.name || "-"
 				}?`}
 				open={confirmationOpen}
 				onClose={setConfirmationOpen}

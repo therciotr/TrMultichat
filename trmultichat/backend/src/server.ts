@@ -1002,7 +1002,10 @@ server.listen(env.PORT, async () => {
   }
 
   // Start WhatsApp sessions for each company (tenant)
-  if (String(process.env.DEV_MODE || env.DEV_MODE || "false").toLowerCase() !== "true") {
+  // NOTE: We default to the inline manager for stability (avoids double connections / 440 conflict).
+  // Enable legacy wbot startup only when explicitly requested.
+  const startLegacyWbot = String(process.env.START_LEGACY_WBOT || "").toLowerCase() === "true";
+  if (startLegacyWbot && String(process.env.DEV_MODE || env.DEV_MODE || "false").toLowerCase() !== "true") {
     try {
       // eslint-disable-next-line @typescript-eslint/no-var-requires
       const CompanyModel = require("./models/Company");
@@ -1016,7 +1019,7 @@ server.listen(env.PORT, async () => {
       logger.warn("StartAllWhatsAppsSessions skipped", e);
     }
   } else {
-    logger.info("DEV_MODE=true: skipping WhatsApp sessions startup");
+    logger.info("Legacy StartAllWhatsAppsSessions skipped (inline manager active). Set START_LEGACY_WBOT=true to enable legacy startup.");
   }
 
   // Start queues

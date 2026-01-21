@@ -79,6 +79,66 @@ async function loadTicketTags(ticketId: number, companyId: number) {
   return Array.isArray(rows) ? rows : [];
 }
 
+function isAdminProfile(profile: any): boolean {
+  const p = String(profile || "").toLowerCase();
+  return p === "admin" || p === "super";
+}
+
+function quoteIdent(ident: string): string {
+  // Basic identifier quoting for safe dynamic SQL
+  const s = String(ident || "");
+  return `"${s.replace(/"/g, '""')}"`;
+}
+
+async function deleteTicketCascade(ticketId: number, companyId: number) {
+  // Generic FK cascade: delete rows in tables referencing Tickets (best-effort).
+  // This prevents FK errors when deleting a ticket in customized schemas.
+  try {
+    const refs = await pgQuery<{ table: string; column: string }>(
+      `
+        SELECT
+          c.conrelid::regclass::text as "table",
+          a.attname as "column"
+        FROM pg_constraint c
+        JOIN pg_attribute a
+          ON a.attrelid = c.conrelid AND a.attnum = ANY (c.conkey)
+        WHERE c.contype = 'f'
+          AND c.confrelid = '"Tickets"'::regclass
+      `,
+      []
+    );
+    for (const r of refs || []) {
+      const table = String(r.table || "").trim();
+      const col = String(r.column || "").trim();
+      if (!table || !col) continue;
+      // Skip self
+      if (table.replace(/"/g, "").toLowerCase() === "tickets") continue;
+      try {
+        // If table has companyId column, restrict deletion to company too.
+        const rawTable = table.replace(/^public\./i, "").replace(/"/g, "");
+        const cols = await pgQuery<{ column_name: string }>(
+          `
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema = 'public' AND lower(table_name) = lower($1)
+          `,
+          [rawTable]
+        );
+        const hasCompanyId = (cols || []).some((c) => String(c.column_name).toLowerCase() === "companyid");
+        if (hasCompanyId) {
+          await pgQuery(`DELETE FROM ${table} WHERE ${quoteIdent(col)} = $1 AND "companyId" = $2`, [ticketId, companyId]);
+        } else {
+          await pgQuery(`DELETE FROM ${table} WHERE ${quoteIdent(col)} = $1`, [ticketId]);
+        }
+      } catch {
+        // ignore per-table failures (missing table/column/etc)
+      }
+    }
+  } catch {
+    // ignore
+  }
+}
+
 // GET /tickets
 router.get("/", authMiddleware, async (req, res) => {
   setNoCache(res);
@@ -354,7 +414,7 @@ router.delete("/:id", authMiddleware, async (req, res) => {
     [requesterId, companyId]
   );
   const requester = requesterRows?.[0];
-  const isAdmin = Boolean(requester?.admin) || String(requester?.profile || "") === "admin";
+  const isAdmin = Boolean(requester?.admin) || isAdminProfile(requester?.profile);
   if (!isAdmin) {
     return res.status(403).json({ error: true, message: "Only admins can delete tickets" });
   }
@@ -366,10 +426,13 @@ router.delete("/:id", authMiddleware, async (req, res) => {
   );
   if (!exists?.[0]?.id) return res.status(404).json({ error: true, message: "not found" });
 
-  // cascade-like cleanup (avoid FK issues)
-  await pgQuery(`DELETE FROM "TicketTags" WHERE "ticketId" = $1`, [id]);
-  await pgQuery(`DELETE FROM "TicketNotes" WHERE "ticketId" = $1`, [id]);
-  await pgQuery(`DELETE FROM "Messages" WHERE "ticketId" = $1`, [id]);
+  // generic FK cleanup first (avoid FK issues across custom schemas)
+  await deleteTicketCascade(id, companyId);
+
+  // cascade-like cleanup (known tables)
+  try { await pgQuery(`DELETE FROM "TicketTags" WHERE "ticketId" = $1`, [id]); } catch {}
+  try { await pgQuery(`DELETE FROM "TicketNotes" WHERE "ticketId" = $1`, [id]); } catch {}
+  try { await pgQuery(`DELETE FROM "Messages" WHERE "ticketId" = $1`, [id]); } catch {}
   await pgQuery(`DELETE FROM "Tickets" WHERE id = $1 AND "companyId" = $2`, [id, companyId]);
 
   try {

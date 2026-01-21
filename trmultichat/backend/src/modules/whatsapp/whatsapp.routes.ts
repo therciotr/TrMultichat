@@ -6,6 +6,7 @@ import env from "../../config/env";
 import { findAllSafe, findByPkSafe, getLegacyModel } from "../../utils/legacyModel";
 import { pgQuery } from "../../utils/pgClient";
 import { getStoredQr } from "../../libs/baileysManager";
+import { getInlineSnapshot } from "../../libs/waInlineManager";
 
 const router = Router();
 
@@ -236,8 +237,11 @@ function emitSocket(tenantId: number, event: string, payload: any) {
 }
 
 router.get("/", async (req, res) => {
-  // Prefer legacy listing (includes real status/session fields when available)
-  if (tryRunLegacyWhatsAppController("index", req, res)) return;
+  // Prefer our SQL listing by default (legacy listing can be inconsistent when we run the inline manager).
+  const useLegacyIndex = String(process.env.USE_LEGACY_WHATSAPP_INDEX || "").toLowerCase() === "true";
+  if (useLegacyIndex) {
+    if (tryRunLegacyWhatsAppController("index", req, res)) return;
+  }
 
   const tenantId = extractTenantIdFromAuth(req.headers.authorization as string);
   const companyId = Number(req.query.companyId || tenantId || 0);
@@ -267,7 +271,10 @@ router.get("/", async (req, res) => {
     const enriched = list.map((w: any) => {
       const stored = getStoredQr(Number(w.id));
       const sess = stored || sessions[String(w.id)] || {};
-      return { ...w, qrcode: sess.qrcode || w.qrcode || "" };
+      const inline = getInlineSnapshot(Number(w.id));
+      const status = inline?.status || w.status;
+      const qrcode = inline?.qrcode || sess.qrcode || w.qrcode || "";
+      return { ...w, status, qrcode };
     });
     return res.json(enriched);
   } catch (_) {
@@ -281,7 +288,10 @@ router.get("/", async (req, res) => {
     const enriched = list.map((w: any) => {
       const stored = getStoredQr(Number(w.id));
       const sess = stored || sessions[String(w.id)] || {};
-      return { ...w, qrcode: sess.qrcode || w.qrcode || "" };
+      const inline = getInlineSnapshot(Number(w.id));
+      const status = inline?.status || w.status;
+      const qrcode = inline?.qrcode || sess.qrcode || w.qrcode || "";
+      return { ...w, status, qrcode };
     });
     return res.json(enriched);
   }
