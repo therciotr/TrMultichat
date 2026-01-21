@@ -95,6 +95,11 @@ const TicketActionButtons = ({ ticket }) => {
 					>
 						{i18n.t("messagesList.header.buttons.reopen")}
 					</ButtonWithSpinner>
+					{isAdmin && (
+						<IconButton onClick={() => setDeleteConfirmOpen(true)}>
+							<DeleteOutlineIcon />
+						</IconButton>
+					)}
 					{/* Admin can access options (delete) on closed tickets too */}
 					{isAdmin && (
 						<>
