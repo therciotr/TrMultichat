@@ -2,6 +2,7 @@ import { pgQuery } from "../utils/pgClient";
 import { getIO } from "./socket";
 import fs from "fs";
 import path from "path";
+import crypto from "crypto";
 
 function isWaDebug(): boolean {
   return String(process.env.DEBUG_WA_MESSAGES || "").toLowerCase() === "true";
@@ -296,6 +297,30 @@ async function loadTicketWithContact(ticketId: number) {
   return ticket;
 }
 
+function stableMessageIdFallback(payload: any): string {
+  try {
+    const raw = JSON.stringify(payload || {});
+    const h = crypto.createHash("sha1").update(raw).digest("hex").slice(0, 24);
+    return `wa-${h}`;
+  } catch {
+    return `wa-${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+  }
+}
+
+async function sendTextWithRetry(sock: any, remoteJid: string, text: string, attempts = 3) {
+  let lastErr: any = null;
+  for (let i = 1; i <= attempts; i++) {
+    try {
+      return await sock.sendMessage(remoteJid, { text });
+    } catch (e: any) {
+      lastErr = e;
+      waLog("sendMessage failed", { attempt: i, message: e?.message });
+      await new Promise((r) => setTimeout(r, 700 * i));
+    }
+  }
+  throw lastErr;
+}
+
 export async function ingestBaileysMessage(opts: {
   companyId: number;
   whatsappId: number;
@@ -318,8 +343,17 @@ export async function ingestBaileysMessage(opts: {
   const remoteJid = String(msg?.key?.remoteJid || "");
   if (!remoteJid || remoteJid === "status@broadcast") return;
 
-  const messageId = String(msg?.key?.id || "");
-  if (!messageId) return;
+  const messageId =
+    String(msg?.key?.id || "") ||
+    stableMessageIdFallback({
+      remoteJid,
+      fromMe: Boolean(msg?.key?.fromMe),
+      participant: msg?.key?.participant || null,
+      ts: String(msg?.messageTimestamp || ""),
+      body: extractTextBody(msg) || "",
+      kind: detectMedia(msg).kind || "",
+      idHint: msg?.key || null
+    });
 
   const fromMe = Boolean(msg?.key?.fromMe);
   const participant = msg?.key?.participant ? String(msg.key.participant) : null;
@@ -404,6 +438,7 @@ export async function ingestBaileysMessage(opts: {
   // Chatbot selection persistence:
   // If the customer replies with a numeric option, store it on the ticket (queueOptionId).
   // This is used to track the chosen path and (if ticket has no queue yet) to attach it.
+  let selectedQueueIdFromMenu: number | null = null;
   if (!fromMe && !isGroup) {
     const choice = String(baseBody || "").trim();
     if (choice && /^\d+$/.test(choice)) {
@@ -443,6 +478,7 @@ export async function ingestBaileysMessage(opts: {
               ticketRow.queueId = targetQueueId;
               ticketRow.queueOptionId = null;
               handledQueueMenu = true;
+              selectedQueueIdFromMenu = targetQueueId;
             }
           }
         } catch {
@@ -544,6 +580,69 @@ export async function ingestBaileysMessage(opts: {
     `,
     [body || "", fromMe, fromMe ? 0 : 1, ticketRow.id]
   );
+
+  // If user picked a queue from our accept menu, immediately send QueueOptions root menu for that queue (professional flow).
+  if (!fromMe && !isGroup && selectedQueueIdFromMenu && sock) {
+    try {
+      // Dedupe: only one root options menu per ticket+queue
+      const already = await pgQuery<{ c: number }>(
+        `SELECT COUNT(1)::int as c
+         FROM "Messages"
+         WHERE "ticketId" = $1 AND "companyId" = $2
+           AND "dataJson"::text ILIKE '%"system":"queue_options_menu"%'
+           AND "dataJson"::text ILIKE $3`,
+        [ticketRow.id, companyId, `%"queueId":${selectedQueueIdFromMenu}%`]
+      );
+      if (Number(already?.[0]?.c || 0) === 0) {
+        const optRows = await pgQuery<any>(
+          `SELECT *
+           FROM "QueueOptions"
+           WHERE "queueId" = $1 AND "parentId" IS NULL
+           ORDER BY COALESCE(option, id) ASC, id ASC`,
+          [selectedQueueIdFromMenu]
+        );
+        const optsList = Array.isArray(optRows) ? optRows : [];
+        const items = optsList
+          .map((r: any) => ({
+            id: Number(r?.id || 0) || 0,
+            option: String(r?.option ?? "").trim(),
+            title: String(r?.title || r?.name || r?.message || "").trim()
+          }))
+          .filter((it: any) => it.id && it.option && it.title);
+
+        if (items.length) {
+          const menuText =
+            `Perfeito! Agora escolha uma opção para continuar:\n` +
+            items.map((it: any) => `${it.option} - ${it.title}`).join("\n");
+
+          const r = await sendTextWithRetry(sock, remoteJid, menuText, 3);
+          const outId = String(r?.key?.id || `queue-options-${Date.now()}`);
+
+          await pgQuery(
+            `
+              INSERT INTO "Messages"
+                (id, body, ack, read, "ticketId", "createdAt", "updatedAt", "fromMe", "isDeleted",
+                 "contactId", "companyId", "remoteJid", "dataJson")
+              VALUES
+                ($1, $2, 0, true, $3, NOW(), NOW(), true, false, $4, $5, $6, $7)
+              ON CONFLICT (id) DO NOTHING
+            `,
+            [
+              outId,
+              menuText,
+              ticketRow.id,
+              contact.id,
+              companyId,
+              remoteJid,
+              JSON.stringify({ system: "queue_options_menu", queueId: selectedQueueIdFromMenu, parentId: null, items })
+            ]
+          );
+        }
+      }
+    } catch (e: any) {
+      waLog("failed to send queue options menu after queue selection", { message: e?.message });
+    }
+  }
 
   // emit socket events to refresh ticket list
   const payloadTicket = await loadTicketWithContact(ticketRow.id);
