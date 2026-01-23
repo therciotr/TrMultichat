@@ -7,20 +7,23 @@ import InputLabel from "@material-ui/core/InputLabel";
 import Select from "@material-ui/core/Select";
 import FormHelperText from "@material-ui/core/FormHelperText";
 import TextField from "@material-ui/core/TextField";
-import Title from "../Title";
-import Paper from "@material-ui/core/Paper";
-import Typography from "@material-ui/core/Typography";
 import useSettings from "../../hooks/useSettings";
-import { ToastContainer, toast } from 'react-toastify';
+import { toast } from 'react-toastify';
 import { makeStyles } from "@material-ui/core/styles";
 import { grey, blue } from "@material-ui/core/colors";
-import { Tabs, Tab } from "@material-ui/core";
 import { TrButton, TrCard, TrSectionTitle } from "../ui";
 import toastError from "../../errors/toastError";
-import Box from "@material-ui/core/Box";
 import Switch from "@material-ui/core/Switch";
 import FormControlLabel from "@material-ui/core/FormControlLabel";
 import SaveOutlinedIcon from "@material-ui/icons/SaveOutlined";
+import InputAdornment from "@material-ui/core/InputAdornment";
+import IconButton from "@material-ui/core/IconButton";
+import Tooltip from "@material-ui/core/Tooltip";
+import DnsOutlinedIcon from "@material-ui/icons/DnsOutlined";
+import VpnKeyOutlinedIcon from "@material-ui/icons/VpnKeyOutlined";
+import AccountBalanceWalletOutlinedIcon from "@material-ui/icons/AccountBalanceWalletOutlined";
+import VisibilityOutlinedIcon from "@material-ui/icons/VisibilityOutlined";
+import VisibilityOffOutlinedIcon from "@material-ui/icons/VisibilityOffOutlined";
 
 //import 'react-toastify/dist/ReactToastify.css';
  
@@ -144,14 +147,16 @@ export default function Options(props) {
 
   const [asaasType, setAsaasType] = useState("");
   const [loadingAsaasType, setLoadingAsaasType] = useState(false);
+
+  const [showTokenIxc, setShowTokenIxc] = useState(false);
+  const [showClientSecretMk, setShowClientSecretMk] = useState(false);
+  const [showAsaasToken, setShowAsaasToken] = useState(false);
   
   // recursos a mais da plw design
 
   const [SendGreetingAccepted, setSendGreetingAccepted] = useState("disabled");
-  const [loadingSendGreetingAccepted, setLoadingSendGreetingAccepted] = useState(false);
   
   const [SettingsTransfTicket, setSettingsTransfTicket] = useState("disabled");
-  const [loadingSettingsTransfTicket, setLoadingSettingsTransfTicket] = useState(false);
 
   const { update } = useSettings();
 
@@ -163,6 +168,15 @@ export default function Options(props) {
     CheckMsgIsGroup: "enabled",
     sendGreetingAccepted: "disabled",
     sendMsgTransfTicket: "disabled",
+  });
+
+  const initialIntegrationsRef = useRef({
+    ipixc: "",
+    tokenixc: "",
+    ipmkauth: "",
+    clientidmkauth: "",
+    clientsecretmkauth: "",
+    asaas: ""
   });
 
   useEffect(() => {
@@ -183,20 +197,16 @@ export default function Options(props) {
       if (CheckMsgIsGroup) {
         setCheckMsgIsGroupType(CheckMsgIsGroup.value);
       }
-	  
-	  {/*PLW DESIGN SAUDAÇÃO*/}
+      // PLW DESIGN SAUDAÇÃO
       const SendGreetingAccepted = settings.find((s) => s.key === "sendGreetingAccepted");
       if (SendGreetingAccepted) {
         setSendGreetingAccepted(SendGreetingAccepted.value);
       }	 
-	  {/*PLW DESIGN SAUDAÇÃO*/}	 
-	  
-	  {/*TRANSFERIR TICKET*/}	
+      // TRANSFERIR TICKET
 	  const SettingsTransfTicket = settings.find((s) => s.key === "sendMsgTransfTicket");
       if (SettingsTransfTicket) {
         setSettingsTransfTicket(SettingsTransfTicket.value);
       }
-	  {/*TRANSFERIR TICKET*/}	
 	  
       const chatbotType = settings.find((s) => s.key === "chatBotType");
       if (chatbotType) {
@@ -243,6 +253,15 @@ export default function Options(props) {
         sendGreetingAccepted: SendGreetingAccepted?.value ?? "disabled",
         sendMsgTransfTicket: SettingsTransfTicket?.value ?? "disabled",
       };
+
+      initialIntegrationsRef.current = {
+        ipixc: ipixcType?.value ?? "",
+        tokenixc: tokenixcType?.value ?? "",
+        ipmkauth: ipmkauthType?.value ?? "",
+        clientidmkauth: clientidmkauthType?.value ?? "",
+        clientsecretmkauth: clientsecretmkauthType?.value ?? "",
+        asaas: asaasType?.value ?? ""
+      };
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings]);
@@ -260,11 +279,8 @@ export default function Options(props) {
     );
   })();
   
-  {/*NOVO CÓDIGO*/}  
-  async function handleSendGreetingAccepted(value) { setSendGreetingAccepted(value); }  
-  
-  
-  {/*NOVO CÓDIGO*/}    
+  // Mensagens automáticas (ao aceitar / ao transferir)
+  async function handleSendGreetingAccepted(value) { setSendGreetingAccepted(value); }
 
   async function handleSettingsTransfTicket(value) { setSettingsTransfTicket(value); } 
  
@@ -291,6 +307,15 @@ export default function Options(props) {
   async function handleChangeAsaas(value) {
     setAsaasType(value);
   }
+
+  const ixcDirty =
+    String(ipixcType || "") !== String(initialIntegrationsRef.current.ipixc || "") ||
+    String(tokenixcType || "") !== String(initialIntegrationsRef.current.tokenixc || "");
+  const mkDirty =
+    String(ipmkauthType || "") !== String(initialIntegrationsRef.current.ipmkauth || "") ||
+    String(clientidmkauthType || "") !== String(initialIntegrationsRef.current.clientidmkauth || "") ||
+    String(clientsecretmkauthType || "") !== String(initialIntegrationsRef.current.clientsecretmkauth || "");
+  const asaasDirty = String(asaasType || "") !== String(initialIntegrationsRef.current.asaas || "");
 
   async function handleSaveGeneral() {
     if (!generalDirty) return;
@@ -471,197 +496,246 @@ export default function Options(props) {
       </TrCard>
       <div style={{ height: 12 }} />
       <TrSectionTitle title="Integrações" subtitle="Credenciais dos serviços externos" />
-      <TrCard elevation={1} className="tr-card-border" style={{ padding: 16 }}>
-      {/*-----------------IXC-----------------*/}
-      <TrSectionTitle title="IXC" />
-      <Grid spacing={3} container
-        style={{ marginBottom: 10 }}>
-        <Grid xs={12} sm={6} md={6} item>
-          <FormControl className={classes.selectContainer}>
-            <TextField
-              id="ipixc"
-              name="ipixc"
-              margin="dense"
-              label="IP do IXC"
-              placeholder="http://seu-ixc:port (ou IP/DNS acessível)"
-              variant="outlined"
-              value={ipixcType}
-              onChange={async (e) => {
-                handleChangeIPIxc(e.target.value);
+      <TrCard elevation={1} className="tr-card-border" style={{ padding: 0 }}>
+        <div className={classes.sectionCard}>
+          {/* IXC */}
+          <div className={classes.topBar} style={{ marginBottom: 12 }}>
+            <div className={classes.topBarLeft}>
+              <p className={classes.topBarTitle}>
+                <DnsOutlinedIcon style={{ verticalAlign: "middle", marginRight: 8 }} />
+                IXC
+              </p>
+              <p className={classes.topBarSub}>Endereço e token de acesso da integração IXC.</p>
+            </div>
+            <TrButton
+              startIcon={<SaveOutlinedIcon />}
+              disabled={!ixcDirty || loadingIpIxcType || loadingTokenIxcType}
+              onClick={async () => {
+                try {
+                  setLoadingIpIxcType(true);
+                  setLoadingTokenIxcType(true);
+                  await Promise.all([
+                    update({ key: "ipixc", value: ipixcType }),
+                    update({ key: "tokenixc", value: tokenixcType }),
+                  ]);
+                  initialIntegrationsRef.current = {
+                    ...initialIntegrationsRef.current,
+                    ipixc: String(ipixcType || ""),
+                    tokenixc: String(tokenixcType || ""),
+                  };
+                  toast.success("IXC salvo com sucesso.");
+                } catch (err) {
+                  toastError(err);
+                } finally {
+                  setLoadingIpIxcType(false);
+                  setLoadingTokenIxcType(false);
+                }
               }}
             >
-            </TextField>
-            <FormHelperText>Endereço do servidor IXC acessível pela API.</FormHelperText>
-            <FormHelperText>
-              {loadingIpIxcType && "Atualizando..."}
-            </FormHelperText>
-          </FormControl>
-        </Grid>
-        <Grid xs={12} sm={6} md={6} item>
-          <FormControl className={classes.selectContainer}>
-            <TextField
-              id="tokenixc"
-              name="tokenixc"
-              margin="dense"
-              label="Token do IXC"
-              placeholder="Token de acesso gerado no IXC"
-              variant="outlined"
-              value={tokenixcType}
-              onChange={async (e) => {
-                handleChangeTokenIxc(e.target.value);
+              {loadingIpIxcType || loadingTokenIxcType ? "Salvando..." : "Salvar"}
+            </TrButton>
+          </div>
+          <Grid spacing={2} container style={{ marginBottom: 16 }}>
+            <Grid xs={12} sm={6} item>
+              <TextField
+                fullWidth
+                size="small"
+                id="ipixc"
+                name="ipixc"
+                label="URL / IP do IXC"
+                placeholder="http://seu-ixc:port (ou IP/DNS acessível)"
+                variant="outlined"
+                value={ipixcType}
+                onChange={(e) => handleChangeIPIxc(e.target.value)}
+                helperText="Endereço do servidor IXC acessível pela API."
+              />
+            </Grid>
+            <Grid xs={12} sm={6} item>
+              <TextField
+                fullWidth
+                size="small"
+                id="tokenixc"
+                name="tokenixc"
+                label="Token do IXC"
+                placeholder="Token de acesso gerado no IXC"
+                variant="outlined"
+                type={showTokenIxc ? "text" : "password"}
+                value={tokenixcType}
+                onChange={(e) => handleChangeTokenIxc(e.target.value)}
+                helperText="Token de autenticação da integração."
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <Tooltip title={showTokenIxc ? "Ocultar" : "Mostrar"}>
+                        <IconButton size="small" onClick={() => setShowTokenIxc((v) => !v)}>
+                          {showTokenIxc ? <VisibilityOffOutlinedIcon /> : <VisibilityOutlinedIcon />}
+                        </IconButton>
+                      </Tooltip>
+                    </InputAdornment>
+                  )
+                }}
+              />
+            </Grid>
+          </Grid>
+
+          {/* MK-AUTH */}
+          <div className={classes.topBar} style={{ marginBottom: 12 }}>
+            <div className={classes.topBarLeft}>
+              <p className={classes.topBarTitle}>
+                <VpnKeyOutlinedIcon style={{ verticalAlign: "middle", marginRight: 8 }} />
+                MK-AUTH
+              </p>
+              <p className={classes.topBarSub}>Credenciais da API do MK-AUTH.</p>
+            </div>
+            <TrButton
+              startIcon={<SaveOutlinedIcon />}
+              disabled={!mkDirty || loadingIpMkauthType || loadingClientIdMkauthType || loadingClientSecrectMkauthType}
+              onClick={async () => {
+                try {
+                  setLoadingIpMkauthType(true);
+                  setLoadingClientIdMkauthType(true);
+                  setLoadingClientSecrectMkauthType(true);
+                  await Promise.all([
+                    update({ key: "ipmkauth", value: ipmkauthType }),
+                    update({ key: "clientidmkauth", value: clientidmkauthType }),
+                    update({ key: "clientsecretmkauth", value: clientsecretmkauthType }),
+                  ]);
+                  initialIntegrationsRef.current = {
+                    ...initialIntegrationsRef.current,
+                    ipmkauth: String(ipmkauthType || ""),
+                    clientidmkauth: String(clientidmkauthType || ""),
+                    clientsecretmkauth: String(clientsecretmkauthType || ""),
+                  };
+                  toast.success("MK-AUTH salvo com sucesso.");
+                } catch (err) {
+                  toastError(err);
+                } finally {
+                  setLoadingIpMkauthType(false);
+                  setLoadingClientIdMkauthType(false);
+                  setLoadingClientSecrectMkauthType(false);
+                }
               }}
             >
-            </TextField>
-            <FormHelperText>Informe o token da integração IXC.</FormHelperText>
-            <FormHelperText>
-              {loadingTokenIxcType && "Atualizando..."}
-            </FormHelperText>
-          </FormControl>
-        </Grid>
-        <Grid xs={12} item>
-          <TrButton
-            onClick={async () => {
-              setLoadingIpIxcType(true);
-              setLoadingTokenIxcType(true);
-              await Promise.all([
-                update({ key: "ipixc", value: ipixcType }),
-                update({ key: "tokenixc", value: tokenixcType }),
-              ]);
-              toast.success("IXC salvo com sucesso.");
-              setLoadingIpIxcType(false);
-              setLoadingTokenIxcType(false);
-            }}
-          >
-            Salvar IXC
-          </TrButton>
-        </Grid>
-      </Grid>
-      {/*-----------------MK-AUTH-----------------*/}
-      <TrSectionTitle title="MK-AUTH" />
-      <Grid spacing={3} container
-        style={{ marginBottom: 10 }}>
-        <Grid xs={12} sm={12} md={4} item>
-          <FormControl className={classes.selectContainer}>
-            <TextField
-              id="ipmkauth"
-              name="ipmkauth"
-              margin="dense"
-              label="Ip Mk-Auth"
-              placeholder="http://seu-mkauth:port (ou IP/DNS)"
-              variant="outlined"
-              value={ipmkauthType}
-              onChange={async (e) => {
-                handleChangeIpMkauth(e.target.value);
+              {loadingIpMkauthType || loadingClientIdMkauthType || loadingClientSecrectMkauthType ? "Salvando..." : "Salvar"}
+            </TrButton>
+          </div>
+          <Grid spacing={2} container style={{ marginBottom: 16 }}>
+            <Grid xs={12} md={4} item>
+              <TextField
+                fullWidth
+                size="small"
+                id="ipmkauth"
+                name="ipmkauth"
+                label="URL / IP do MK-AUTH"
+                placeholder="http://seu-mkauth:port (ou IP/DNS)"
+                variant="outlined"
+                value={ipmkauthType}
+                onChange={(e) => handleChangeIpMkauth(e.target.value)}
+                helperText="Endereço do servidor MK-AUTH."
+              />
+            </Grid>
+            <Grid xs={12} md={4} item>
+              <TextField
+                fullWidth
+                size="small"
+                id="clientidmkauth"
+                name="clientidmkauth"
+                label="Client ID"
+                placeholder="Client ID da API do MK-AUTH"
+                variant="outlined"
+                value={clientidmkauthType}
+                onChange={(e) => handleChangeClientIdMkauth(e.target.value)}
+                helperText="Identificador do cliente na API."
+              />
+            </Grid>
+            <Grid xs={12} md={4} item>
+              <TextField
+                fullWidth
+                size="small"
+                id="clientsecretmkauth"
+                name="clientsecretmkauth"
+                label="Client Secret"
+                placeholder="Client Secret da API do MK-AUTH"
+                variant="outlined"
+                type={showClientSecretMk ? "text" : "password"}
+                value={clientsecretmkauthType}
+                onChange={(e) => handleChangeClientSecrectMkauth(e.target.value)}
+                helperText="Segredo do cliente na API."
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <Tooltip title={showClientSecretMk ? "Ocultar" : "Mostrar"}>
+                        <IconButton size="small" onClick={() => setShowClientSecretMk((v) => !v)}>
+                          {showClientSecretMk ? <VisibilityOffOutlinedIcon /> : <VisibilityOutlinedIcon />}
+                        </IconButton>
+                      </Tooltip>
+                    </InputAdornment>
+                  )
+                }}
+              />
+            </Grid>
+          </Grid>
+
+          {/* ASAAS */}
+          <div className={classes.topBar} style={{ marginBottom: 12 }}>
+            <div className={classes.topBarLeft}>
+              <p className={classes.topBarTitle}>
+                <AccountBalanceWalletOutlinedIcon style={{ verticalAlign: "middle", marginRight: 8 }} />
+                ASAAS
+              </p>
+              <p className={classes.topBarSub}>Token de API do Asaas (produção ou sandbox).</p>
+            </div>
+            <TrButton
+              startIcon={<SaveOutlinedIcon />}
+              disabled={!asaasDirty || loadingAsaasType}
+              onClick={async () => {
+                try {
+                  setLoadingAsaasType(true);
+                  await update({ key: "asaas", value: asaasType });
+                  initialIntegrationsRef.current = {
+                    ...initialIntegrationsRef.current,
+                    asaas: String(asaasType || ""),
+                  };
+                  toast.success("ASAAS salvo com sucesso.");
+                } catch (err) {
+                  toastError(err);
+                } finally {
+                  setLoadingAsaasType(false);
+                }
               }}
             >
-            </TextField>
-            <FormHelperText>Endereço do servidor MK-AUTH.</FormHelperText>
-            <FormHelperText>
-              {loadingIpMkauthType && "Atualizando..."}
-            </FormHelperText>
-          </FormControl>
-        </Grid>
-        <Grid xs={12} sm={12} md={4} item>
-          <FormControl className={classes.selectContainer}>
-            <TextField
-              id="clientidmkauth"
-              name="clientidmkauth"
-              margin="dense"
-              label="Client Id"
-              placeholder="Client ID da API do MK-AUTH"
-              variant="outlined"
-              value={clientidmkauthType}
-              onChange={async (e) => {
-                handleChangeClientIdMkauth(e.target.value);
-              }}
-            >
-            </TextField>
-            <FormHelperText>Identificador do cliente na API MK-AUTH.</FormHelperText>
-            <FormHelperText>
-              {loadingClientIdMkauthType && "Atualizando..."}
-            </FormHelperText>
-          </FormControl>
-        </Grid>
-        <Grid xs={12} sm={12} md={4} item>
-          <FormControl className={classes.selectContainer}>
-            <TextField
-              id="clientsecretmkauth"
-              name="clientsecretmkauth"
-              margin="dense"
-              label="Client Secret"
-              placeholder="Client Secret da API do MK-AUTH"
-              variant="outlined"
-              value={clientsecretmkauthType}
-              onChange={async (e) => {
-                handleChangeClientSecrectMkauth(e.target.value);
-              }}
-            >
-            </TextField>
-            <FormHelperText>Segredo do cliente na API MK-AUTH.</FormHelperText>
-            <FormHelperText>
-              {loadingClientSecrectMkauthType && "Atualizando..."}
-            </FormHelperText>
-          </FormControl>
-        </Grid>
-        <Grid xs={12} item>
-          <TrButton
-            onClick={async () => {
-              setLoadingIpMkauthType(true);
-              setLoadingClientIdMkauthType(true);
-              setLoadingClientSecrectMkauthType(true);
-              await Promise.all([
-                update({ key: "ipmkauth", value: ipmkauthType }),
-                update({ key: "clientidmkauth", value: clientidmkauthType }),
-                update({ key: "clientsecretmkauth", value: clientsecretmkauthType }),
-              ]);
-              toast.success("MK-AUTH salvo com sucesso.");
-              setLoadingIpMkauthType(false);
-              setLoadingClientIdMkauthType(false);
-              setLoadingClientSecrectMkauthType(false);
-            }}
-          >
-            Salvar MK-AUTH
-          </TrButton>
-        </Grid>
-      </Grid>
-      {/*-----------------ASAAS-----------------*/}
-      <TrSectionTitle title="ASAAS" />
-      <Grid spacing={3} container
-        style={{ marginBottom: 10 }}>
-        <Grid xs={12} sm={12} md={12} item>
-          <FormControl className={classes.selectContainer}>
-            <TextField
-              id="asaas"
-              name="asaas"
-              margin="dense"
-              label="Token Asaas"
-              placeholder="Token Asaas (produção ou sandbox)"
-              variant="outlined"
-              value={asaasType}
-              onChange={async (e) => {
-                handleChangeAsaas(e.target.value);
-              }}
-            >
-            </TextField>
-            <FormHelperText>Informe o token de API do Asaas.</FormHelperText>
-            <FormHelperText>
-              {loadingAsaasType && "Atualizando..."}
-            </FormHelperText>
-          </FormControl>
-        </Grid>
-        <Grid xs={12} item>
-          <TrButton
-            onClick={async () => {
-              setLoadingAsaasType(true);
-              await update({ key: "asaas", value: asaasType });
-              toast.success("ASAAS salvo com sucesso.");
-              setLoadingAsaasType(false);
-            }}
-          >
-            Salvar ASAAS
-          </TrButton>
-        </Grid>
-      </Grid>
+              {loadingAsaasType ? "Salvando..." : "Salvar"}
+            </TrButton>
+          </div>
+          <Grid spacing={2} container>
+            <Grid xs={12} item>
+              <TextField
+                fullWidth
+                size="small"
+                id="asaas"
+                name="asaas"
+                label="Token Asaas"
+                placeholder="Token Asaas (produção ou sandbox)"
+                variant="outlined"
+                type={showAsaasToken ? "text" : "password"}
+                value={asaasType}
+                onChange={(e) => handleChangeAsaas(e.target.value)}
+                helperText="Cole o token de API gerado no Asaas."
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <Tooltip title={showAsaasToken ? "Ocultar" : "Mostrar"}>
+                        <IconButton size="small" onClick={() => setShowAsaasToken((v) => !v)}>
+                          {showAsaasToken ? <VisibilityOffOutlinedIcon /> : <VisibilityOutlinedIcon />}
+                        </IconButton>
+                      </Tooltip>
+                    </InputAdornment>
+                  )
+                }}
+              />
+            </Grid>
+          </Grid>
+        </div>
       </TrCard>
     </>
   );
