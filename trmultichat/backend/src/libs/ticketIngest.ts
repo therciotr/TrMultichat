@@ -71,6 +71,10 @@ function pickColumn(colsMap: Map<string, string>, candidates: string[], fallback
 }
 
 async function listRootQueueOptions(companyId: number, queueId: number): Promise<Array<{ id: number; option: string; title: string }>> {
+  return await listQueueOptions(companyId, queueId, null);
+}
+
+async function listQueueOptions(companyId: number, queueId: number, parentId: number | null): Promise<Array<{ id: number; option: string; title: string }>> {
   const t = await resolveQueueOptionsTable();
   const colsMap = await resolveQueueOptionsColumnsMap(t);
   const colQueueId = pickColumn(colsMap, ["queueId", "queue_id", "queueid"]);
@@ -81,6 +85,7 @@ async function listRootQueueOptions(companyId: number, queueId: number): Promise
   const colCompanyId = pickColumn(colsMap, ["companyId", "company_id", "companyid"]);
 
   if (!colQueueId || !colOption) return [];
+  if (parentId !== null && !colParentId) return [];
 
   const params: any[] = [queueId];
   let whereCompany = "";
@@ -89,7 +94,15 @@ async function listRootQueueOptions(companyId: number, queueId: number): Promise
     whereCompany = ` AND ${quoteIdent(colCompanyId)} = $${params.length}`;
   }
 
-  const whereParent = colParentId ? ` AND ${quoteIdent(colParentId)} IS NULL` : "";
+  let whereParent = "";
+  if (colParentId) {
+    if (parentId === null) {
+      whereParent = ` AND ${quoteIdent(colParentId)} IS NULL`;
+    } else {
+      params.push(parentId);
+      whereParent = ` AND ${quoteIdent(colParentId)} = $${params.length}`;
+    }
+  }
   const titleExpr = colTitle ? quoteIdent(colTitle) : colMessage ? quoteIdent(colMessage) : "NULL";
   const rows = await pgQuery<any>(
     `
@@ -111,6 +124,67 @@ async function listRootQueueOptions(companyId: number, queueId: number): Promise
       title: String(r?.ttl ?? "").trim()
     }))
     .filter((it: any) => it.id && it.option && it.title);
+}
+
+async function maybeSendQueueOptionsMenu(opts: {
+  sock: any;
+  companyId: number;
+  ticketId: number;
+  contactId: number;
+  remoteJid: string;
+  queueId: number;
+  parentId: number | null;
+}) {
+  const { sock, companyId, ticketId, contactId, remoteJid, queueId, parentId } = opts;
+  if (!sock || !remoteJid || !queueId) return;
+
+  // Dedupe: avoid spamming the same menu
+  try {
+    const parentNeedle = parentId === null ? `"parentId":null` : `"parentId":${parentId}`;
+    const queueNeedle = `"queueId":${queueId}`;
+    const already = await pgQuery<{ c: number }>(
+      `SELECT COUNT(1)::int as c
+       FROM "Messages"
+       WHERE "ticketId" = $1 AND "companyId" = $2
+         AND "dataJson"::text ILIKE '%"system":"queue_options_menu"%'
+         AND "dataJson"::text ILIKE $3
+         AND "dataJson"::text ILIKE $4`,
+      [ticketId, companyId, `%${queueNeedle}%`, `%${parentNeedle}%`]
+    );
+    if (Number(already?.[0]?.c || 0) > 0) return;
+  } catch {}
+
+  const items = await listQueueOptions(companyId, queueId, parentId);
+  if (!items.length) return;
+
+  const header =
+    parentId === null
+      ? "Perfeito! Agora escolha uma opção para continuar:"
+      : "Escolha uma opção para continuar:";
+  const menuText = `${header}\n` + items.map((it: any) => `${it.option} - ${it.title}`).join("\n");
+
+  const r = await sendTextWithRetry(sock, remoteJid, menuText, 3);
+  const outId = String(r?.key?.id || `queue-options-${Date.now()}`);
+
+  await pgQuery(
+    `
+      INSERT INTO "Messages"
+        (id, body, ack, read, "ticketId", "createdAt", "updatedAt", "fromMe", "isDeleted",
+         "contactId", "companyId", "remoteJid", "dataJson")
+      VALUES
+        ($1, $2, 0, true, $3, NOW(), NOW(), true, false, $4, $5, $6, $7)
+      ON CONFLICT (id) DO NOTHING
+    `,
+    [
+      outId,
+      menuText,
+      ticketId,
+      contactId,
+      companyId,
+      remoteJid,
+      JSON.stringify({ system: "queue_options_menu", queueId, parentId, items })
+    ]
+  );
 }
 
 async function findQueueOptionByChoice(opts: { companyId: number; queueId: number; parentId: number | null; choice: string }): Promise<{ id: number } | null> {
@@ -594,6 +668,8 @@ export async function ingestBaileysMessage(opts: {
   // If the customer replies with a numeric option, store it on the ticket (queueOptionId).
   // This is used to track the chosen path and (if ticket has no queue yet) to attach it.
   let selectedQueueIdFromMenu: number | null = null;
+  let selectedQueueOptionIdForSubmenu: number | null = null;
+  let selectedQueueIdForSubmenu: number | null = null;
   if (!fromMe && !isGroup) {
     const choice = String(baseBody || "").trim();
     if (choice && /^\d+$/.test(choice)) {
@@ -673,6 +749,8 @@ export async function ingestBaileysMessage(opts: {
             );
             ticketRow.queueOptionId = optId;
             if (!ticketRow.queueId) ticketRow.queueId = curQueueId;
+            selectedQueueOptionIdForSubmenu = optId;
+            selectedQueueIdForSubmenu = curQueueId;
           }
         }
         }
@@ -724,49 +802,34 @@ export async function ingestBaileysMessage(opts: {
   // If user picked a queue from our accept menu, immediately send QueueOptions root menu for that queue (professional flow).
   if (!fromMe && !isGroup && selectedQueueIdFromMenu && sock) {
     try {
-      // Dedupe: only one root options menu per ticket+queue
-      const already = await pgQuery<{ c: number }>(
-        `SELECT COUNT(1)::int as c
-         FROM "Messages"
-         WHERE "ticketId" = $1 AND "companyId" = $2
-           AND "dataJson"::text ILIKE '%"system":"queue_options_menu"%'
-           AND "dataJson"::text ILIKE $3`,
-        [ticketRow.id, companyId, `%"queueId":${selectedQueueIdFromMenu}%`]
-      );
-      if (Number(already?.[0]?.c || 0) === 0) {
-        const items = await listRootQueueOptions(companyId, selectedQueueIdFromMenu);
-
-        if (items.length) {
-          const menuText =
-            `Perfeito! Agora escolha uma opção para continuar:\n` +
-            items.map((it: any) => `${it.option} - ${it.title}`).join("\n");
-
-          const r = await sendTextWithRetry(sock, remoteJid, menuText, 3);
-          const outId = String(r?.key?.id || `queue-options-${Date.now()}`);
-
-          await pgQuery(
-            `
-              INSERT INTO "Messages"
-                (id, body, ack, read, "ticketId", "createdAt", "updatedAt", "fromMe", "isDeleted",
-                 "contactId", "companyId", "remoteJid", "dataJson")
-              VALUES
-                ($1, $2, 0, true, $3, NOW(), NOW(), true, false, $4, $5, $6, $7)
-              ON CONFLICT (id) DO NOTHING
-            `,
-            [
-              outId,
-              menuText,
-              ticketRow.id,
-              contact.id,
-              companyId,
-              remoteJid,
-              JSON.stringify({ system: "queue_options_menu", queueId: selectedQueueIdFromMenu, parentId: null, items })
-            ]
-          );
-        }
-      }
+      await maybeSendQueueOptionsMenu({
+        sock,
+        companyId,
+        ticketId: ticketRow.id,
+        contactId: contact.id,
+        remoteJid,
+        queueId: selectedQueueIdFromMenu,
+        parentId: null
+      });
     } catch (e: any) {
       waLog("failed to send queue options menu after queue selection", { message: e?.message });
+    }
+  }
+
+  // If user picked an option within QueueOptions (e.g., CERTIFICADO DIGITAL), send its children menu (sub-opções).
+  if (!fromMe && !isGroup && selectedQueueOptionIdForSubmenu && selectedQueueIdForSubmenu && sock) {
+    try {
+      await maybeSendQueueOptionsMenu({
+        sock,
+        companyId,
+        ticketId: ticketRow.id,
+        contactId: contact.id,
+        remoteJid,
+        queueId: selectedQueueIdForSubmenu,
+        parentId: selectedQueueOptionIdForSubmenu
+      });
+    } catch (e: any) {
+      waLog("failed to send queue options submenu", { message: e?.message });
     }
   }
 
