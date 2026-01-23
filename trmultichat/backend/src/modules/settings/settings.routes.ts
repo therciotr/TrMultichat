@@ -4,6 +4,7 @@ import env from "../../config/env";
 import { getLegacyModel } from "../../utils/legacyModel";
 import { getCompanyMailSettings, saveCompanyMailSettings } from "../../utils/settingsMail";
 import { pgQuery } from "../../utils/pgClient";
+import path from "path";
 
 const router = Router();
 
@@ -78,10 +79,47 @@ function pickColumn(cols: Map<string, string>, candidates: string[]): string | n
   return null;
 }
 
+function requireFromCandidates(moduleRelPath: string): any | null {
+  const cwd = process.cwd();
+  const candidates = [
+    // running from backend root
+    path.resolve(cwd, moduleRelPath),
+    path.resolve(cwd, "dist", moduleRelPath),
+    // monorepo layouts
+    path.resolve(cwd, "backend", moduleRelPath),
+    path.resolve(cwd, "backend", "dist", moduleRelPath),
+    path.resolve(cwd, "trmultichat", "backend", moduleRelPath),
+    path.resolve(cwd, "trmultichat", "backend", "dist", moduleRelPath),
+    // relative to compiled modules
+    path.resolve(__dirname, "..", "..", "..", moduleRelPath),
+    path.resolve(__dirname, "..", "..", "..", "..", "dist", moduleRelPath)
+  ];
+  for (const p of candidates) {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const m = require(p);
+      return m?.default || m;
+    } catch {}
+  }
+  return null;
+}
+
+function ensureLegacyDbBooted() {
+  // Legacy models require sequelize initialization, otherwise they throw "Model not initialized".
+  // Best-effort boot: ignore errors and let SQL fallback handle.
+  try {
+    requireFromCandidates("database/index");
+  } catch {}
+  try {
+    requireFromCandidates("database");
+  } catch {}
+}
+
 router.get("/", async (req, res) => {
   setNoCache(res);
   const tenantId = extractTenantIdFromAuth(req.headers.authorization as string) || 1;
   try {
+    ensureLegacyDbBooted();
     const Setting = getLegacyModel("Setting");
     if (!Setting || typeof Setting.findAll !== "function") {
       // SQL fallback
@@ -112,16 +150,21 @@ router.put("/:key", async (req, res) => {
   const value = String((req.body && req.body.value) ?? "");
   const tenantId = extractTenantIdFromAuth(req.headers.authorization as string) || 1;
   try {
+    ensureLegacyDbBooted();
     const Setting = getLegacyModel("Setting");
     if (Setting && typeof Setting.findOne === "function") {
-      let row = await Setting.findOne({ where: { companyId: tenantId, key } });
-      if (row) {
-        await row.update({ value });
-      } else if (typeof Setting.create === "function") {
-        row = await Setting.create({ key, value, companyId: tenantId });
+      try {
+        let row = await Setting.findOne({ where: { companyId: tenantId, key } });
+        if (row) {
+          await row.update({ value });
+        } else if (typeof Setting.create === "function") {
+          row = await Setting.create({ key, value, companyId: tenantId });
+        }
+        const json = row?.toJSON ? row.toJSON() : row;
+        return res.json({ key: json?.key ?? key, value: json?.value ?? value });
+      } catch (e: any) {
+        // If legacy model is not initialized / DB not available, fall back to SQL.
       }
-      const json = row?.toJSON ? row.toJSON() : row;
-      return res.json({ key: json?.key ?? key, value: json?.value ?? value });
     }
 
     // SQL fallback upsert
