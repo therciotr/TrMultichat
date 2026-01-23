@@ -150,7 +150,8 @@ async function maybeSendQueueOptionsMenu(opts: {
     `;
     const params: any[] = [ticketId, companyId, queueId];
     if (parentId === null) {
-      sql += ` AND ("dataJson"::jsonb ? 'parentId') IS NOT TRUE OR ("dataJson"::jsonb->>'parentId') IS NULL`;
+      // our payload always includes parentId (null for root), so this is safe and avoids precedence bugs
+      sql += ` AND ("dataJson"::jsonb->>'parentId') IS NULL`;
     } else {
       params.push(parentId);
       sql += ` AND COALESCE(("dataJson"::jsonb->>'parentId')::int, -999999) = $4`;
@@ -679,42 +680,48 @@ export async function ingestBaileysMessage(opts: {
     const choice = String(baseBody || "").trim();
     if (choice && /^\d+$/.test(choice)) {
       try {
-        // 1) If last system message is a queue menu, map selection to queueId (do NOT drop the user's message)
+        // 1) If the LAST system message is a queue menu, map selection to queueId.
+        // IMPORTANT: Do NOT look for "any past queue_menu", otherwise the user replying "1" to QueueOptions
+        // would be incorrectly interpreted as picking a queue again.
         let handledQueueMenu = false;
         try {
-          const lastMenu = await pgQuery<any>(
+          const lastSystemRows = await pgQuery<any>(
             `
               SELECT "dataJson"
               FROM "Messages"
               WHERE "ticketId" = $1 AND "companyId" = $2
-                AND "dataJson"::text ILIKE '%"system":"queue_menu"%'
+                AND "fromMe" = true
+                AND ("dataJson"::jsonb ? 'system')
               ORDER BY "createdAt" DESC
               LIMIT 1
             `,
             [ticketRow.id, companyId]
           );
-          const dj = String(lastMenu?.[0]?.dataJson || "").trim();
+          const dj = String(lastSystemRows?.[0]?.dataJson || "").trim();
           if (dj) {
             const parsed = JSON.parse(dj);
-            const items = Array.isArray(parsed?.items) ? parsed.items : [];
-            const picked = items.find((it: any) => Number(it?.n) === Number(choice));
-            const targetQueueId = Number(picked?.queueId || 0) || 0;
-            if (targetQueueId) {
-              await pgQuery(
-                `
-                  UPDATE "Tickets"
-                  SET
-                    "queueId" = $1,
-                    "queueOptionId" = NULL,
-                    "updatedAt" = NOW()
-                  WHERE id = $2 AND "companyId" = $3
-                `,
-                [targetQueueId, ticketRow.id, companyId]
-              );
-              ticketRow.queueId = targetQueueId;
-              ticketRow.queueOptionId = null;
-              handledQueueMenu = true;
-              selectedQueueIdFromMenu = targetQueueId;
+            const sys = String(parsed?.system || "").trim();
+            if (sys === "queue_menu") {
+              const items = Array.isArray(parsed?.items) ? parsed.items : [];
+              const picked = items.find((it: any) => Number(it?.n) === Number(choice));
+              const targetQueueId = Number(picked?.queueId || 0) || 0;
+              if (targetQueueId) {
+                await pgQuery(
+                  `
+                    UPDATE "Tickets"
+                    SET
+                      "queueId" = $1,
+                      "queueOptionId" = NULL,
+                      "updatedAt" = NOW()
+                    WHERE id = $2 AND "companyId" = $3
+                  `,
+                  [targetQueueId, ticketRow.id, companyId]
+                );
+                ticketRow.queueId = targetQueueId;
+                ticketRow.queueOptionId = null;
+                handledQueueMenu = true;
+                selectedQueueIdFromMenu = targetQueueId;
+              }
             }
           }
         } catch {
