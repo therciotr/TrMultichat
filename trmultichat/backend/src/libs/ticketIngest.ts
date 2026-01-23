@@ -126,6 +126,104 @@ async function listQueueOptions(companyId: number, queueId: number, parentId: nu
     .filter((it: any) => it.id && it.option && it.title);
 }
 
+async function getQueueOptionMessage(opts: { companyId: number; optionId: number }): Promise<{ message: string; title: string; queueId: number } | null> {
+  const { companyId, optionId } = opts;
+  if (!optionId) return null;
+  const t = await resolveQueueOptionsTable();
+  const colsMap = await resolveQueueOptionsColumnsMap(t);
+  const colCompanyId = pickColumn(colsMap, ["companyId", "company_id", "companyid"]);
+  const colQueueId = pickColumn(colsMap, ["queueId", "queue_id", "queueid"]);
+  const colTitle = pickColumn(colsMap, ["title", "name"]);
+  const colMessage = pickColumn(colsMap, ["message", "body", "text", "welcomeMessage", "greetingMessage"]);
+  if (!colQueueId) return null;
+
+  const params: any[] = [optionId];
+  let whereCompany = "";
+  if (colCompanyId) {
+    params.push(companyId);
+    whereCompany = ` AND ${quoteIdent(colCompanyId)} = $${params.length}`;
+  }
+
+  const titleExpr = colTitle ? quoteIdent(colTitle) : "NULL";
+  const msgExpr = colMessage ? quoteIdent(colMessage) : "NULL";
+  const rows = await pgQuery<any>(
+    `
+      SELECT id,
+             ${quoteIdent(colQueueId)} as "queueId",
+             ${titleExpr} as "title",
+             ${msgExpr} as "message"
+      FROM ${t}
+      WHERE id = $1
+      ${whereCompany}
+      LIMIT 1
+    `,
+    params
+  );
+  const r = rows?.[0];
+  if (!r) return null;
+  return {
+    queueId: Number(r.queueId || 0) || 0,
+    title: String(r.title || "").trim(),
+    message: String(r.message || "").trim()
+  };
+}
+
+async function maybeSendQueueOptionMessage(opts: {
+  sock: any;
+  companyId: number;
+  ticketId: number;
+  contactId: number;
+  remoteJid: string;
+  queueId: number;
+  optionId: number;
+}) {
+  const { sock, companyId, ticketId, contactId, remoteJid, queueId, optionId } = opts;
+  if (!sock || !remoteJid || !queueId || !optionId) return;
+
+  // Dedupe per optionId
+  try {
+    const already = await pgQuery<{ c: number }>(
+      `
+        SELECT COUNT(1)::int as c
+        FROM "Messages"
+        WHERE "ticketId" = $1 AND "companyId" = $2
+          AND ("dataJson"::jsonb->>'system') = 'queue_option_message'
+          AND COALESCE(("dataJson"::jsonb->>'queueId')::int, 0) = $3
+          AND COALESCE(("dataJson"::jsonb->>'optionId')::int, 0) = $4
+      `,
+      [ticketId, companyId, queueId, optionId]
+    );
+    if (Number(already?.[0]?.c || 0) > 0) return;
+  } catch {}
+
+  const details = await getQueueOptionMessage({ companyId, optionId });
+  const text = String(details?.message || "").trim();
+  if (!text) return;
+
+  const r = await sendTextWithRetry(sock, remoteJid, text, 3);
+  const outId = String(r?.key?.id || `queue-option-msg-${Date.now()}`);
+
+  await pgQuery(
+    `
+      INSERT INTO "Messages"
+        (id, body, ack, read, "ticketId", "createdAt", "updatedAt", "fromMe", "isDeleted",
+         "contactId", "companyId", "remoteJid", "dataJson")
+      VALUES
+        ($1, $2, 0, true, $3, NOW(), NOW(), true, false, $4, $5, $6, $7)
+      ON CONFLICT (id) DO NOTHING
+    `,
+    [
+      outId,
+      text,
+      ticketId,
+      contactId,
+      companyId,
+      remoteJid,
+      JSON.stringify({ system: "queue_option_message", queueId, optionId })
+    ]
+  );
+}
+
 async function maybeSendQueueOptionsMenu(opts: {
   sock: any;
   companyId: number;
@@ -883,6 +981,18 @@ export async function ingestBaileysMessage(opts: {
   // If user picked an option within QueueOptions (e.g., CERTIFICADO DIGITAL), send its children menu (sub-opções).
   if (!fromMe && !isGroup && selectedQueueOptionIdForSubmenu && selectedQueueIdForSubmenu && sock) {
     try {
+      // 1) Send the configured message for the selected option (if any)
+      await maybeSendQueueOptionMessage({
+        sock,
+        companyId,
+        ticketId: ticketRow.id,
+        contactId: contact.id,
+        remoteJid,
+        queueId: selectedQueueIdForSubmenu,
+        optionId: selectedQueueOptionIdForSubmenu
+      });
+
+      // 2) Then send children menu (if any)
       await maybeSendQueueOptionsMenu({
         sock,
         companyId,
