@@ -222,6 +222,33 @@ async function maybeSendQueueOptionMessage(opts: {
       JSON.stringify({ system: "queue_option_message", queueId, optionId })
     ]
   );
+
+  // Real-time update for the agent UI (MessagesList listens to this)
+  try {
+    const io = getIO();
+    io.emit(`company-${companyId}-appMessage`, {
+      action: "create",
+      message: {
+        id: outId,
+        body: text,
+        ack: 0,
+        read: true,
+        mediaType: null,
+        mediaUrl: null,
+        ticketId,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        fromMe: true,
+        isDeleted: false,
+        contactId,
+        companyId,
+        quotedMsgId: null,
+        remoteJid,
+        dataJson: JSON.stringify({ system: "queue_option_message", queueId, optionId }),
+        participant: null
+      }
+    });
+  } catch {}
 }
 
 async function maybeSendQueueOptionsMenu(opts: {
@@ -289,6 +316,33 @@ async function maybeSendQueueOptionsMenu(opts: {
       JSON.stringify({ system: "queue_options_menu", queueId, parentId, items })
     ]
   );
+
+  // Real-time update for the agent UI (MessagesList listens to this)
+  try {
+    const io = getIO();
+    io.emit(`company-${companyId}-appMessage`, {
+      action: "create",
+      message: {
+        id: outId,
+        body: menuText,
+        ack: 0,
+        read: true,
+        mediaType: null,
+        mediaUrl: null,
+        ticketId,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        fromMe: true,
+        isDeleted: false,
+        contactId,
+        companyId,
+        quotedMsgId: null,
+        remoteJid,
+        dataJson: JSON.stringify({ system: "queue_options_menu", queueId, parentId, items }),
+        participant: null
+      }
+    });
+  } catch {}
 }
 
 async function findQueueOptionByChoice(opts: { companyId: number; queueId: number; parentId: number | null; choice: string }): Promise<{ id: number } | null> {
@@ -693,7 +747,8 @@ export async function ingestBaileysMessage(opts: {
   const pushName = String(msg?.pushName || "").trim();
   const det = detectMedia(msg);
   const baseBody = extractTextBody(msg);
-  const body = baseBody || placeholderForKind(det.kind);
+  let body = baseBody || placeholderForKind(det.kind);
+  let storedBody = body;
 
   const contact = await findOrCreateContact({
     companyId,
@@ -804,6 +859,9 @@ export async function ingestBaileysMessage(opts: {
               const picked = items.find((it: any) => Number(it?.n) === Number(choice));
               const targetQueueId = Number(picked?.queueId || 0) || 0;
               if (targetQueueId) {
+                // Make history readable: "1 - Certificado Digital" instead of just "1"
+                const pickedName = String(picked?.name || "").trim();
+                if (pickedName) storedBody = `${choice} - ${pickedName}`;
                 await pgQuery(
                   `
                     UPDATE "Tickets"
@@ -846,6 +904,12 @@ export async function ingestBaileysMessage(opts: {
           });
           const optId = Number(found?.id || 0) || 0;
           if (optId) {
+            // Make history readable: "1 - E-CPF" instead of just "1"
+            try {
+              const d = await getQueueOptionMessage({ companyId, optionId: optId });
+              const title = String(d?.title || "").trim();
+              if (title) storedBody = `${choice} - ${title}`;
+            } catch {}
             await pgQuery(
               `
                 UPDATE "Tickets"
@@ -882,7 +946,7 @@ export async function ingestBaileysMessage(opts: {
     `,
     [
       messageId,
-      body || "",
+      storedBody || "",
       mediaType,
       mediaUrl,
       ticketRow.id,
@@ -906,7 +970,7 @@ export async function ingestBaileysMessage(opts: {
         "unreadMessages" = COALESCE("unreadMessages", 0) + $3
       WHERE id = $4
     `,
-    [body || "", fromMe, fromMe ? 0 : 1, ticketRow.id]
+    [storedBody || "", fromMe, fromMe ? 0 : 1, ticketRow.id]
   );
 
   // Emit real-time message event (MessagesList listens on company-{companyId}-appMessage with { action, message }).
@@ -931,7 +995,7 @@ export async function ingestBaileysMessage(opts: {
     if (!message) {
       message = {
         id: messageId,
-        body: body || "",
+        body: storedBody || "",
         ack: 0,
         read: false,
         mediaType: mediaType || null,

@@ -64,6 +64,13 @@ async function sendTextWithRetry(sock: any, remoteJid: string, text: string, att
   throw lastErr;
 }
 
+function emitRealtimeMessage(companyId: number, message: any) {
+  try {
+    const io = getIO();
+    io.emit(`company-${companyId}-appMessage`, { action: "create", message });
+  } catch {}
+}
+
 async function loadTicketWithRelations(ticketId: number, companyId: number) {
   const rows = await pgQuery<any>(
     `
@@ -461,6 +468,25 @@ router.put("/:id", authMiddleware, async (req, res) => {
                 `,
                 [sentId, greeting, id, contactId, companyId, remoteJid, JSON.stringify({ system: "greeting" })]
               );
+              emitRealtimeMessage(companyId, {
+                id: sentId,
+                body: greeting,
+                ack: 0,
+                read: true,
+                mediaType: null,
+                mediaUrl: null,
+                ticketId: id,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                fromMe: true,
+                isDeleted: false,
+                contactId,
+                companyId,
+                quotedMsgId: null,
+                remoteJid,
+                dataJson: JSON.stringify({ system: "greeting" }),
+                participant: null
+              });
             } catch (e: any) {
               appendAcceptLog({ where: "accept:greeting", ticketId: id, whatsappId, err: e?.message || String(e) });
             }
@@ -511,6 +537,25 @@ router.put("/:id", authMiddleware, async (req, res) => {
             `,
             [menuId, menuText, id, contactId, companyId, remoteJid, JSON.stringify({ system: "queue_menu", items })]
           );
+          emitRealtimeMessage(companyId, {
+            id: menuId,
+            body: menuText,
+            ack: 0,
+            read: true,
+            mediaType: null,
+            mediaUrl: null,
+            ticketId: id,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            fromMe: true,
+            isDeleted: false,
+            contactId,
+            companyId,
+            quotedMsgId: null,
+            remoteJid,
+            dataJson: JSON.stringify({ system: "queue_menu", items }),
+            participant: null
+          });
         } catch (e: any) {
           appendAcceptLog({ where: "accept:queue_menu", ticketId: id, whatsappId, err: e?.message || String(e) });
         }

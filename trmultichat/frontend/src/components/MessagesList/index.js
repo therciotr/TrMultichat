@@ -367,13 +367,16 @@ const MessagesList = ({ ticket, ticketId, isGroup }) => {
     socket.on("connect", () => socket.emit("joinChatBox", `${ticket.id}`));
 
     socket.on(`company-${companyId}-appMessage`, (data) => {
+      const msg = data?.message;
+      // Guard: this channel is company-wide; only apply messages belonging to the opened ticket.
+      if (!msg || Number(msg.ticketId || 0) !== Number(ticket?.id || ticketId || 0)) return;
       if (data.action === "create") {
-        dispatch({ type: "ADD_MESSAGE", payload: data.message });
+        dispatch({ type: "ADD_MESSAGE", payload: msg });
         scrollToBottom();
       }
 
       if (data.action === "update") {
-        dispatch({ type: "UPDATE_MESSAGE", payload: data.message });
+        dispatch({ type: "UPDATE_MESSAGE", payload: msg });
       }
     });
 
