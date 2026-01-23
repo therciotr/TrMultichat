@@ -3,7 +3,7 @@ import { BrowserRouter, Switch } from "react-router-dom";
 import { ToastContainer } from "react-toastify";
 
 import LoggedInLayout from "../layout";
-import DashboardPage from "../routes/DashboardPage";
+import Dashboard from "../pages/Dashboard";
 import TicketResponsiveContainer from "../pages/TicketResponsiveContainer";
 import Signup from "../pages/Signup/";
 import Login from "../pages/Login/";
@@ -71,7 +71,7 @@ const Routes = () => {
             <Route exact path="/signup" component={Signup} />
             <WhatsAppsProvider>
               <LoggedInLayout>
-                <Route exact path="/" component={DashboardPage} isPrivate />
+                <Route exact path="/" component={Dashboard} isPrivate />
                 <Route
                   exact
                   path="/tickets/:ticketId?"

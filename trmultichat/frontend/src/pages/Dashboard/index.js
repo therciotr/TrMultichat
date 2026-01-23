@@ -3,6 +3,7 @@ import React, { useState, useEffect } from "react";
 import Paper from "@material-ui/core/Paper";
 import Container from "@material-ui/core/Container";
 import Grid from "@material-ui/core/Grid";
+import Box from "@material-ui/core/Box";
 import MenuItem from "@material-ui/core/MenuItem";
 import FormControl from "@material-ui/core/FormControl";
 import InputLabel from "@material-ui/core/InputLabel";
@@ -34,34 +35,49 @@ import useCompanies from "../../hooks/useCompanies";
 
 import { isEmpty } from "lodash";
 import moment from "moment";
+import toastError from "../../errors/toastError";
 
 const useStyles = makeStyles((theme) => ({
   container: {
-    paddingTop: theme.spacing(4),
-    paddingBottom: theme.spacing(4),
+    paddingTop: theme.spacing(3),
+    paddingBottom: theme.spacing(3),
+  },
+  headerCard: {
+    padding: theme.spacing(2),
+    borderRadius: 14,
+    border: "1px solid rgba(15, 23, 42, 0.10)",
+    boxShadow: "0 8px 24px rgba(15, 23, 42, 0.06)",
+    background:
+      "linear-gradient(135deg, rgba(14, 116, 144, 0.10), rgba(59, 130, 246, 0.06) 60%, rgba(255,255,255,0.9))",
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: 800,
+    color: "rgba(15, 23, 42, 0.92)",
+    margin: 0,
+  },
+  headerSub: {
+    marginTop: 2,
+    marginBottom: 0,
+    color: "rgba(15, 23, 42, 0.65)",
+    fontSize: 13,
   },
   fixedHeightPaper: {
     padding: theme.spacing(2),
     display: "flex",
     flexDirection: "column",
-    height: 240,
-    overflowY: "auto",
-    ...theme.scrollbarStyles,
+    height: 260,
+    overflow: "hidden",
+    borderRadius: 14,
+    border: "1px solid rgba(15, 23, 42, 0.10)",
+    boxShadow: "0 8px 24px rgba(15, 23, 42, 0.06)",
   },
-  cardAvatar: {
-    fontSize: "55px",
-    color: grey[500],
-    backgroundColor: "#ffffff",
-    width: theme.spacing(7),
-    height: theme.spacing(7),
-  },
-  cardTitle: {
-    fontSize: "18px",
-    color: blue[700],
-  },
-  cardSubtitle: {
-    color: grey[600],
-    fontSize: "14px",
+  filterCard: {
+    padding: theme.spacing(2),
+    borderRadius: 14,
+    border: "1px solid rgba(15, 23, 42, 0.10)",
+    boxShadow: "0 8px 24px rgba(15, 23, 42, 0.05)",
+    backgroundColor: "#fff",
   },
   alignRight: {
     textAlign: "right",
@@ -144,18 +160,21 @@ const Dashboard = () => {
       return;
     }
 
-    const data = await find(params);
-
-
-
-    setCounters(data.counters);
-    if (isArray(data.attendants)) {
-      setAttendants(data.attendants);
-    } else {
+    try {
+      const data = await find(params);
+      setCounters((data && data.counters) || {});
+      if (isArray(data?.attendants)) {
+        setAttendants(data.attendants);
+      } else {
+        setAttendants([]);
+      }
+    } catch (err) {
+      toastError(err);
+      setCounters({});
       setAttendants([]);
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   }
 
   useEffect(() => {
@@ -245,6 +264,13 @@ const Dashboard = () => {
   return (
     <div>
       <Container maxWidth="lg" className={classes.container}>
+        <Paper className={classes.headerCard} elevation={0}>
+          <p className={classes.headerTitle}>Dashboard (Gerência)</p>
+          <p className={classes.headerSub}>
+            Acompanhe atendimentos, leads e produtividade por período.
+          </p>
+        </Paper>
+        <Box height={16} />
         <Grid container spacing={3} justifyContent="flex-end">
           <Grid item xs={12} sm={6} md={3}>
             <CardCounter
@@ -259,32 +285,38 @@ const Dashboard = () => {
               <Chart />
             </Paper>
           </Grid>
-          <Grid item xs={12} sm={6} md={4}>
-            <FormControl className={classes.selectContainer}>
-              <InputLabel id="period-selector-label">Tipo de Filtro</InputLabel>
-              <Select
-                labelId="period-selector-label"
-                value={filterType}
-                onChange={(e) => handleChangeFilterType(e.target.value)}
-              >
-                <MenuItem value={1}>Filtro por Data</MenuItem>
-                <MenuItem value={2}>Filtro por Período</MenuItem>
-              </Select>
-              <FormHelperText>Selecione o período desejado</FormHelperText>
-            </FormControl>
-          </Grid>
+          <Grid item xs={12}>
+            <Paper className={classes.filterCard} elevation={0}>
+              <Grid container spacing={2} alignItems="flex-end">
+                <Grid item xs={12} sm={6} md={4}>
+                  <FormControl className={classes.selectContainer}>
+                    <InputLabel id="period-selector-label">Tipo de Filtro</InputLabel>
+                    <Select
+                      labelId="period-selector-label"
+                      value={filterType}
+                      onChange={(e) => handleChangeFilterType(e.target.value)}
+                    >
+                      <MenuItem value={1}>Filtro por Data</MenuItem>
+                      <MenuItem value={2}>Filtro por Período</MenuItem>
+                    </Select>
+                    <FormHelperText>Selecione o tipo de filtro</FormHelperText>
+                  </FormControl>
+                </Grid>
 
-          {renderFilters()}
+                {renderFilters()}
 
-          <Grid item xs={12} className={classes.alignRight}>
-            <ButtonWithSpinner
-              loading={loading}
-              onClick={() => fetchData()}
-              variant="contained"
-              color="primary"
-            >
-              Filtrar
-            </ButtonWithSpinner>
+                <Grid item xs={12} sm={6} md={4} className={classes.alignRight}>
+                  <ButtonWithSpinner
+                    loading={loading}
+                    onClick={() => fetchData()}
+                    variant="contained"
+                    color="primary"
+                  >
+                    Filtrar
+                  </ButtonWithSpinner>
+                </Grid>
+              </Grid>
+            </Paper>
           </Grid>
           <Grid item xs={12} sm={6} md={4}>
             <CardCounter
