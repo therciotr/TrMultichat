@@ -4,6 +4,161 @@ import fs from "fs";
 import path from "path";
 import crypto from "crypto";
 
+function quoteIdent(name: string): string {
+  const safe = String(name).replace(/"/g, '""');
+  return `"${safe}"`;
+}
+
+let cachedQueueOptionsTable: string | null = null; // quoted ident
+let cachedQueueOptionsColsMap: Map<string, string> | null = null; // lower -> actual
+
+async function resolveTableByILike(patterns: string[], fallback: string): Promise<string> {
+  try {
+    const params = patterns.map((p) => `%${p}%`);
+    const cond = patterns.map((_, i) => `table_name ILIKE $${i + 1}`).join(" OR ");
+    const rows = await pgQuery<{ table_name: string }>(
+      `
+      SELECT table_name
+      FROM information_schema.tables
+      WHERE table_schema = 'public'
+        AND (${cond})
+      LIMIT 1
+    `,
+      params
+    );
+    const name = rows?.[0]?.table_name;
+    if (name) return quoteIdent(name);
+  } catch {}
+  return quoteIdent(fallback);
+}
+
+async function resolveQueueOptionsTable(): Promise<string> {
+  if (cachedQueueOptionsTable) return cachedQueueOptionsTable;
+  cachedQueueOptionsTable = await resolveTableByILike(
+    ["queue_options", "queueoptions", "queue_option", "queueoption", "queues_options", "queuesoptions"],
+    "QueueOptions"
+  );
+  return cachedQueueOptionsTable;
+}
+
+async function resolveQueueOptionsColumnsMap(tableIdentQuoted: string): Promise<Map<string, string>> {
+  if (cachedQueueOptionsColsMap) return cachedQueueOptionsColsMap;
+  try {
+    const rawName = tableIdentQuoted.replace(/^"+|"+$/g, "").replace(/""/g, '"');
+    const cols = await pgQuery<{ column_name: string }>(
+      `
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = $1
+    `,
+      [rawName]
+    );
+    cachedQueueOptionsColsMap = new Map(cols.map((c) => [String(c.column_name || "").toLowerCase(), c.column_name]));
+    return cachedQueueOptionsColsMap;
+  } catch {
+    cachedQueueOptionsColsMap = new Map();
+    return cachedQueueOptionsColsMap;
+  }
+}
+
+function pickColumn(colsMap: Map<string, string>, candidates: string[], fallback?: string): string | null {
+  for (const c of candidates) {
+    const found = colsMap.get(c.toLowerCase());
+    if (found) return found;
+  }
+  return fallback || null;
+}
+
+async function listRootQueueOptions(companyId: number, queueId: number): Promise<Array<{ id: number; option: string; title: string }>> {
+  const t = await resolveQueueOptionsTable();
+  const colsMap = await resolveQueueOptionsColumnsMap(t);
+  const colQueueId = pickColumn(colsMap, ["queueId", "queue_id", "queueid"]);
+  const colParentId = pickColumn(colsMap, ["parentId", "parent_id", "parentid"]);
+  const colOption = pickColumn(colsMap, ["option", "order", "position"]);
+  const colTitle = pickColumn(colsMap, ["title", "name"]);
+  const colMessage = pickColumn(colsMap, ["message", "body", "text"]);
+  const colCompanyId = pickColumn(colsMap, ["companyId", "company_id", "companyid"]);
+
+  if (!colQueueId || !colOption) return [];
+
+  const params: any[] = [queueId];
+  let whereCompany = "";
+  if (colCompanyId) {
+    params.push(companyId);
+    whereCompany = ` AND ${quoteIdent(colCompanyId)} = $${params.length}`;
+  }
+
+  const whereParent = colParentId ? ` AND ${quoteIdent(colParentId)} IS NULL` : "";
+  const titleExpr = colTitle ? quoteIdent(colTitle) : colMessage ? quoteIdent(colMessage) : "NULL";
+  const rows = await pgQuery<any>(
+    `
+      SELECT id,
+             ${quoteIdent(colOption)} as "opt",
+             ${titleExpr} as "ttl"
+      FROM ${t}
+      WHERE ${quoteIdent(colQueueId)} = $1
+      ${whereCompany}
+      ${whereParent}
+      ORDER BY id ASC
+    `,
+    params
+  );
+  return (Array.isArray(rows) ? rows : [])
+    .map((r: any) => ({
+      id: Number(r?.id || 0) || 0,
+      option: String(r?.opt ?? "").trim(),
+      title: String(r?.ttl ?? "").trim()
+    }))
+    .filter((it: any) => it.id && it.option && it.title);
+}
+
+async function findQueueOptionByChoice(opts: { companyId: number; queueId: number; parentId: number | null; choice: string }): Promise<{ id: number } | null> {
+  const { companyId, queueId, parentId, choice } = opts;
+  const t = await resolveQueueOptionsTable();
+  const colsMap = await resolveQueueOptionsColumnsMap(t);
+  const colQueueId = pickColumn(colsMap, ["queueId", "queue_id", "queueid"]);
+  const colParentId = pickColumn(colsMap, ["parentId", "parent_id", "parentid"]);
+  const colOption = pickColumn(colsMap, ["option", "order", "position"]);
+  const colCompanyId = pickColumn(colsMap, ["companyId", "company_id", "companyid"]);
+
+  if (!colQueueId || !colOption) return null;
+
+  const params: any[] = [queueId];
+  let whereCompany = "";
+  if (colCompanyId) {
+    params.push(companyId);
+    whereCompany = ` AND ${quoteIdent(colCompanyId)} = $${params.length}`;
+  }
+
+  let whereParent = "";
+  if (colParentId) {
+    if (parentId === null) {
+      whereParent = ` AND ${quoteIdent(colParentId)} IS NULL`;
+    } else {
+      params.push(parentId);
+      whereParent = ` AND ${quoteIdent(colParentId)} = $${params.length}`;
+    }
+  }
+
+  params.push(String(choice).trim());
+  const rows = await pgQuery<any>(
+    `
+      SELECT id
+      FROM ${t}
+      WHERE ${quoteIdent(colQueueId)} = $1
+      ${whereCompany}
+      ${whereParent}
+      AND trim(${quoteIdent(colOption)}::text) = $${params.length}
+      ORDER BY id ASC
+      LIMIT 1
+    `,
+    params
+  );
+  const id = Number(rows?.[0]?.id || 0) || 0;
+  return id ? { id } : null;
+}
+
 function isWaDebug(): boolean {
   return String(process.env.DEBUG_WA_MESSAGES || "").toLowerCase() === "true";
 }
@@ -497,28 +652,13 @@ export async function ingestBaileysMessage(opts: {
         const curQueueId = Number(cur?.queueId || ticketRow.queueId || 0) || 0;
         const curParentId = cur?.queueOptionId !== undefined && cur?.queueOptionId !== null ? Number(cur.queueOptionId) : null;
         if (curQueueId) {
-          const params: any[] = [curQueueId];
-          let whereParent = `"parentId" IS NULL`;
-          if (curParentId) {
-            params.push(curParentId);
-            whereParent = `"parentId" = $${params.length}`;
-          }
-          params.push(choice);
-          const optRows = await pgQuery<any>(
-            `
-              SELECT id, "queueId", "parentId", option
-              FROM "QueueOptions"
-              WHERE "queueId" = $1
-                AND ${whereParent}
-                AND trim(option::text) = $${params.length}
-              ORDER BY id ASC
-              LIMIT 1
-            `,
-            params
-          );
-          const opt = optRows?.[0];
-          const optId = Number(opt?.id || 0) || 0;
-          const optQueueId = Number(opt?.queueId || 0) || 0;
+          const found = await findQueueOptionByChoice({
+            companyId,
+            queueId: curQueueId,
+            parentId: curParentId,
+            choice
+          });
+          const optId = Number(found?.id || 0) || 0;
           if (optId) {
             await pgQuery(
               `
@@ -529,10 +669,10 @@ export async function ingestBaileysMessage(opts: {
                   "updatedAt" = NOW()
                 WHERE id = $3 AND "companyId" = $4
               `,
-              [optId, optQueueId || curQueueId, ticketRow.id, companyId]
+              [optId, curQueueId, ticketRow.id, companyId]
             );
             ticketRow.queueOptionId = optId;
-            if (!ticketRow.queueId && optQueueId) ticketRow.queueId = optQueueId;
+            if (!ticketRow.queueId) ticketRow.queueId = curQueueId;
           }
         }
         }
@@ -594,21 +734,7 @@ export async function ingestBaileysMessage(opts: {
         [ticketRow.id, companyId, `%"queueId":${selectedQueueIdFromMenu}%`]
       );
       if (Number(already?.[0]?.c || 0) === 0) {
-        const optRows = await pgQuery<any>(
-          `SELECT *
-           FROM "QueueOptions"
-           WHERE "queueId" = $1 AND "parentId" IS NULL
-           ORDER BY COALESCE(option, id) ASC, id ASC`,
-          [selectedQueueIdFromMenu]
-        );
-        const optsList = Array.isArray(optRows) ? optRows : [];
-        const items = optsList
-          .map((r: any) => ({
-            id: Number(r?.id || 0) || 0,
-            option: String(r?.option ?? "").trim(),
-            title: String(r?.title || r?.name || r?.message || "").trim()
-          }))
-          .filter((it: any) => it.id && it.option && it.title);
+        const items = await listRootQueueOptions(companyId, selectedQueueIdFromMenu);
 
         if (items.length) {
           const menuText =

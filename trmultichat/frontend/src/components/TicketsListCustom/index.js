@@ -245,12 +245,13 @@ const TicketsListCustom = (props) => {
     const companyId = localStorage.getItem("companyId");
     const socket = socketConnection({ companyId });
 
+    const hasQueueFilter = Array.isArray(selectedQueueIds) && selectedQueueIds.length > 0;
     const shouldUpdateTicket = (ticket) =>
       (!ticket.userId || ticket.userId === user?.id || showAll) &&
-      (!ticket.queueId || selectedQueueIds.indexOf(ticket.queueId) > -1);
+      (!hasQueueFilter || !ticket.queueId || selectedQueueIds.indexOf(ticket.queueId) > -1);
 
     const notBelongsToUserQueues = (ticket) =>
-      ticket.queueId && selectedQueueIds.indexOf(ticket.queueId) === -1;
+      hasQueueFilter && ticket.queueId && selectedQueueIds.indexOf(ticket.queueId) === -1;
 
     socket.on("connect", () => {
       if (status) {
