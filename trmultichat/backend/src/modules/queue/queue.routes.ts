@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, Request, Response, NextFunction } from "express";
 import fs from "fs";
 import path from "path";
 import multer from "multer";
@@ -9,6 +9,27 @@ import { hasCompanyId } from "../../utils/modelUtils";
 import { pgQuery } from "../../utils/pgClient";
 
 const router = Router();
+
+function setNoCache(res: Response) {
+  try {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+    res.setHeader("Surrogate-Control", "no-store");
+    res.setHeader("ETag", "0");
+    res.setHeader("Last-Modified", "0");
+  } catch {}
+}
+
+function removeCacheHeaders(req: Request, _res: Response, next: NextFunction) {
+  try {
+    if ((req.headers as any)["if-none-match"]) delete (req.headers as any)["if-none-match"];
+    if ((req.headers as any)["if-modified-since"]) delete (req.headers as any)["if-modified-since"];
+  } catch {}
+  next();
+}
+
+router.use(removeCacheHeaders);
 
 function isDevMode(): boolean {
   return (
@@ -158,6 +179,7 @@ function normalizeJsonParam(value: any): any {
 
 router.get("/", async (_req, res) => {
   try {
+    setNoCache(res as any);
     const tenantId = extractTenantIdFromAuth(_req.headers.authorization as string);
     if (!tenantId && !isDevMode()) {
       return res.status(401).json({ error: true, message: "missing tenantId" });
@@ -351,6 +373,7 @@ router.post("/", async (req, res) => {
 
 router.get("/:id", async (req, res) => {
   try {
+    setNoCache(res as any);
     const id = Number(req.params.id);
     const tenantId = extractTenantIdFromAuth(req.headers.authorization as string);
     if (!tenantId && !isDevMode()) {

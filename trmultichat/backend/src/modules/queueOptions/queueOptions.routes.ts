@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, Request, Response, NextFunction } from "express";
 import fs from "fs";
 import path from "path";
 import multer from "multer";
@@ -7,6 +7,28 @@ import { pgQuery } from "../../utils/pgClient";
 
 const router = Router();
 router.use(authMiddleware);
+
+function setNoCache(res: Response) {
+  try {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+    res.setHeader("Surrogate-Control", "no-store");
+    // Explicitly disable conditional requests / 304 behavior
+    res.setHeader("ETag", "0");
+    res.setHeader("Last-Modified", "0");
+  } catch {}
+}
+
+function removeCacheHeaders(req: Request, _res: Response, next: NextFunction) {
+  try {
+    if ((req.headers as any)["if-none-match"]) delete (req.headers as any)["if-none-match"];
+    if ((req.headers as any)["if-modified-since"]) delete (req.headers as any)["if-modified-since"];
+  } catch {}
+  next();
+}
+
+router.use(removeCacheHeaders);
 
 function normalizeText(v: any): string {
   return String(v ?? "").trim();
@@ -463,6 +485,7 @@ async function validateParentId(
 // GET /queue-options?queueId=3&parentId=-1
 router.get("/", async (req, res) => {
   try {
+    setNoCache(res as any);
     const companyId = Number(req.tenantId);
     const queueId = toInt(req.query.queueId, 0) || 0;
     const parentId = parseParentId(req.query.parentId);
@@ -561,6 +584,7 @@ router.get("/", async (req, res) => {
 // POST /queue-options
 router.post("/", async (req, res) => {
   try {
+    setNoCache(res as any);
     const companyId = Number(req.tenantId);
     const body = req.body || {};
 
@@ -659,8 +683,37 @@ router.post("/", async (req, res) => {
 });
 
 // PUT /queue-options/:id
+// GET /queue-options/:id
+router.get("/:id", async (req, res) => {
+  try {
+    setNoCache(res as any);
+    const companyId = Number(req.tenantId);
+    const id = toInt(req.params.id, 0) || 0;
+    if (!id) return res.status(400).json({ error: true, message: "invalid id" });
+
+    const out = await tryEachQueueOptionsTable(async (t, colsMap) => {
+      const colCompanyId = pickColumn(colsMap, ["companyId", "company_id", "companyid"]);
+      const hasCompanyId = Boolean(colCompanyId);
+      const whereCompany = hasCompanyId ? ` AND ${quoteIdent(colCompanyId as string)} = $2` : "";
+      const rows = await pgQuery<any>(
+        `SELECT * FROM ${t} WHERE id = $1${whereCompany} LIMIT 1`,
+        hasCompanyId ? [id, companyId] : [id]
+      );
+      const row = rows?.[0];
+      if (!row) throw Object.assign(new Error("not found"), { statusCode: 404 });
+      return row;
+    });
+    if (!out.ok) throw (out as any).error;
+    return res.json(out.value);
+  } catch (e: any) {
+    if (e?.statusCode === 404) return res.status(404).json({ error: true, message: "not found" });
+    return res.status(400).json({ error: true, message: e?.message || "get error" });
+  }
+});
+
 router.put("/:id", async (req, res) => {
   try {
+    setNoCache(res as any);
     const companyId = Number(req.tenantId);
     const id = toInt(req.params.id, 0) || 0;
     if (!id) return res.status(400).json({ error: true, message: "invalid id" });
@@ -749,6 +802,7 @@ router.put("/:id", async (req, res) => {
 // DELETE /queue-options/:id
 router.delete("/:id", async (req, res) => {
   try {
+    setNoCache(res as any);
     const companyId = Number(req.tenantId);
     const id = toInt(req.params.id, 0) || 0;
     if (!id) return res.status(400).json({ error: true, message: "invalid id" });
@@ -788,6 +842,7 @@ router.delete("/:id", async (req, res) => {
 // POST /queue-options/:id/media-upload (multipart/form-data: file)
 router.post("/:id/media-upload", maybeUploadSingle("file"), async (req: any, res) => {
   try {
+    setNoCache(res as any);
     return await handleQueueOptionAttachmentUpload(req, res);
   } catch (e: any) {
     if (isDebug()) {
@@ -802,6 +857,7 @@ router.post("/:id/media-upload", maybeUploadSingle("file"), async (req: any, res
 // New attachment routes (preferred)
 router.post("/:id/attachment", maybeUploadSingle("file"), async (req: any, res) => {
   try {
+    setNoCache(res as any);
     return await handleQueueOptionAttachmentUpload(req, res);
   } catch (e: any) {
     if (isDebug()) {
@@ -815,6 +871,7 @@ router.post("/:id/attachment", maybeUploadSingle("file"), async (req: any, res) 
 
 router.delete("/:id/attachment", async (req: any, res) => {
   try {
+    setNoCache(res as any);
     return await handleQueueOptionAttachmentDelete(req, res);
   } catch (e: any) {
     if (isDebug()) {
