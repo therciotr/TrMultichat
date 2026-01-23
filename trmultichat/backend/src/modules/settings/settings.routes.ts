@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 import env from "../../config/env";
 import { getLegacyModel } from "../../utils/legacyModel";
 import { getCompanyMailSettings, saveCompanyMailSettings } from "../../utils/settingsMail";
+import { pgQuery } from "../../utils/pgClient";
 
 const router = Router();
 
@@ -28,14 +29,73 @@ function setNoCache(res: any) {
   } catch {}
 }
 
+function quoteIdent(name: string): string {
+  const safe = String(name).replace(/"/g, '""');
+  return `"${safe}"`;
+}
+
+async function resolveSettingsTable(): Promise<string> {
+  // Try to find a settings-like table in public schema; fall back to Sequelize default "Settings".
+  try {
+    const rows = await pgQuery<{ table_name: string }>(
+      `
+      SELECT table_name
+      FROM information_schema.tables
+      WHERE table_schema = 'public'
+        AND (table_name ILIKE 'settings' OR table_name ILIKE 'Settings')
+      LIMIT 1
+    `
+    );
+    const name = rows?.[0]?.table_name;
+    if (name) return quoteIdent(name);
+  } catch {}
+  return quoteIdent("Settings");
+}
+
+async function resolveColumnsMap(tableIdentQuoted: string): Promise<Map<string, string>> {
+  try {
+    const rawName = tableIdentQuoted.replace(/^"+|"+$/g, "").replace(/""/g, '"');
+    const cols = await pgQuery<{ column_name: string }>(
+      `
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = $1
+    `,
+      [rawName]
+    );
+    return new Map((cols || []).map((c) => [String(c.column_name || "").toLowerCase(), c.column_name]));
+  } catch {
+    return new Map();
+  }
+}
+
+function pickColumn(cols: Map<string, string>, candidates: string[]): string | null {
+  for (const c of candidates) {
+    const found = cols.get(String(c).toLowerCase());
+    if (found) return found;
+  }
+  return null;
+}
+
 router.get("/", async (req, res) => {
   setNoCache(res);
   const tenantId = extractTenantIdFromAuth(req.headers.authorization as string) || 1;
   try {
     const Setting = getLegacyModel("Setting");
     if (!Setting || typeof Setting.findAll !== "function") {
-      // fallback vazio para a UI lidar
-      return res.json([]);
+      // SQL fallback
+      const t = await resolveSettingsTable();
+      const cols = await resolveColumnsMap(t);
+      const colCompanyId = pickColumn(cols, ["companyId", "company_id", "tenantId", "tenant_id"]);
+      const colKey = pickColumn(cols, ["key"]);
+      const colValue = pickColumn(cols, ["value"]);
+      if (!colKey || !colValue) return res.json([]);
+      const whereCompany = colCompanyId ? `WHERE ${quoteIdent(colCompanyId)} = $1` : "";
+      const params = colCompanyId ? [tenantId] : [];
+      const rows = await pgQuery<any>(`SELECT ${quoteIdent(colKey)} as key, ${quoteIdent(colValue)} as value FROM ${t} ${whereCompany}`, params);
+      const list = Array.isArray(rows) ? rows.map((r: any) => ({ key: r.key, value: String(r.value ?? "") })) : [];
+      return res.json(list);
     }
     const rows = await Setting.findAll({ where: { companyId: tenantId } });
     const list = Array.isArray(rows) ? rows.map((r: any) => (r?.toJSON ? r.toJSON() : r)) : [];
@@ -53,17 +113,53 @@ router.put("/:key", async (req, res) => {
   const tenantId = extractTenantIdFromAuth(req.headers.authorization as string) || 1;
   try {
     const Setting = getLegacyModel("Setting");
-    if (!Setting || typeof Setting.findOne !== "function") {
-      return res.status(501).json({ error: true, message: "settings not available" });
+    if (Setting && typeof Setting.findOne === "function") {
+      let row = await Setting.findOne({ where: { companyId: tenantId, key } });
+      if (row) {
+        await row.update({ value });
+      } else if (typeof Setting.create === "function") {
+        row = await Setting.create({ key, value, companyId: tenantId });
+      }
+      const json = row?.toJSON ? row.toJSON() : row;
+      return res.json({ key: json?.key ?? key, value: json?.value ?? value });
     }
-    let row = await Setting.findOne({ where: { companyId: tenantId, key } });
-    if (row) {
-      await row.update({ value });
-    } else if (typeof Setting.create === "function") {
-      row = await Setting.create({ key, value, companyId: tenantId });
+
+    // SQL fallback upsert
+    const t = await resolveSettingsTable();
+    const cols = await resolveColumnsMap(t);
+    const colCompanyId = pickColumn(cols, ["companyId", "company_id", "tenantId", "tenant_id"]);
+    const colKey = pickColumn(cols, ["key"]);
+    const colValue = pickColumn(cols, ["value"]);
+    if (!colKey || !colValue) return res.status(501).json({ error: true, message: "settings not available" });
+
+    if (colCompanyId) {
+      // Try update first
+      const updated = await pgQuery<any>(
+        `UPDATE ${t} SET ${quoteIdent(colValue)} = $1 WHERE ${quoteIdent(colCompanyId)} = $2 AND ${quoteIdent(colKey)} = $3 RETURNING ${quoteIdent(colKey)} as key, ${quoteIdent(colValue)} as value`,
+        [value, tenantId, key]
+      );
+      if (updated?.[0]) return res.json({ key: updated[0].key, value: String(updated[0].value ?? "") });
+      // Insert
+      const inserted = await pgQuery<any>(
+        `INSERT INTO ${t} (${quoteIdent(colKey)}, ${quoteIdent(colValue)}, ${quoteIdent(colCompanyId)}) VALUES ($1, $2, $3) RETURNING ${quoteIdent(colKey)} as key, ${quoteIdent(colValue)} as value`,
+        [key, value, tenantId]
+      );
+      if (inserted?.[0]) return res.json({ key: inserted[0].key, value: String(inserted[0].value ?? "") });
+      return res.json({ key, value });
     }
-    const json = row?.toJSON ? row.toJSON() : row;
-    return res.json({ key: json?.key ?? key, value: json?.value ?? value });
+
+    // No company column: update by key only
+    const updated = await pgQuery<any>(
+      `UPDATE ${t} SET ${quoteIdent(colValue)} = $1 WHERE ${quoteIdent(colKey)} = $2 RETURNING ${quoteIdent(colKey)} as key, ${quoteIdent(colValue)} as value`,
+      [value, key]
+    );
+    if (updated?.[0]) return res.json({ key: updated[0].key, value: String(updated[0].value ?? "") });
+    const inserted = await pgQuery<any>(
+      `INSERT INTO ${t} (${quoteIdent(colKey)}, ${quoteIdent(colValue)}) VALUES ($1, $2) RETURNING ${quoteIdent(colKey)} as key, ${quoteIdent(colValue)} as value`,
+      [key, value]
+    );
+    if (inserted?.[0]) return res.json({ key: inserted[0].key, value: String(inserted[0].value ?? "") });
+    return res.json({ key, value });
   } catch (e: any) {
     return res.status(400).json({ error: true, message: e?.message || "settings error" });
   }

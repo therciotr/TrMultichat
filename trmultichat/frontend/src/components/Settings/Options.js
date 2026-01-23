@@ -16,6 +16,7 @@ import { makeStyles } from "@material-ui/core/styles";
 import { grey, blue } from "@material-ui/core/colors";
 import { Tabs, Tab } from "@material-ui/core";
 import { TrButton, TrCard, TrSectionTitle } from "../ui";
+import toastError from "../../errors/toastError";
 
 //import 'react-toastify/dist/ReactToastify.css';
  
@@ -91,7 +92,7 @@ export default function Options(props) {
   const [loadingScheduleType, setLoadingScheduleType] = useState(false);
   const [loadingCallType, setLoadingCallType] = useState(false);
   const [loadingChatbotType, setLoadingChatbotType] = useState(false);
-  const [loadingCheckMsgIsGroup, setCheckMsgIsGroup] = useState(false);
+  const [loadingCheckMsgIsGroup, setLoadingCheckMsgIsGroup] = useState(false);
 
 
   const [ipixcType, setIpIxcType] = useState("");
@@ -118,6 +119,24 @@ export default function Options(props) {
   const [loadingSettingsTransfTicket, setLoadingSettingsTransfTicket] = useState(false);
 
   const { update } = useSettings();
+
+  async function safeUpdateSetting({ key, value, setValue, setLoading, successMessage }) {
+    const prev = value;
+    try {
+      setLoading(true);
+      await update({ key, value });
+      if (typeof setValue === "function") setValue(value);
+      toast.success(successMessage || "Operação atualizada com sucesso.");
+      return true;
+    } catch (err) {
+      toastError(err);
+      // revert optimistic UI if needed
+      if (typeof setValue === "function") setValue(prev);
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  }
 
   useEffect(() => {
     if (Array.isArray(settings) && settings.length) {
@@ -191,70 +210,52 @@ export default function Options(props) {
   }, [settings]);
 
   async function handleChangeUserRating(value) {
-    setUserRating(value);
-    setLoadingUserRating(true);
-    await update({
+    await safeUpdateSetting({
       key: "userRating",
       value,
+      setValue: setUserRating,
+      setLoading: setLoadingUserRating,
     });
-    toast.success("Operação atualizada com sucesso.");
-    setLoadingUserRating(false);
   }
 
   async function handleScheduleType(value) {
-    setScheduleType(value);
-    setLoadingScheduleType(true);
-    await update({
+    const ok = await safeUpdateSetting({
       key: "scheduleType",
       value,
+      setValue: setScheduleType,
+      setLoading: setLoadingScheduleType,
     });
-    //toast.success("Oraçãpeo atualizada com sucesso.");
-    toast.success('Operação atualizada com sucesso.', {
-      position: "top-right",
-      autoClose: 2000,
-      hideProgressBar: false,
-      closeOnClick: true,
-      pauseOnHover: false,
-      draggable: true,
-      theme: "light",
-      });
-    setLoadingScheduleType(false);
     if (typeof scheduleTypeChanged === "function") {
-      scheduleTypeChanged(value);
+      // only notify parent if persisted
+      if (ok) scheduleTypeChanged(value);
     }
   }
 
   async function handleCallType(value) {
-    setCallType(value);
-    setLoadingCallType(true);
-    await update({
+    await safeUpdateSetting({
       key: "call",
       value,
+      setValue: setCallType,
+      setLoading: setLoadingCallType,
     });
-    toast.success("Operação atualizada com sucesso.");
-    setLoadingCallType(false);
   }
 
   async function handleChatbotType(value) {
-    setChatbotType(value);
-    setLoadingChatbotType(true);
-    await update({
+    await safeUpdateSetting({
       key: "chatBotType",
       value,
+      setValue: setChatbotType,
+      setLoading: setLoadingChatbotType,
     });
-    toast.success("Operação atualizada com sucesso.");
-    setLoadingChatbotType(false);
   }
 
   async function handleGroupType(value) {
-    setCheckMsgIsGroupType(value);
-    setCheckMsgIsGroup(true);
-    await update({
+    await safeUpdateSetting({
       key: "CheckMsgIsGroup",
       value,
+      setValue: setCheckMsgIsGroupType,
+      setLoading: setLoadingCheckMsgIsGroup,
     });
-    toast.success("Operação atualizada com sucesso.");
-    setCheckMsgIsGroupType(false);
     /*     if (typeof scheduleTypeChanged === "function") {
           scheduleTypeChanged(value);
         } */
@@ -262,29 +263,24 @@ export default function Options(props) {
   
   {/*NOVO CÓDIGO*/}  
   async function handleSendGreetingAccepted(value) {
-    setSendGreetingAccepted(value);
-    setLoadingSendGreetingAccepted(true);
-    await update({
+    await safeUpdateSetting({
       key: "sendGreetingAccepted",
       value,
+      setValue: setSendGreetingAccepted,
+      setLoading: setLoadingSendGreetingAccepted,
     });
-	toast.success("Operação atualizada com sucesso.");
-    setLoadingSendGreetingAccepted(false);
   }  
   
   
   {/*NOVO CÓDIGO*/}    
 
   async function handleSettingsTransfTicket(value) {
-    setSettingsTransfTicket(value);
-    setLoadingSettingsTransfTicket(true);
-    await update({
+    await safeUpdateSetting({
       key: "sendMsgTransfTicket",
       value,
+      setValue: setSettingsTransfTicket,
+      setLoading: setLoadingSettingsTransfTicket,
     });
-
-    toast.success("Operação atualizada com sucesso.");
-    setLoadingSettingsTransfTicket(false);
   } 
  
   async function handleChangeIPIxc(value) {
@@ -367,7 +363,7 @@ export default function Options(props) {
               labelId="ratings-label"
               value={userRating}
               onChange={async (e) => {
-                handleChangeUserRating(e.target.value);
+                await handleChangeUserRating(e.target.value);
               }}
             >
               <MenuItem value={"disabled"}>Desabilitadas</MenuItem>
@@ -387,7 +383,7 @@ export default function Options(props) {
               labelId="schedule-type-label"
               value={scheduleType}
               onChange={async (e) => {
-                handleScheduleType(e.target.value);
+                await handleScheduleType(e.target.value);
               }}
             >
               <MenuItem value={"disabled"}>Desabilitado</MenuItem>
@@ -408,14 +404,14 @@ export default function Options(props) {
               labelId="group-type-label"
               value={CheckMsgIsGroup}
               onChange={async (e) => {
-                handleGroupType(e.target.value);
+                await handleGroupType(e.target.value);
               }}
             >
               <MenuItem value={"disabled"}>Desativado</MenuItem>
               <MenuItem value={"enabled"}>Ativado</MenuItem>
             </Select>
             <FormHelperText>
-              {loadingScheduleType && "Atualizando..."}
+              {loadingCheckMsgIsGroup && "Atualizando..."}
             </FormHelperText>
           </FormControl>
         </Grid>
@@ -428,7 +424,7 @@ export default function Options(props) {
               labelId="call-type-label"
               value={callType}
               onChange={async (e) => {
-                handleCallType(e.target.value);
+                await handleCallType(e.target.value);
               }}
             >
               <MenuItem value={"disabled"}>Não Aceitar</MenuItem>
@@ -448,7 +444,7 @@ export default function Options(props) {
               labelId="chatbot-type-label"
               value={chatbotType}
               onChange={async (e) => {
-                handleChatbotType(e.target.value);
+                await handleChatbotType(e.target.value);
               }}
             >
               <MenuItem value={"text"}>Texto</MenuItem>
@@ -468,7 +464,7 @@ export default function Options(props) {
               labelId="sendGreetingAccepted-label"
               value={SendGreetingAccepted}
               onChange={async (e) => {
-                handleSendGreetingAccepted(e.target.value);
+                await handleSendGreetingAccepted(e.target.value);
               }}
             >
               <MenuItem value={"disabled"}>Desabilitado</MenuItem>
@@ -489,7 +485,7 @@ export default function Options(props) {
               labelId="sendMsgTransfTicket-label"
               value={SettingsTransfTicket}
               onChange={async (e) => {
-                handleSettingsTransfTicket(e.target.value);
+                await handleSettingsTransfTicket(e.target.value);
               }}
             >
               <MenuItem value={"disabled"}>Desabilitado</MenuItem>
