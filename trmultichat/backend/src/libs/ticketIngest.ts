@@ -408,6 +408,57 @@ export async function ingestBaileysMessage(opts: {
     const choice = String(baseBody || "").trim();
     if (choice && /^\d+$/.test(choice)) {
       try {
+        // 1) If last system message is a queue menu, map selection to queueId
+        try {
+          const lastMenu = await pgQuery<any>(
+            `
+              SELECT "dataJson"
+              FROM "Messages"
+              WHERE "ticketId" = $1 AND "companyId" = $2
+                AND "dataJson"::text ILIKE '%"system":"queue_menu"%'
+              ORDER BY "createdAt" DESC
+              LIMIT 1
+            `,
+            [ticketRow.id, companyId]
+          );
+          const dj = String(lastMenu?.[0]?.dataJson || "").trim();
+          if (dj) {
+            const parsed = JSON.parse(dj);
+            const items = Array.isArray(parsed?.items) ? parsed.items : [];
+            const picked = items.find((it: any) => Number(it?.n) === Number(choice));
+            const targetQueueId = Number(picked?.queueId || 0) || 0;
+            if (targetQueueId) {
+              await pgQuery(
+                `
+                  UPDATE "Tickets"
+                  SET
+                    "queueId" = $1,
+                    "queueOptionId" = NULL,
+                    "updatedAt" = NOW()
+                  WHERE id = $2 AND "companyId" = $3
+                `,
+                [targetQueueId, ticketRow.id, companyId]
+              );
+              ticketRow.queueId = targetQueueId;
+              ticketRow.queueOptionId = null;
+              // If queue menu was used, stop here (do not interpret as QueueOptions choice yet)
+              return {
+                ticketId: ticketRow.id,
+                contactId: contact.id,
+                whatsappId,
+                companyId,
+                isGroup,
+                remoteJid,
+                queueId: targetQueueId,
+                fromMe,
+                isNewTicket
+              };
+            }
+          }
+        } catch {
+          // ignore queue menu parsing errors
+        }
+
         const current = await pgQuery<any>(
           `SELECT id, "queueId", "queueOptionId", status FROM "Tickets" WHERE id = $1 AND "companyId" = $2 LIMIT 1`,
           [ticketRow.id, companyId]

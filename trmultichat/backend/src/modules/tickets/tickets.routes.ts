@@ -409,6 +409,52 @@ router.put("/:id", authMiddleware, async (req, res) => {
           `,
           [sentId, greeting, id, contactId, companyId, remoteJid, JSON.stringify({ system: "greeting" })]
         );
+
+        // Send "queue menu" to the client so they can choose the target queue
+        // (this is the expected flow when accepting a ticket).
+        try {
+          // Dedupe: only one menu per ticket (unless you delete it)
+          const alreadyMenu = await pgQuery<{ c: number }>(
+            `SELECT COUNT(1)::int as c FROM "Messages" WHERE "ticketId" = $1 AND "companyId" = $2 AND "dataJson"::text ILIKE '%\"system\":\"queue_menu\"%'`,
+            [id, companyId]
+          );
+          if (Number(alreadyMenu?.[0]?.c || 0) > 0) return;
+
+          // Load queues (ordered)
+          let queues: Array<{ id: number; name: string }> = [];
+          try {
+            queues = await pgQuery<any>(
+              `SELECT id, name FROM "Queues" WHERE "companyId" = $1 ORDER BY COALESCE("orderQueue", id) ASC, id ASC`,
+              [companyId]
+            );
+          } catch {
+            queues = await pgQuery<any>(
+              `SELECT id, name FROM "Queues" WHERE "companyId" = $1 ORDER BY id ASC`,
+              [companyId]
+            );
+          }
+          queues = Array.isArray(queues) ? queues.filter((q) => q?.id && q?.name) : [];
+          if (!queues.length) return;
+
+          const items = queues.map((q, idx) => ({ n: idx + 1, queueId: Number(q.id), name: String(q.name) }));
+          const menuText =
+            `Escolha a fila para continuar:\n` +
+            items.map((it) => `${it.n} - ${it.name}`).join("\n");
+
+          const r2 = await sock.sendMessage(remoteJid, { text: menuText });
+          const menuId = String(r2?.key?.id || `queue-menu-${Date.now()}`);
+          await pgQuery(
+            `
+              INSERT INTO "Messages"
+                (id, body, ack, read, "ticketId", "createdAt", "updatedAt", "fromMe", "isDeleted",
+                 "contactId", "companyId", "remoteJid", "dataJson")
+              VALUES
+                ($1, $2, 0, true, $3, NOW(), NOW(), true, false, $4, $5, $6, $7)
+              ON CONFLICT (id) DO NOTHING
+            `,
+            [menuId, menuText, id, contactId, companyId, remoteJid, JSON.stringify({ system: "queue_menu", items })]
+          );
+        } catch {}
       } catch {}
     })();
   }
