@@ -16,6 +16,7 @@ import queueIntegrationRoutes from "./modules/queueIntegration/queueIntegration.
 import queueOptionsRoutes from "./modules/queueOptions/queueOptions.routes";
 import filesRoutes from "./modules/files/files.routes";
 import promptRoutes from "./modules/prompt/prompt.routes";
+import aiRoutes from "./modules/ai/ai.routes";
 import tagsRoutes from "./modules/tags/tags.routes";
 import schedulesRoutes from "./modules/schedules/schedules.routes";
 import announcementsRoutes from "./modules/announcements/announcements.routes";
@@ -396,6 +397,7 @@ app.use("/queue-options", queueOptionsRoutes);
 app.use("/queue-list", queueListRoutes);
 app.use("/files", filesRoutes);
 app.use("/prompt", promptRoutes);
+app.use("/ai", aiRoutes);
 app.use("/tags", tagsRoutes);
 app.use("/schedules", schedulesRoutes);
 app.use("/announcements", announcementsRoutes);

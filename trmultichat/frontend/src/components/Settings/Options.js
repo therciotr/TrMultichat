@@ -13,6 +13,7 @@ import { makeStyles } from "@material-ui/core/styles";
 import { grey, blue } from "@material-ui/core/colors";
 import { TrButton, TrCard, TrSectionTitle } from "../ui";
 import toastError from "../../errors/toastError";
+import api from "../../services/api";
 import Switch from "@material-ui/core/Switch";
 import FormControlLabel from "@material-ui/core/FormControlLabel";
 import SaveOutlinedIcon from "@material-ui/icons/SaveOutlined";
@@ -24,6 +25,9 @@ import VpnKeyOutlinedIcon from "@material-ui/icons/VpnKeyOutlined";
 import AccountBalanceWalletOutlinedIcon from "@material-ui/icons/AccountBalanceWalletOutlined";
 import VisibilityOutlinedIcon from "@material-ui/icons/VisibilityOutlined";
 import VisibilityOffOutlinedIcon from "@material-ui/icons/VisibilityOffOutlined";
+import EmojiObjectsIcon from "@material-ui/icons/EmojiObjects";
+import CodeIcon from "@material-ui/icons/Code";
+import PlayArrowIcon from "@material-ui/icons/PlayArrow";
 
 //import 'react-toastify/dist/ReactToastify.css';
  
@@ -151,6 +155,21 @@ export default function Options(props) {
   const [showTokenIxc, setShowTokenIxc] = useState(false);
   const [showClientSecretMk, setShowClientSecretMk] = useState(false);
   const [showAsaasToken, setShowAsaasToken] = useState(false);
+
+  // IA (ChatGPT / Cursor)
+  const [openaiApiKey, setOpenaiApiKey] = useState("");
+  const [openaiModel, setOpenaiModel] = useState("gpt-3.5-turbo");
+  const [openaiBaseUrl, setOpenaiBaseUrl] = useState("https://api.openai.com/v1");
+  const [loadingOpenAi, setLoadingOpenAi] = useState(false);
+  const [testingOpenAi, setTestingOpenAi] = useState(false);
+  const [showOpenAiKey, setShowOpenAiKey] = useState(false);
+
+  const [cursorApiKey, setCursorApiKey] = useState("");
+  const [cursorModel, setCursorModel] = useState("gpt-3.5-turbo");
+  const [cursorBaseUrl, setCursorBaseUrl] = useState("");
+  const [loadingCursor, setLoadingCursor] = useState(false);
+  const [testingCursor, setTestingCursor] = useState(false);
+  const [showCursorKey, setShowCursorKey] = useState(false);
   
   // recursos a mais da plw design
 
@@ -176,7 +195,13 @@ export default function Options(props) {
     ipmkauth: "",
     clientidmkauth: "",
     clientsecretmkauth: "",
-    asaas: ""
+    asaas: "",
+    openaiApiKey: "",
+    openaiModel: "gpt-3.5-turbo",
+    openaiBaseUrl: "https://api.openai.com/v1",
+    cursorApiKey: "",
+    cursorModel: "gpt-3.5-turbo",
+    cursorBaseUrl: ""
   });
 
   useEffect(() => {
@@ -243,6 +268,20 @@ export default function Options(props) {
         setAsaasType(asaasType.value);
       }
 
+      const openaiApiKey = settings.find((s) => s.key === "openaiApiKey");
+      if (openaiApiKey) setOpenaiApiKey(openaiApiKey.value);
+      const openaiModel = settings.find((s) => s.key === "openaiModel");
+      if (openaiModel) setOpenaiModel(openaiModel.value);
+      const openaiBaseUrl = settings.find((s) => s.key === "openaiBaseUrl");
+      if (openaiBaseUrl) setOpenaiBaseUrl(openaiBaseUrl.value);
+
+      const cursorApiKey = settings.find((s) => s.key === "cursorApiKey");
+      if (cursorApiKey) setCursorApiKey(cursorApiKey.value);
+      const cursorModel = settings.find((s) => s.key === "cursorModel");
+      if (cursorModel) setCursorModel(cursorModel.value);
+      const cursorBaseUrl = settings.find((s) => s.key === "cursorBaseUrl");
+      if (cursorBaseUrl) setCursorBaseUrl(cursorBaseUrl.value);
+
       // snapshot initial general values (for dirty check)
       initialGeneralRef.current = {
         userRating: userRating?.value ?? "disabled",
@@ -260,7 +299,13 @@ export default function Options(props) {
         ipmkauth: ipmkauthType?.value ?? "",
         clientidmkauth: clientidmkauthType?.value ?? "",
         clientsecretmkauth: clientsecretmkauthType?.value ?? "",
-        asaas: asaasType?.value ?? ""
+        asaas: asaasType?.value ?? "",
+        openaiApiKey: openaiApiKey?.value ?? "",
+        openaiModel: openaiModel?.value ?? "gpt-3.5-turbo",
+        openaiBaseUrl: openaiBaseUrl?.value ?? "https://api.openai.com/v1",
+        cursorApiKey: cursorApiKey?.value ?? "",
+        cursorModel: cursorModel?.value ?? "gpt-3.5-turbo",
+        cursorBaseUrl: cursorBaseUrl?.value ?? ""
       };
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -316,6 +361,16 @@ export default function Options(props) {
     String(clientidmkauthType || "") !== String(initialIntegrationsRef.current.clientidmkauth || "") ||
     String(clientsecretmkauthType || "") !== String(initialIntegrationsRef.current.clientsecretmkauth || "");
   const asaasDirty = String(asaasType || "") !== String(initialIntegrationsRef.current.asaas || "");
+
+  const openAiDirty =
+    String(openaiApiKey || "") !== String(initialIntegrationsRef.current.openaiApiKey || "") ||
+    String(openaiModel || "") !== String(initialIntegrationsRef.current.openaiModel || "") ||
+    String(openaiBaseUrl || "") !== String(initialIntegrationsRef.current.openaiBaseUrl || "");
+
+  const cursorDirty =
+    String(cursorApiKey || "") !== String(initialIntegrationsRef.current.cursorApiKey || "") ||
+    String(cursorModel || "") !== String(initialIntegrationsRef.current.cursorModel || "") ||
+    String(cursorBaseUrl || "") !== String(initialIntegrationsRef.current.cursorBaseUrl || "");
 
   async function handleSaveGeneral() {
     if (!generalDirty) return;
@@ -732,6 +787,234 @@ export default function Options(props) {
                     </InputAdornment>
                   )
                 }}
+              />
+            </Grid>
+          </Grid>
+
+          <div style={{ height: 18 }} />
+
+          {/* ChatGPT (OpenAI) */}
+          <div className={classes.topBar} style={{ marginBottom: 12 }}>
+            <div className={classes.topBarLeft}>
+              <p className={classes.topBarTitle}>
+                <EmojiObjectsIcon style={{ verticalAlign: "middle", marginRight: 8 }} />
+                ChatGPT (OpenAI)
+              </p>
+              <p className={classes.topBarSub}>Configuração global de IA para prompts/respostas automáticas.</p>
+            </div>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <TrButton
+                startIcon={<PlayArrowIcon />}
+                disabled={testingOpenAi || !String(openaiApiKey || "").trim()}
+                onClick={async () => {
+                  try {
+                    setTestingOpenAi(true);
+                    const { data } = await api.post("/ai/test", { provider: "openai", message: "Responda apenas: OK" });
+                    toast.success(`ChatGPT: ${data?.response || "OK"}`);
+                  } catch (err) {
+                    toastError(err);
+                  } finally {
+                    setTestingOpenAi(false);
+                  }
+                }}
+              >
+                {testingOpenAi ? "Testando..." : "Testar"}
+              </TrButton>
+              <TrButton
+                startIcon={<SaveOutlinedIcon />}
+                disabled={!openAiDirty || loadingOpenAi}
+                onClick={async () => {
+                  try {
+                    setLoadingOpenAi(true);
+                    await Promise.all([
+                      update({ key: "openaiApiKey", value: openaiApiKey }),
+                      update({ key: "openaiModel", value: openaiModel }),
+                      update({ key: "openaiBaseUrl", value: openaiBaseUrl }),
+                    ]);
+                    initialIntegrationsRef.current = {
+                      ...initialIntegrationsRef.current,
+                      openaiApiKey: String(openaiApiKey || ""),
+                      openaiModel: String(openaiModel || ""),
+                      openaiBaseUrl: String(openaiBaseUrl || ""),
+                    };
+                    toast.success("ChatGPT salvo com sucesso.");
+                  } catch (err) {
+                    toastError(err);
+                  } finally {
+                    setLoadingOpenAi(false);
+                  }
+                }}
+              >
+                {loadingOpenAi ? "Salvando..." : "Salvar"}
+              </TrButton>
+            </div>
+          </div>
+          <Grid spacing={2} container style={{ marginBottom: 16 }}>
+            <Grid xs={12} md={6} item>
+              <TextField
+                fullWidth
+                size="small"
+                id="openaiApiKey"
+                name="openaiApiKey"
+                label="OpenAI API Key"
+                placeholder="sk-..."
+                variant="outlined"
+                type={showOpenAiKey ? "text" : "password"}
+                value={openaiApiKey}
+                onChange={(e) => setOpenaiApiKey(e.target.value)}
+                helperText="Chave de API da OpenAI (ChatGPT)."
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <Tooltip title={showOpenAiKey ? "Ocultar" : "Mostrar"}>
+                        <IconButton size="small" onClick={() => setShowOpenAiKey((v) => !v)}>
+                          {showOpenAiKey ? <VisibilityOffOutlinedIcon /> : <VisibilityOutlinedIcon />}
+                        </IconButton>
+                      </Tooltip>
+                    </InputAdornment>
+                  )
+                }}
+              />
+            </Grid>
+            <Grid xs={12} md={3} item>
+              <TextField
+                fullWidth
+                size="small"
+                id="openaiModel"
+                name="openaiModel"
+                label="Modelo"
+                placeholder="gpt-3.5-turbo"
+                variant="outlined"
+                value={openaiModel}
+                onChange={(e) => setOpenaiModel(e.target.value)}
+                helperText="Ex.: gpt-3.5-turbo"
+              />
+            </Grid>
+            <Grid xs={12} md={3} item>
+              <TextField
+                fullWidth
+                size="small"
+                id="openaiBaseUrl"
+                name="openaiBaseUrl"
+                label="Base URL"
+                placeholder="https://api.openai.com/v1"
+                variant="outlined"
+                value={openaiBaseUrl}
+                onChange={(e) => setOpenaiBaseUrl(e.target.value)}
+                helperText="Deixe padrão, a menos que use proxy."
+              />
+            </Grid>
+          </Grid>
+
+          {/* Cursor (OpenAI-compatible) */}
+          <div className={classes.topBar} style={{ marginBottom: 12 }}>
+            <div className={classes.topBarLeft}>
+              <p className={classes.topBarTitle}>
+                <CodeIcon style={{ verticalAlign: "middle", marginRight: 8 }} />
+                Cursor (OpenAI-compatible)
+              </p>
+              <p className={classes.topBarSub}>Use um endpoint compatível com OpenAI (baseUrl + apiKey).</p>
+            </div>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <TrButton
+                startIcon={<PlayArrowIcon />}
+                disabled={testingCursor || !String(cursorApiKey || "").trim() || !String(cursorBaseUrl || "").trim()}
+                onClick={async () => {
+                  try {
+                    setTestingCursor(true);
+                    const { data } = await api.post("/ai/test", { provider: "cursor", message: "Responda apenas: OK" });
+                    toast.success(`Cursor: ${data?.response || "OK"}`);
+                  } catch (err) {
+                    toastError(err);
+                  } finally {
+                    setTestingCursor(false);
+                  }
+                }}
+              >
+                {testingCursor ? "Testando..." : "Testar"}
+              </TrButton>
+              <TrButton
+                startIcon={<SaveOutlinedIcon />}
+                disabled={!cursorDirty || loadingCursor}
+                onClick={async () => {
+                  try {
+                    setLoadingCursor(true);
+                    await Promise.all([
+                      update({ key: "cursorApiKey", value: cursorApiKey }),
+                      update({ key: "cursorModel", value: cursorModel }),
+                      update({ key: "cursorBaseUrl", value: cursorBaseUrl }),
+                    ]);
+                    initialIntegrationsRef.current = {
+                      ...initialIntegrationsRef.current,
+                      cursorApiKey: String(cursorApiKey || ""),
+                      cursorModel: String(cursorModel || ""),
+                      cursorBaseUrl: String(cursorBaseUrl || ""),
+                    };
+                    toast.success("Cursor salvo com sucesso.");
+                  } catch (err) {
+                    toastError(err);
+                  } finally {
+                    setLoadingCursor(false);
+                  }
+                }}
+              >
+                {loadingCursor ? "Salvando..." : "Salvar"}
+              </TrButton>
+            </div>
+          </div>
+          <Grid spacing={2} container>
+            <Grid xs={12} md={4} item>
+              <TextField
+                fullWidth
+                size="small"
+                id="cursorBaseUrl"
+                name="cursorBaseUrl"
+                label="Base URL"
+                placeholder="https://.../v1"
+                variant="outlined"
+                value={cursorBaseUrl}
+                onChange={(e) => setCursorBaseUrl(e.target.value)}
+                helperText="Obrigatório (endpoint compatível com OpenAI)."
+              />
+            </Grid>
+            <Grid xs={12} md={4} item>
+              <TextField
+                fullWidth
+                size="small"
+                id="cursorApiKey"
+                name="cursorApiKey"
+                label="API Key"
+                placeholder="..."
+                variant="outlined"
+                type={showCursorKey ? "text" : "password"}
+                value={cursorApiKey}
+                onChange={(e) => setCursorApiKey(e.target.value)}
+                helperText="Chave do provedor."
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <Tooltip title={showCursorKey ? "Ocultar" : "Mostrar"}>
+                        <IconButton size="small" onClick={() => setShowCursorKey((v) => !v)}>
+                          {showCursorKey ? <VisibilityOffOutlinedIcon /> : <VisibilityOutlinedIcon />}
+                        </IconButton>
+                      </Tooltip>
+                    </InputAdornment>
+                  )
+                }}
+              />
+            </Grid>
+            <Grid xs={12} md={4} item>
+              <TextField
+                fullWidth
+                size="small"
+                id="cursorModel"
+                name="cursorModel"
+                label="Modelo"
+                placeholder="gpt-3.5-turbo"
+                variant="outlined"
+                value={cursorModel}
+                onChange={(e) => setCursorModel(e.target.value)}
+                helperText="Modelo exposto pelo endpoint."
               />
             </Grid>
           </Grid>
