@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 
 import Grid from "@material-ui/core/Grid";
 import MenuItem from "@material-ui/core/MenuItem";
@@ -17,6 +17,10 @@ import { grey, blue } from "@material-ui/core/colors";
 import { Tabs, Tab } from "@material-ui/core";
 import { TrButton, TrCard, TrSectionTitle } from "../ui";
 import toastError from "../../errors/toastError";
+import Box from "@material-ui/core/Box";
+import Switch from "@material-ui/core/Switch";
+import FormControlLabel from "@material-ui/core/FormControlLabel";
+import SaveOutlinedIcon from "@material-ui/icons/SaveOutlined";
 
 //import 'react-toastify/dist/ReactToastify.css';
  
@@ -77,6 +81,41 @@ const useStyles = makeStyles((theme) => ({
     width: "100%",
     textAlign: "left",
   },
+  topBar: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: theme.spacing(2),
+    marginBottom: theme.spacing(2),
+  },
+  topBarLeft: {
+    minWidth: 0,
+  },
+  topBarTitle: {
+    margin: 0,
+    fontSize: 16,
+    fontWeight: 800,
+    color: "rgba(15, 23, 42, 0.92)",
+  },
+  topBarSub: {
+    margin: 0,
+    marginTop: 2,
+    fontSize: 13,
+    color: "rgba(15, 23, 42, 0.65)",
+  },
+  sectionCard: {
+    padding: 16,
+    borderRadius: 14,
+    border: "1px solid rgba(15, 23, 42, 0.10)",
+    boxShadow: "0 8px 24px rgba(15, 23, 42, 0.05)",
+    backgroundColor: "#fff",
+  },
+  switchRow: {
+    padding: 12,
+    borderRadius: 12,
+    border: "1px solid rgba(15, 23, 42, 0.08)",
+    background: "rgba(248, 250, 252, 0.70)",
+  },
 }));
 
 export default function Options(props) {
@@ -88,11 +127,7 @@ export default function Options(props) {
   const [chatbotType, setChatbotType] = useState("");
   const [CheckMsgIsGroup, setCheckMsgIsGroupType] = useState("enabled");
 
-  const [loadingUserRating, setLoadingUserRating] = useState(false);
-  const [loadingScheduleType, setLoadingScheduleType] = useState(false);
-  const [loadingCallType, setLoadingCallType] = useState(false);
-  const [loadingChatbotType, setLoadingChatbotType] = useState(false);
-  const [loadingCheckMsgIsGroup, setLoadingCheckMsgIsGroup] = useState(false);
+  const [savingGeneral, setSavingGeneral] = useState(false);
 
 
   const [ipixcType, setIpIxcType] = useState("");
@@ -120,23 +155,15 @@ export default function Options(props) {
 
   const { update } = useSettings();
 
-  async function safeUpdateSetting({ key, value, setValue, setLoading, successMessage }) {
-    const prev = value;
-    try {
-      setLoading(true);
-      await update({ key, value });
-      if (typeof setValue === "function") setValue(value);
-      toast.success(successMessage || "Operação atualizada com sucesso.");
-      return true;
-    } catch (err) {
-      toastError(err);
-      // revert optimistic UI if needed
-      if (typeof setValue === "function") setValue(prev);
-      return false;
-    } finally {
-      setLoading(false);
-    }
-  }
+  const initialGeneralRef = useRef({
+    userRating: "disabled",
+    scheduleType: "disabled",
+    call: "enabled",
+    chatBotType: "",
+    CheckMsgIsGroup: "enabled",
+    sendGreetingAccepted: "disabled",
+    sendMsgTransfTicket: "disabled",
+  });
 
   useEffect(() => {
     if (Array.isArray(settings) && settings.length) {
@@ -205,174 +232,136 @@ export default function Options(props) {
       if (asaasType) {
         setAsaasType(asaasType.value);
       }
+
+      // snapshot initial general values (for dirty check)
+      initialGeneralRef.current = {
+        userRating: userRating?.value ?? "disabled",
+        scheduleType: scheduleType?.value ?? "disabled",
+        call: callType?.value ?? "enabled",
+        chatBotType: chatbotType?.value ?? "",
+        CheckMsgIsGroup: CheckMsgIsGroup?.value ?? "enabled",
+        sendGreetingAccepted: SendGreetingAccepted?.value ?? "disabled",
+        sendMsgTransfTicket: SettingsTransfTicket?.value ?? "disabled",
+      };
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings]);
 
-  async function handleChangeUserRating(value) {
-    await safeUpdateSetting({
-      key: "userRating",
-      value,
-      setValue: setUserRating,
-      setLoading: setLoadingUserRating,
-    });
-  }
-
-  async function handleScheduleType(value) {
-    const ok = await safeUpdateSetting({
-      key: "scheduleType",
-      value,
-      setValue: setScheduleType,
-      setLoading: setLoadingScheduleType,
-    });
-    if (typeof scheduleTypeChanged === "function") {
-      // only notify parent if persisted
-      if (ok) scheduleTypeChanged(value);
-    }
-  }
-
-  async function handleCallType(value) {
-    await safeUpdateSetting({
-      key: "call",
-      value,
-      setValue: setCallType,
-      setLoading: setLoadingCallType,
-    });
-  }
-
-  async function handleChatbotType(value) {
-    await safeUpdateSetting({
-      key: "chatBotType",
-      value,
-      setValue: setChatbotType,
-      setLoading: setLoadingChatbotType,
-    });
-  }
-
-  async function handleGroupType(value) {
-    await safeUpdateSetting({
-      key: "CheckMsgIsGroup",
-      value,
-      setValue: setCheckMsgIsGroupType,
-      setLoading: setLoadingCheckMsgIsGroup,
-    });
-    /*     if (typeof scheduleTypeChanged === "function") {
-          scheduleTypeChanged(value);
-        } */
-  }
+  const generalDirty = (() => {
+    const init = initialGeneralRef.current || {};
+    return (
+      String(userRating) !== String(init.userRating) ||
+      String(scheduleType) !== String(init.scheduleType) ||
+      String(callType) !== String(init.call) ||
+      String(chatbotType) !== String(init.chatBotType) ||
+      String(CheckMsgIsGroup) !== String(init.CheckMsgIsGroup) ||
+      String(SendGreetingAccepted) !== String(init.sendGreetingAccepted) ||
+      String(SettingsTransfTicket) !== String(init.sendMsgTransfTicket)
+    );
+  })();
   
   {/*NOVO CÓDIGO*/}  
-  async function handleSendGreetingAccepted(value) {
-    await safeUpdateSetting({
-      key: "sendGreetingAccepted",
-      value,
-      setValue: setSendGreetingAccepted,
-      setLoading: setLoadingSendGreetingAccepted,
-    });
-  }  
+  async function handleSendGreetingAccepted(value) { setSendGreetingAccepted(value); }  
   
   
   {/*NOVO CÓDIGO*/}    
 
-  async function handleSettingsTransfTicket(value) {
-    await safeUpdateSetting({
-      key: "sendMsgTransfTicket",
-      value,
-      setValue: setSettingsTransfTicket,
-      setLoading: setLoadingSettingsTransfTicket,
-    });
-  } 
+  async function handleSettingsTransfTicket(value) { setSettingsTransfTicket(value); } 
  
   async function handleChangeIPIxc(value) {
     setIpIxcType(value);
-    setLoadingIpIxcType(true);
-    await update({
-      key: "ipixc",
-      value,
-    });
-    toast.success("Operação atualizada com sucesso.");
-    setLoadingIpIxcType(false);
   }
 
   async function handleChangeTokenIxc(value) {
     setTokenIxcType(value);
-    setLoadingTokenIxcType(true);
-    await update({
-      key: "tokenixc",
-      value,
-    });
-    toast.success("Operação atualizada com sucesso.");
-    setLoadingTokenIxcType(false);
   }
 
   async function handleChangeIpMkauth(value) {
     setIpMkauthType(value);
-    setLoadingIpMkauthType(true);
-    await update({
-      key: "ipmkauth",
-      value,
-    });
-    toast.success("Operação atualizada com sucesso.");
-    setLoadingIpMkauthType(false);
   }
 
   async function handleChangeClientIdMkauth(value) {
     setClientIdMkauthType(value);
-    setLoadingClientIdMkauthType(true);
-    await update({
-      key: "clientidmkauth",
-      value,
-    });
-    toast.success("Operação atualizada com sucesso.");
-    setLoadingClientIdMkauthType(false);
   }
 
   async function handleChangeClientSecrectMkauth(value) {
     setClientSecrectMkauthType(value);
-    setLoadingClientSecrectMkauthType(true);
-    await update({
-      key: "clientsecretmkauth",
-      value,
-    });
-    toast.success("Operação atualizada com sucesso.");
-    setLoadingClientSecrectMkauthType(false);
   }
 
   async function handleChangeAsaas(value) {
     setAsaasType(value);
-    setLoadingAsaasType(true);
-    await update({
-      key: "asaas",
-      value,
-    });
-    toast.success("Operação atualizada com sucesso.");
-    setLoadingAsaasType(false);
+  }
+
+  async function handleSaveGeneral() {
+    if (!generalDirty) return;
+    const prev = initialGeneralRef.current;
+    try {
+      setSavingGeneral(true);
+      const updates = [];
+      if (String(userRating) !== String(prev.userRating)) updates.push(update({ key: "userRating", value: userRating }));
+      if (String(scheduleType) !== String(prev.scheduleType)) updates.push(update({ key: "scheduleType", value: scheduleType }));
+      if (String(callType) !== String(prev.call)) updates.push(update({ key: "call", value: callType }));
+      if (String(chatbotType) !== String(prev.chatBotType)) updates.push(update({ key: "chatBotType", value: chatbotType }));
+      if (String(CheckMsgIsGroup) !== String(prev.CheckMsgIsGroup)) updates.push(update({ key: "CheckMsgIsGroup", value: CheckMsgIsGroup }));
+      if (String(SendGreetingAccepted) !== String(prev.sendGreetingAccepted)) updates.push(update({ key: "sendGreetingAccepted", value: SendGreetingAccepted }));
+      if (String(SettingsTransfTicket) !== String(prev.sendMsgTransfTicket)) updates.push(update({ key: "sendMsgTransfTicket", value: SettingsTransfTicket }));
+
+      await Promise.all(updates);
+      toast.success("Configurações salvas com sucesso.");
+      const nextSnap = {
+        userRating,
+        scheduleType,
+        call: callType,
+        chatBotType: chatbotType,
+        CheckMsgIsGroup,
+        sendGreetingAccepted: SendGreetingAccepted,
+        sendMsgTransfTicket: SettingsTransfTicket,
+      };
+      initialGeneralRef.current = nextSnap;
+      if (typeof scheduleTypeChanged === "function") {
+        scheduleTypeChanged(scheduleType);
+      }
+    } catch (err) {
+      toastError(err);
+    } finally {
+      setSavingGeneral(false);
+    }
   }
   return (
     <>
-      <TrSectionTitle title="Opções gerais" subtitle="Configure comportamento do atendimento e chatbot" />
-      <TrCard elevation={1} className="tr-card-border" style={{ padding: 16 }}>
+      <div className={classes.topBar}>
+        <div className={classes.topBarLeft}>
+          <p className={classes.topBarTitle}>Opções gerais</p>
+          <p className={classes.topBarSub}>Configure comportamento do atendimento e chatbot</p>
+        </div>
+        <TrButton
+          startIcon={<SaveOutlinedIcon />}
+          onClick={handleSaveGeneral}
+          disabled={!generalDirty || savingGeneral}
+        >
+          {savingGeneral ? "Salvando..." : "Salvar alterações"}
+        </TrButton>
+      </div>
+      <TrCard elevation={1} className="tr-card-border" style={{ padding: 0 }}>
+      <div className={classes.sectionCard}>
       <Grid spacing={3} container>
         {/* <Grid xs={12} item>
                     <Title>Configurações Gerais</Title>
                 </Grid> */}
         <Grid xs={12} sm={6} md={4} item>
-          <FormControl className={classes.selectContainer}>
-            <InputLabel id="ratings-label">Avaliações</InputLabel>
-            <Select
-              labelId="ratings-label"
-              value={userRating}
-              onChange={async (e) => {
-                await handleChangeUserRating(e.target.value);
-              }}
-            >
-              <MenuItem value={"disabled"}>Desabilitadas</MenuItem>
-              <MenuItem value={"enabled"}>Habilitadas</MenuItem>
-            </Select>
-            <FormHelperText>
-              {loadingUserRating && "Atualizando..."}
-            </FormHelperText>
-          </FormControl>
+          <div className={classes.switchRow}>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={String(userRating) === "enabled"}
+                  onChange={(e) => setUserRating(e.target.checked ? "enabled" : "disabled")}
+                  color="primary"
+                />
+              }
+              label="Avaliações"
+            />
+            <FormHelperText>Habilita coleta de avaliação após o atendimento.</FormHelperText>
+          </div>
         </Grid>
         <Grid xs={12} sm={6} md={4} item>
           <FormControl className={classes.selectContainer}>
@@ -383,57 +372,45 @@ export default function Options(props) {
               labelId="schedule-type-label"
               value={scheduleType}
               onChange={async (e) => {
-                await handleScheduleType(e.target.value);
+                setScheduleType(e.target.value);
               }}
             >
               <MenuItem value={"disabled"}>Desabilitado</MenuItem>
               <MenuItem value={"queue"}>Fila</MenuItem>
               <MenuItem value={"company"}>Empresa</MenuItem>
             </Select>
-            <FormHelperText>
-              {loadingScheduleType && "Atualizando..."}
-            </FormHelperText>
+            <FormHelperText>Define onde controlar o expediente.</FormHelperText>
           </FormControl>
         </Grid>
         <Grid xs={12} sm={6} md={4} item>
-          <FormControl className={classes.selectContainer}>
-            <InputLabel id="group-type-label">
-              Ignorar Mensagens de Grupos
-            </InputLabel>
-            <Select
-              labelId="group-type-label"
-              value={CheckMsgIsGroup}
-              onChange={async (e) => {
-                await handleGroupType(e.target.value);
-              }}
-            >
-              <MenuItem value={"disabled"}>Desativado</MenuItem>
-              <MenuItem value={"enabled"}>Ativado</MenuItem>
-            </Select>
-            <FormHelperText>
-              {loadingCheckMsgIsGroup && "Atualizando..."}
-            </FormHelperText>
-          </FormControl>
+          <div className={classes.switchRow}>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={String(CheckMsgIsGroup) === "enabled"}
+                  onChange={(e) => setCheckMsgIsGroupType(e.target.checked ? "enabled" : "disabled")}
+                  color="primary"
+                />
+              }
+              label="Ignorar mensagens de grupos"
+            />
+            <FormHelperText>Quando ativo, mensagens de grupos não criam tickets.</FormHelperText>
+          </div>
         </Grid>
         <Grid xs={12} sm={6} md={4} item>
-          <FormControl className={classes.selectContainer}>
-            <InputLabel id="call-type-label">
-              Aceitar Chamada
-            </InputLabel>
-            <Select
-              labelId="call-type-label"
-              value={callType}
-              onChange={async (e) => {
-                await handleCallType(e.target.value);
-              }}
-            >
-              <MenuItem value={"disabled"}>Não Aceitar</MenuItem>
-              <MenuItem value={"enabled"}>Aceitar</MenuItem>
-            </Select>
-            <FormHelperText>
-              {loadingCallType && "Atualizando..."}
-            </FormHelperText>
-          </FormControl>
+          <div className={classes.switchRow}>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={String(callType) === "enabled"}
+                  onChange={(e) => setCallType(e.target.checked ? "enabled" : "disabled")}
+                  color="primary"
+                />
+              }
+              label="Aceitar chamada"
+            />
+            <FormHelperText>Permite receber chamadas (quando suportado).</FormHelperText>
+          </div>
         </Grid>
         <Grid xs={12} sm={6} md={4} item>
           <FormControl className={classes.selectContainer}>
@@ -444,60 +421,53 @@ export default function Options(props) {
               labelId="chatbot-type-label"
               value={chatbotType}
               onChange={async (e) => {
-                await handleChatbotType(e.target.value);
+                setChatbotType(e.target.value);
               }}
             >
               <MenuItem value={"text"}>Texto</MenuItem>
 			 {/*<MenuItem value={"button"}>Botão</MenuItem>*/}
              {/*<MenuItem value={"list"}>Lista</MenuItem>*/}
             </Select>
-            <FormHelperText>
-              {loadingChatbotType && "Atualizando..."}
-            </FormHelperText>
+            <FormHelperText>Define o formato das opções do chatbot.</FormHelperText>
           </FormControl>
         </Grid>
 		{/* ENVIAR SAUDAÇÃO AO ACEITAR O TICKET */}
         <Grid xs={12} sm={6} md={4} item>
-          <FormControl className={classes.selectContainer}>
-            <InputLabel id="sendGreetingAccepted-label">Enviar saudação ao aceitar o ticket</InputLabel>
-            <Select
-              labelId="sendGreetingAccepted-label"
-              value={SendGreetingAccepted}
-              onChange={async (e) => {
-                await handleSendGreetingAccepted(e.target.value);
-              }}
-            >
-              <MenuItem value={"disabled"}>Desabilitado</MenuItem>
-              <MenuItem value={"enabled"}>Habilitado</MenuItem>
-            </Select>
-            <FormHelperText>
-              {loadingSendGreetingAccepted && "Atualizando..."}
-            </FormHelperText>
-          </FormControl>
+          <div className={classes.switchRow}>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={String(SendGreetingAccepted) === "enabled"}
+                  onChange={(e) => handleSendGreetingAccepted(e.target.checked ? "enabled" : "disabled")}
+                  color="primary"
+                />
+              }
+              label="Enviar saudação ao aceitar o ticket"
+            />
+            <FormHelperText>Envie a mensagem automática ao aceitar o atendimento.</FormHelperText>
+          </div>
         </Grid>
 		{/* ENVIAR SAUDAÇÃO AO ACEITAR O TICKET */}
 		
 		{/* ENVIAR MENSAGEM DE TRANSFERENCIA DE SETOR/ATENDENTE */}
         <Grid xs={12} sm={6} md={4} item>
-          <FormControl className={classes.selectContainer}>
-            <InputLabel id="sendMsgTransfTicket-label">Enviar mensagem de transferencia de Fila/agente</InputLabel>
-            <Select
-              labelId="sendMsgTransfTicket-label"
-              value={SettingsTransfTicket}
-              onChange={async (e) => {
-                await handleSettingsTransfTicket(e.target.value);
-              }}
-            >
-              <MenuItem value={"disabled"}>Desabilitado</MenuItem>
-              <MenuItem value={"enabled"}>Habilitado</MenuItem>
-            </Select>
-            <FormHelperText>
-              {loadingSettingsTransfTicket && "Atualizando..."}
-            </FormHelperText>
-          </FormControl>
+          <div className={classes.switchRow}>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={String(SettingsTransfTicket) === "enabled"}
+                  onChange={(e) => handleSettingsTransfTicket(e.target.checked ? "enabled" : "disabled")}
+                  color="primary"
+                />
+              }
+              label="Mensagem ao transferir fila/agente"
+            />
+            <FormHelperText>Notifica o cliente quando o ticket for transferido.</FormHelperText>
+          </div>
         </Grid>
 		
       </Grid>
+      </div>
       </TrCard>
       <div style={{ height: 12 }} />
       <TrSectionTitle title="Integrações" subtitle="Credenciais dos serviços externos" />
