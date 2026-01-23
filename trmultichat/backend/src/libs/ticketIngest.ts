@@ -32,6 +32,7 @@ type TicketRow = {
   isGroup: boolean;
   unreadMessages: number | null;
   queueId: number | null;
+  queueOptionId?: number | null;
   companyId: number | null;
   updatedAt: string;
   createdAt: string;
@@ -214,7 +215,7 @@ async function findOrCreateTicket(opts: {
   const existing = await pgQuery<TicketRow>(
     `
       SELECT id, status, "lastMessage", "contactId", "userId", "whatsappId", "isGroup",
-             "unreadMessages", "queueId", "companyId", "updatedAt", "createdAt", "fromMe"
+             "unreadMessages", "queueId", "queueOptionId", "companyId", "updatedAt", "createdAt", "fromMe"
       FROM "Tickets"
       WHERE "contactId" = $1 AND "companyId" = $2 AND "whatsappId" = $3
       LIMIT 1
@@ -252,11 +253,11 @@ async function findOrCreateTicket(opts: {
   const created = await pgQuery<TicketRow>(
     `
       INSERT INTO "Tickets"
-        (status, "lastMessage", "contactId", "createdAt", "updatedAt", "whatsappId", "isGroup", "unreadMessages", "companyId", "queueId")
+        (status, "lastMessage", "contactId", "createdAt", "updatedAt", "whatsappId", "isGroup", "unreadMessages", "companyId", "queueId", "queueOptionId")
       VALUES
-        ('pending', '', $1, NOW(), NOW(), $2, $3, 0, $4, $5)
+        ('pending', '', $1, NOW(), NOW(), $2, $3, 0, $4, $5, NULL)
       RETURNING id, status, "lastMessage", "contactId", "userId", "whatsappId", "isGroup",
-                "unreadMessages", "queueId", "companyId", "updatedAt", "createdAt", "fromMe"
+                "unreadMessages", "queueId", "queueOptionId", "companyId", "updatedAt", "createdAt", "fromMe"
     `,
     [opts.contactId, opts.whatsappId, opts.isGroup, opts.companyId, defaultQueueId]
   );
@@ -394,7 +395,68 @@ export async function ingestBaileysMessage(opts: {
           ticketRow.id,
           companyId
         ]);
+        // keep local copy in sync for downstream logic
+        ticketRow.queueId = defaultQueueId;
       } catch {}
+    }
+  }
+
+  // Chatbot selection persistence:
+  // If the customer replies with a numeric option, store it on the ticket (queueOptionId).
+  // This is used to track the chosen path and (if ticket has no queue yet) to attach it.
+  if (!fromMe && !isGroup) {
+    const choice = String(baseBody || "").trim();
+    if (choice && /^\d+$/.test(choice)) {
+      try {
+        const current = await pgQuery<any>(
+          `SELECT id, "queueId", "queueOptionId", status FROM "Tickets" WHERE id = $1 AND "companyId" = $2 LIMIT 1`,
+          [ticketRow.id, companyId]
+        );
+        const cur = current?.[0];
+        const curQueueId = Number(cur?.queueId || ticketRow.queueId || 0) || 0;
+        const curParentId = cur?.queueOptionId !== undefined && cur?.queueOptionId !== null ? Number(cur.queueOptionId) : null;
+        if (curQueueId) {
+          const params: any[] = [curQueueId];
+          let whereParent = `"parentId" IS NULL`;
+          if (curParentId) {
+            params.push(curParentId);
+            whereParent = `"parentId" = $${params.length}`;
+          }
+          params.push(choice);
+          const optRows = await pgQuery<any>(
+            `
+              SELECT id, "queueId", "parentId", option
+              FROM "QueueOptions"
+              WHERE "queueId" = $1
+                AND ${whereParent}
+                AND trim(option::text) = $${params.length}
+              ORDER BY id ASC
+              LIMIT 1
+            `,
+            params
+          );
+          const opt = optRows?.[0];
+          const optId = Number(opt?.id || 0) || 0;
+          const optQueueId = Number(opt?.queueId || 0) || 0;
+          if (optId) {
+            await pgQuery(
+              `
+                UPDATE "Tickets"
+                SET
+                  "queueOptionId" = $1,
+                  "queueId" = COALESCE("queueId", $2),
+                  "updatedAt" = NOW()
+                WHERE id = $3 AND "companyId" = $4
+              `,
+              [optId, optQueueId || curQueueId, ticketRow.id, companyId]
+            );
+            ticketRow.queueOptionId = optId;
+            if (!ticketRow.queueId && optQueueId) ticketRow.queueId = optQueueId;
+          }
+        }
+      } catch {
+        // ignore (best-effort)
+      }
     }
   }
 
