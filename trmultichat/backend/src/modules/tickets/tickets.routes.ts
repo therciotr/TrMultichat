@@ -2,8 +2,10 @@ import { Router } from "express";
 import { authMiddleware } from "../../middleware/authMiddleware";
 import { pgQuery } from "../../utils/pgClient";
 import { getIO } from "../../libs/socket";
-import { getInlineSock, startOrRefreshInlineSession } from "../../libs/waInlineManager";
+import { getInlineSock, getInlineSnapshot, startOrRefreshInlineSession } from "../../libs/waInlineManager";
 import { getSettingValue } from "../../utils/settingsStore";
+import fs from "fs";
+import path from "path";
 
 const router = Router();
 
@@ -20,6 +22,46 @@ function setNoCache(res: any) {
     // Ensure we never hit 304 Not Modified on list/detail endpoints
     res.setHeader("ETag", `W/\"${Date.now()}\"`);
   } catch {}
+}
+
+function appendAcceptLog(line: any) {
+  try {
+    const dir = path.join(process.cwd(), "public");
+    const file = path.join(dir, "tickets-accept.log");
+    try { if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true }); } catch {}
+    fs.appendFileSync(file, `${new Date().toISOString()} ${typeof line === "string" ? line : JSON.stringify(line)}\n`, "utf8");
+  } catch {}
+}
+
+async function ensureSockConnected(companyId: number, whatsappId: number, timeoutMs = 15000) {
+  let sock = getInlineSock(whatsappId);
+  if (!sock) {
+    startOrRefreshInlineSession({ companyId, whatsappId, forceNewQr: false }).catch(() => {});
+  }
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    sock = getInlineSock(whatsappId);
+    const snap = getInlineSnapshot(whatsappId);
+    const st = String(snap?.status || "");
+    if (sock && (st === "CONNECTED" || st === "open" || st === "Open")) return sock;
+    await new Promise((r) => setTimeout(r, 400));
+  }
+  return getInlineSock(whatsappId);
+}
+
+async function sendTextWithRetry(sock: any, remoteJid: string, text: string, attempts = 3) {
+  let lastErr: any = null;
+  for (let i = 1; i <= attempts; i++) {
+    try {
+      const r = await sock.sendMessage(remoteJid, { text });
+      return r;
+    } catch (e: any) {
+      lastErr = e;
+      appendAcceptLog({ where: "sendTextWithRetry", attempt: i, remoteJid, err: e?.message || String(e) });
+      await new Promise((r) => setTimeout(r, 800 * i));
+    }
+  }
+  throw lastErr;
 }
 
 async function loadTicketWithRelations(ticketId: number, companyId: number) {
@@ -310,7 +352,10 @@ router.put("/:id", authMiddleware, async (req, res) => {
       try {
         const whatsappId = Number(ticket?.whatsappId || prevTicket?.whatsappId || 0);
         const contactId = Number(ticket?.contactId || prevTicket?.contactId || 0);
-        if (!whatsappId || !contactId) return;
+        if (!whatsappId || !contactId) {
+          appendAcceptLog({ where: "accept", reason: "missing whatsappId/contactId", whatsappId, contactId, ticketId: id });
+          return;
+        }
 
         // Find remoteJid
         let remoteJid = "";
@@ -329,7 +374,10 @@ router.put("/:id", authMiddleware, async (req, res) => {
           const number = String(c?.[0]?.number || "").replace(/\D/g, "");
           if (number) remoteJid = `${number}@s.whatsapp.net`;
         }
-        if (!remoteJid) return;
+        if (!remoteJid) {
+          appendAcceptLog({ where: "accept", reason: "missing remoteJid", whatsappId, contactId, ticketId: id });
+          return;
+        }
 
         // Resolve greeting text (try queue first, then whatsapp)
         let greeting = "";
@@ -352,11 +400,17 @@ router.put("/:id", authMiddleware, async (req, res) => {
             greeting = String(w?.[0]?.gm || w?.[0]?.wm || "").trim();
           } catch {}
         }
+        // Decide if we should send greeting (independent from queue menu)
+        let shouldSendGreeting = Boolean(greeting);
         // Fallback: if no greeting configured, use sendGreetingAccepted setting default message
         if (!greeting) {
           try {
             const enabled = String((await getSettingValue(companyId, "sendGreetingAccepted")) || "").toLowerCase() === "enabled";
-            if (!enabled) return;
+            if (!enabled) {
+              shouldSendGreeting = false;
+            } else {
+              shouldSendGreeting = true;
+            }
             const hour = new Date().getHours();
             const ms = hour < 12 ? "Bom dia" : hour < 18 ? "Boa tarde" : "Boa noite";
             let agentName = "";
@@ -371,44 +425,47 @@ router.put("/:id", authMiddleware, async (req, res) => {
             const agentPart = agentName ? `*${agentName}*` : "*Atendente*";
             greeting = `${ms} *${clientName}*, meu nome é ${agentPart} e agora vou prosseguir com seu atendimento!`;
           } catch {
-            return;
+            shouldSendGreeting = false;
           }
         }
 
-        // Avoid sending greeting twice: only if we already sent our system greeting
-        try {
-          const already = await pgQuery<{ c: number }>(
-            `SELECT COUNT(1)::int as c FROM "Messages" WHERE "ticketId" = $1 AND "companyId" = $2 AND "dataJson"::text ILIKE '%\"system\":\"greeting\"%'`,
-            [id, companyId]
-          );
-          if (Number(already?.[0]?.c || 0) > 0) return;
-        } catch {}
-
-        let sock = getInlineSock(whatsappId);
+        const sock = await ensureSockConnected(companyId, whatsappId, 15000);
         if (!sock) {
-          startOrRefreshInlineSession({ companyId, whatsappId, forceNewQr: false }).catch(() => {});
-          const startedAt = Date.now();
-          while (!sock && Date.now() - startedAt < 5000) {
-            await new Promise((r) => setTimeout(r, 250));
-            sock = getInlineSock(whatsappId);
+          appendAcceptLog({ where: "accept", reason: "sock not ready", whatsappId, ticketId: id, status: getInlineSnapshot(whatsappId)?.status });
+          return;
+        }
+
+        // Greeting (optional) — do not block menu if greeting was already sent / disabled
+        if (shouldSendGreeting) {
+          let alreadyGreeting = false;
+          try {
+            const already = await pgQuery<{ c: number }>(
+              `SELECT COUNT(1)::int as c FROM "Messages" WHERE "ticketId" = $1 AND "companyId" = $2 AND "dataJson"::text ILIKE '%\"system\":\"greeting\"%'`,
+              [id, companyId]
+            );
+            alreadyGreeting = Number(already?.[0]?.c || 0) > 0;
+          } catch {}
+
+          if (!alreadyGreeting && greeting) {
+            try {
+              const result = await sendTextWithRetry(sock, remoteJid, greeting, 3);
+              const sentId = String(result?.key?.id || `greet-${Date.now()}`);
+              await pgQuery(
+                `
+                  INSERT INTO "Messages"
+                    (id, body, ack, read, "ticketId", "createdAt", "updatedAt", "fromMe", "isDeleted",
+                     "contactId", "companyId", "remoteJid", "dataJson")
+                  VALUES
+                    ($1, $2, 0, true, $3, NOW(), NOW(), true, false, $4, $5, $6, $7)
+                  ON CONFLICT (id) DO NOTHING
+                `,
+                [sentId, greeting, id, contactId, companyId, remoteJid, JSON.stringify({ system: "greeting" })]
+              );
+            } catch (e: any) {
+              appendAcceptLog({ where: "accept:greeting", ticketId: id, whatsappId, err: e?.message || String(e) });
+            }
           }
         }
-        if (!sock) return;
-
-        const result = await sock.sendMessage(remoteJid, { text: greeting });
-        const sentId = String(result?.key?.id || `greet-${Date.now()}`);
-
-        await pgQuery(
-          `
-            INSERT INTO "Messages"
-              (id, body, ack, read, "ticketId", "createdAt", "updatedAt", "fromMe", "isDeleted",
-               "contactId", "companyId", "remoteJid", "dataJson")
-            VALUES
-              ($1, $2, 0, true, $3, NOW(), NOW(), true, false, $4, $5, $6, $7)
-            ON CONFLICT (id) DO NOTHING
-          `,
-          [sentId, greeting, id, contactId, companyId, remoteJid, JSON.stringify({ system: "greeting" })]
-        );
 
         // Send "queue menu" to the client so they can choose the target queue
         // (this is the expected flow when accepting a ticket).
@@ -441,7 +498,7 @@ router.put("/:id", authMiddleware, async (req, res) => {
             `Escolha a fila para continuar:\n` +
             items.map((it) => `${it.n} - ${it.name}`).join("\n");
 
-          const r2 = await sock.sendMessage(remoteJid, { text: menuText });
+          const r2 = await sendTextWithRetry(sock, remoteJid, menuText, 3);
           const menuId = String(r2?.key?.id || `queue-menu-${Date.now()}`);
           await pgQuery(
             `
@@ -454,8 +511,12 @@ router.put("/:id", authMiddleware, async (req, res) => {
             `,
             [menuId, menuText, id, contactId, companyId, remoteJid, JSON.stringify({ system: "queue_menu", items })]
           );
-        } catch {}
-      } catch {}
+        } catch (e: any) {
+          appendAcceptLog({ where: "accept:queue_menu", ticketId: id, whatsappId, err: e?.message || String(e) });
+        }
+      } catch (e: any) {
+        appendAcceptLog({ where: "accept:outer", ticketId: id, err: e?.message || String(e) });
+      }
     })();
   }
 

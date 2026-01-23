@@ -408,7 +408,8 @@ export async function ingestBaileysMessage(opts: {
     const choice = String(baseBody || "").trim();
     if (choice && /^\d+$/.test(choice)) {
       try {
-        // 1) If last system message is a queue menu, map selection to queueId
+        // 1) If last system message is a queue menu, map selection to queueId (do NOT drop the user's message)
+        let handledQueueMenu = false;
         try {
           const lastMenu = await pgQuery<any>(
             `
@@ -441,24 +442,17 @@ export async function ingestBaileysMessage(opts: {
               );
               ticketRow.queueId = targetQueueId;
               ticketRow.queueOptionId = null;
-              // If queue menu was used, stop here (do not interpret as QueueOptions choice yet)
-              return {
-                ticketId: ticketRow.id,
-                contactId: contact.id,
-                whatsappId,
-                companyId,
-                isGroup,
-                remoteJid,
-                queueId: targetQueueId,
-                fromMe,
-                isNewTicket
-              };
+              handledQueueMenu = true;
             }
           }
         } catch {
           // ignore queue menu parsing errors
         }
 
+        // If queue menu was used, do not interpret this numeric reply as QueueOptions navigation yet.
+        if (handledQueueMenu) {
+          // continue flow (store message, update ticket, emit sockets) with updated queueId
+        } else {
         const current = await pgQuery<any>(
           `SELECT id, "queueId", "queueOptionId", status FROM "Tickets" WHERE id = $1 AND "companyId" = $2 LIMIT 1`,
           [ticketRow.id, companyId]
@@ -504,6 +498,7 @@ export async function ingestBaileysMessage(opts: {
             ticketRow.queueOptionId = optId;
             if (!ticketRow.queueId && optQueueId) ticketRow.queueId = optQueueId;
           }
+        }
         }
       } catch {
         // ignore (best-effort)
