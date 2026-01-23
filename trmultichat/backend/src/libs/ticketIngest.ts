@@ -140,17 +140,22 @@ async function maybeSendQueueOptionsMenu(opts: {
 
   // Dedupe: avoid spamming the same menu
   try {
-    const parentNeedle = parentId === null ? `"parentId":null` : `"parentId":${parentId}`;
-    const queueNeedle = `"queueId":${queueId}`;
-    const already = await pgQuery<{ c: number }>(
-      `SELECT COUNT(1)::int as c
-       FROM "Messages"
-       WHERE "ticketId" = $1 AND "companyId" = $2
-         AND "dataJson"::text ILIKE '%"system":"queue_options_menu"%'
-         AND "dataJson"::text ILIKE $3
-         AND "dataJson"::text ILIKE $4`,
-      [ticketId, companyId, `%${queueNeedle}%`, `%${parentNeedle}%`]
-    );
+    // Use JSONB extraction (avoids false matches like parentId 1 matching 10).
+    let sql = `
+      SELECT COUNT(1)::int as c
+      FROM "Messages"
+      WHERE "ticketId" = $1 AND "companyId" = $2
+        AND ("dataJson"::jsonb->>'system') = 'queue_options_menu'
+        AND COALESCE(("dataJson"::jsonb->>'queueId')::int, 0) = $3
+    `;
+    const params: any[] = [ticketId, companyId, queueId];
+    if (parentId === null) {
+      sql += ` AND ("dataJson"::jsonb ? 'parentId') IS NOT TRUE OR ("dataJson"::jsonb->>'parentId') IS NULL`;
+    } else {
+      params.push(parentId);
+      sql += ` AND COALESCE(("dataJson"::jsonb->>'parentId')::int, -999999) = $4`;
+    }
+    const already = await pgQuery<{ c: number }>(sql, params);
     if (Number(already?.[0]?.c || 0) > 0) return;
   } catch {}
 
@@ -798,6 +803,58 @@ export async function ingestBaileysMessage(opts: {
     `,
     [body || "", fromMe, fromMe ? 0 : 1, ticketRow.id]
   );
+
+  // Emit real-time message event (MessagesList listens on company-{companyId}-appMessage with { action, message }).
+  // NOTE: TicketsList also listens to this event but ignores payloads without {ticket} (see frontend guard).
+  try {
+    const io = getIO();
+    let message: any = null;
+    try {
+      const msgRows = await pgQuery<any>(
+        `
+          SELECT id, body, ack, read, "mediaType", "mediaUrl", "ticketId", "createdAt", "updatedAt",
+                 "fromMe", "isDeleted", "contactId", "companyId", "quotedMsgId", "remoteJid", "dataJson", participant
+          FROM "Messages"
+          WHERE id = $1 AND "companyId" = $2
+          LIMIT 1
+        `,
+        [messageId, companyId]
+      );
+      message = msgRows?.[0] || null;
+    } catch {}
+
+    if (!message) {
+      message = {
+        id: messageId,
+        body: body || "",
+        ack: 0,
+        read: false,
+        mediaType: mediaType || null,
+        mediaUrl: mediaUrl || null,
+        ticketId: ticketRow.id,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        fromMe,
+        isDeleted: false,
+        contactId: contact.id,
+        companyId,
+        quotedMsgId: null,
+        remoteJid,
+        dataJson: JSON.stringify(msg || {}),
+        participant
+      };
+    }
+
+    // Attach contact object (UI expects message.contact sometimes)
+    message.contact = {
+      id: contact.id,
+      name: contact.name,
+      number: contact.number,
+      profilePicUrl: contact.profilePicUrl || null
+    };
+
+    io.emit(`company-${companyId}-appMessage`, { action: "create", message });
+  } catch {}
 
   // If user picked a queue from our accept menu, immediately send QueueOptions root menu for that queue (professional flow).
   if (!fromMe && !isGroup && selectedQueueIdFromMenu && sock) {

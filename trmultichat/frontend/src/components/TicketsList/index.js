@@ -251,10 +251,15 @@ const TicketsList = ({
     });
 
     socket.on(`company-${companyId}-appMessage`, (data) => {
-      if (data.action === "create" && shouldUpdateTicket(data.ticket)) {
+      // This socket event is also used by MessagesList ({ action, message }).
+      // Tickets list should ignore events that don't include a ticket payload.
+      const t = data?.ticket;
+      if (!t) return;
+
+      if (data.action === "create" && shouldUpdateTicket(t)) {
         dispatch({
           type: "UPDATE_TICKET_UNREAD_MESSAGES",
-          payload: data.ticket,
+          payload: t,
         });
       }
     });

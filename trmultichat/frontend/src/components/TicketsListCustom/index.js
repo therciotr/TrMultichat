@@ -295,19 +295,23 @@ const TicketsListCustom = (props) => {
     });
 
     socket.on(`company-${companyId}-appMessage`, (data) => {
+      // This socket event is also used by MessagesList ({ action, message }).
+      // Tickets list should ignore events that don't include a ticket payload.
+      const t = data?.ticket;
+      if (!t) return;
+
       const queueIds = queues.map((q) => q.id);
       if (
         profile === "user" &&
-        (queueIds.indexOf(data.ticket.queue?.id) === -1 ||
-          data.ticket.queue === null)
+        (queueIds.indexOf(t.queue?.id) === -1 || t.queue === null)
       ) {
         return;
       }
 
-      if (data.action === "create" && shouldUpdateTicket(data.ticket)) {
+      if (data.action === "create" && shouldUpdateTicket(t)) {
         dispatch({
           type: "UPDATE_TICKET_UNREAD_MESSAGES",
-          payload: data.ticket,
+          payload: t,
         });
       }
     });
