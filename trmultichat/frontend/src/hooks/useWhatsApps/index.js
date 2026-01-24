@@ -4,10 +4,18 @@ import toastError from "../../errors/toastError";
 import api from "../../services/api";
 import { socketConnection } from "../../services/socket";
 
+function normalizeWhatsApps(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (payload && Array.isArray(payload.whatsApps)) return payload.whatsApps;
+  if (payload && Array.isArray(payload.whatsapps)) return payload.whatsapps;
+  if (payload && Array.isArray(payload.records)) return payload.records;
+  if (payload && Array.isArray(payload.data)) return payload.data;
+  return [];
+}
+
 const reducer = (state, action) => {
   if (action.type === "LOAD_WHATSAPPS") {
-    const whatsApps = action.payload;
-
+    const whatsApps = normalizeWhatsApps(action.payload);
     return [...whatsApps];
   }
 
@@ -62,7 +70,7 @@ const useWhatsApps = () => {
     const fetchSession = async () => {
       try {
         const { data } = await api.get("/whatsapp/?session=0");
-        dispatch({ type: "LOAD_WHATSAPPS", payload: data });
+        dispatch({ type: "LOAD_WHATSAPPS", payload: normalizeWhatsApps(data) });
         setLoading(false);
       } catch (err) {
         setLoading(false);
