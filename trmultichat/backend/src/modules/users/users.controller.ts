@@ -195,50 +195,97 @@ function extractUserIdFromAuth(authorization?: string): number {
 
 export async function update(req: Request, res: Response) {
   try {
-    // Load legacy model dynamically
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const UserModel = require("../../models/User");
-    const User = UserModel.default || UserModel;
-    if (!User || typeof User.findByPk !== "function") {
-      return res.status(501).json({ error: true, message: "user update not available" });
-    }
     const id = Number(req.params.id);
-    const instance = await User.findByPk(id);
-    if (!instance) return res.status(404).json({ error: true, message: "not found" });
+    if (!id) return res.status(400).json({ error: true, message: "invalid user id" });
+
     const tenantId = extractTenantIdFromAuth(req.headers.authorization as string) || 0;
     const isSuper = await isSuperFromAuth(req);
-    const current = instance?.toJSON ? instance.toJSON() : instance;
-    // If different company, respond with current data (no-op) to avoid legacy 400
-    if (!isSuper && tenantId && Number(current?.companyId || 0) !== tenantId) {
-      return res.json(current);
+    const isDev = String(process.env.DEV_MODE || env.DEV_MODE || "false").toLowerCase() === "true";
+    if (!tenantId && !isDev) {
+      return res.status(401).json({ error: true, message: "missing tenantId" });
     }
+
+    const rows = await queryUsersTable<any>(
+      (table) => `SELECT id, name, email, "companyId", profile, COALESCE("super", false) as super FROM ${table} WHERE id = $1 LIMIT 1`,
+      [id]
+    );
+    const current = Array.isArray(rows) && rows[0];
+    if (!current) return res.status(404).json({ error: true, message: "not found" });
+
+    if (!isSuper && tenantId && Number(current.companyId || 0) !== tenantId) {
+      return res.status(403).json({ error: true, message: "forbidden" });
+    }
+    if (!isSuper && Boolean(current.super)) {
+      return res.status(403).json({ error: true, message: "forbidden" });
+    }
+
     const body = req.body || {};
-    const allowed: any = {
-      name: body.name,
-      email: body.email,
-      profile: body.profile
-    };
-  if (body.password) {
-    const pwd = String(body.password || "");
-    if (pwd.length >= 4) {
-      const hash = bcrypt.hashSync(pwd, 10);
-      allowed.passwordHash = hash;
-      // algumas bases usam 'password' para armazenar o hash
-      (allowed as any).password = hash;
-    }
-  }
-    // Remove undefined so we don't overwrite with undefined
-    Object.keys(allowed).forEach((k) => allowed[k] === undefined && delete allowed[k]);
-    await instance.update(allowed);
-    if (allowed.passwordHash || (allowed as any).password) {
-      if (typeof (instance as any).save === "function") {
-        try {
-          await (instance as any).save({ fields: ["passwordHash", "password"] });
-        } catch (_) {}
+    const name = body.name !== undefined ? String(body.name || "").trim() : undefined;
+    const email =
+      body.email !== undefined ? String(body.email || "").trim().toLowerCase() : undefined;
+    const profile = body.profile !== undefined ? String(body.profile || "user").trim() : undefined;
+
+    // email unique (if changing)
+    if (email && email !== String(current.email || "").toLowerCase()) {
+      const exists = await queryUsersTable<{ id: number }>(
+        (table) => `SELECT id FROM ${table} WHERE lower(email)=lower($1) AND id <> $2 LIMIT 1`,
+        [email, id]
+      );
+      if (Array.isArray(exists) && exists[0]?.id) {
+        return res.status(409).json({ error: true, message: "email already exists" });
       }
     }
-    const json = instance?.toJSON ? instance.toJSON() : instance;
-    return res.json(json);
+
+    let passwordHash: string | undefined;
+    if (body.password) {
+      const pwd = String(body.password || "");
+      if (pwd.length >= 4) {
+        passwordHash = bcrypt.hashSync(pwd, 10);
+      }
+    }
+
+    const nextName = name !== undefined ? name : String(current.name || "");
+    const nextEmail = email !== undefined ? email : String(current.email || "").toLowerCase();
+    const nextProfile = profile !== undefined ? profile : String(current.profile || "user");
+    const now = new Date();
+
+    // Try update with password column too (some schemas keep "password" as hash)
+    let updated: any = null;
+    try {
+      const updRows = await queryUsersTable<any>(
+        (table) => `
+          UPDATE ${table}
+          SET name = $1,
+              email = $2,
+              profile = $3,
+              "passwordHash" = COALESCE($4, "passwordHash"),
+              "password" = COALESCE($4, "password"),
+              "updatedAt" = $5
+          WHERE id = $6
+          RETURNING id, name, email, "companyId", profile, "super"
+        `,
+        [nextName, nextEmail, nextProfile, passwordHash ?? null, now, id]
+      );
+      updated = Array.isArray(updRows) && updRows[0];
+    } catch (_e) {
+      // Fallback if "password" column doesn't exist
+      const updRows = await queryUsersTable<any>(
+        (table) => `
+          UPDATE ${table}
+          SET name = $1,
+              email = $2,
+              profile = $3,
+              "passwordHash" = COALESCE($4, "passwordHash"),
+              "updatedAt" = $5
+          WHERE id = $6
+          RETURNING id, name, email, "companyId", profile, "super"
+        `,
+        [nextName, nextEmail, nextProfile, passwordHash ?? null, now, id]
+      );
+      updated = Array.isArray(updRows) && updRows[0];
+    }
+
+    return res.json(updated || current);
   } catch (e: any) {
     return res.status(400).json({ error: true, message: e?.message || "update error" });
   }
