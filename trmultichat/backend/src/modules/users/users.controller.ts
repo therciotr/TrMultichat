@@ -9,6 +9,7 @@ import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import appEnv from "../../config/env";
 import { pgQuery } from "../../utils/pgClient";
+import { getIO } from "../../libs/socket";
 
 export async function list(req: Request, res: Response) {
   const pageNumber = Number(req.query.pageNumber || 1);
@@ -285,7 +286,13 @@ export async function update(req: Request, res: Response) {
       updated = Array.isArray(updRows) && updRows[0];
     }
 
-    return res.json(updated || current);
+    const result = updated || current;
+    try {
+      const io = getIO();
+      const cid = Number((result as any).companyId || (current as any).companyId || tenantId || 0);
+      if (cid) io.emit(`company-${cid}-user`, { action: "update", user: result });
+    } catch {}
+    return res.json(result);
   } catch (e: any) {
     return res.status(400).json({ error: true, message: e?.message || "update error" });
   }
@@ -338,6 +345,13 @@ export async function create(req: Request, res: Response) {
       [name, email, companyId, profile, hash, false, now, now]
     );
     const user = Array.isArray(inserted) && inserted[0];
+    try {
+      const io = getIO();
+      io.emit(`company-${companyId}-user`, {
+        action: "create",
+        user: user || { id: undefined, name, email, companyId, profile, super: false }
+      });
+    } catch {}
     return res.status(201).json(user || { ok: true });
   } catch (e: any) {
     return res.status(400).json({ error: true, message: e?.message || "create error" });
@@ -374,6 +388,11 @@ export async function remove(req: Request, res: Response) {
       (table) => `DELETE FROM ${table} WHERE id = $1`,
       [id]
     );
+    try {
+      const io = getIO();
+      const cid = Number((target as any).companyId || tenantId || 0);
+      if (cid) io.emit(`company-${cid}-user`, { action: "delete", userId: id });
+    } catch {}
     return res.status(200).json({ ok: true });
   } catch (e: any) {
     return res.status(400).json({ error: true, message: e?.message || "delete error" });
