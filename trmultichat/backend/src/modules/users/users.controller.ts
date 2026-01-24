@@ -58,14 +58,11 @@ export async function list(req: Request, res: Response) {
 export async function find(req: Request, res: Response) {
   const id = Number(req.params.id);
   // Lê usuário diretamente do Postgres para evitar problemas com modelos legacy não inicializados
-  const rows = await queryUsersTable<{
-    id: number;
-    name: string;
-    email: string;
-    companyId: number;
-    profile?: string;
-    super?: boolean;
-  }>((table) => `SELECT id, name, email, "companyId", profile, "super" FROM ${table} WHERE id = $1 LIMIT 1`, [id]);
+  const rows = await queryUsersTable<any>(
+    (table) =>
+      `SELECT id, name, email, "companyId", profile, "super", "whatsappId" FROM ${table} WHERE id = $1 LIMIT 1`,
+    [id]
+  );
   const user = Array.isArray(rows) && rows[0];
   if (!user) {
     if (String(process.env.DEV_MODE || env.DEV_MODE || "false").toLowerCase() === "true") {
@@ -101,7 +98,20 @@ export async function find(req: Request, res: Response) {
       return res.status(403).json({ error: true, message: "forbidden" });
     }
   }
-  return res.json(user);
+  // include queues (for UserModal edit)
+  try {
+    const queues = await pgQuery<{ id: number; name?: string }>(
+      `SELECT q.id, q.name
+       FROM "UserQueues" uq
+       JOIN "Queues" q ON q.id = uq."queueId"
+       WHERE uq."userId" = $1
+       ORDER BY q.id ASC`,
+      [id]
+    );
+    return res.json({ ...user, queues: Array.isArray(queues) ? queues : [] });
+  } catch {
+    return res.json({ ...user, queues: [] });
+  }
 }
 
 export async function listByCompany(req: Request, res: Response) {
@@ -225,6 +235,17 @@ export async function update(req: Request, res: Response) {
     const email =
       body.email !== undefined ? String(body.email || "").trim().toLowerCase() : undefined;
     const profile = body.profile !== undefined ? String(body.profile || "user").trim() : undefined;
+    const whatsappId =
+      body.whatsappId === undefined || body.whatsappId === null || String(body.whatsappId).trim() === ""
+        ? undefined
+        : Number(body.whatsappId);
+    const queueIdsRaw = Array.isArray(body.queueIds) ? body.queueIds : undefined;
+    const queueIds =
+      queueIdsRaw === undefined
+        ? undefined
+        : queueIdsRaw
+            .map((q: any) => Number(q))
+            .filter((n: any) => Number.isFinite(n) && n > 0);
 
     // email unique (if changing)
     if (email && email !== String(current.email || "").toLowerCase()) {
@@ -261,11 +282,12 @@ export async function update(req: Request, res: Response) {
               profile = $3,
               "passwordHash" = COALESCE($4, "passwordHash"),
               "password" = COALESCE($4, "password"),
-              "updatedAt" = $5
-          WHERE id = $6
+              "whatsappId" = COALESCE($5, "whatsappId"),
+              "updatedAt" = $6
+          WHERE id = $7
           RETURNING id, name, email, "companyId", profile, "super"
         `,
-        [nextName, nextEmail, nextProfile, passwordHash ?? null, now, id]
+        [nextName, nextEmail, nextProfile, passwordHash ?? null, whatsappId ?? null, now, id]
       );
       updated = Array.isArray(updRows) && updRows[0];
     } catch (_e) {
@@ -277,16 +299,31 @@ export async function update(req: Request, res: Response) {
               email = $2,
               profile = $3,
               "passwordHash" = COALESCE($4, "passwordHash"),
-              "updatedAt" = $5
-          WHERE id = $6
+              "whatsappId" = COALESCE($5, "whatsappId"),
+              "updatedAt" = $6
+          WHERE id = $7
           RETURNING id, name, email, "companyId", profile, "super"
         `,
-        [nextName, nextEmail, nextProfile, passwordHash ?? null, now, id]
+        [nextName, nextEmail, nextProfile, passwordHash ?? null, whatsappId ?? null, now, id]
       );
       updated = Array.isArray(updRows) && updRows[0];
     }
 
     const result = updated || current;
+
+    // Sync user queues if provided
+    try {
+      if (queueIds !== undefined) {
+        await pgQuery(`DELETE FROM "UserQueues" WHERE "userId" = $1`, [id]);
+        for (const qid of queueIds) {
+          await pgQuery(
+            `INSERT INTO "UserQueues" ("userId","queueId","createdAt","updatedAt") VALUES ($1,$2,$3,$4)`,
+            [id, qid, now, now]
+          );
+        }
+      }
+    } catch {}
+
     try {
       const io = getIO();
       const cid = Number((result as any).companyId || (current as any).companyId || tenantId || 0);
@@ -313,6 +350,14 @@ export async function create(req: Request, res: Response) {
     const password = String(body.password || "");
     const profile = String(body.profile || "user").trim();
     let companyId = Number(body.companyId || body.tenantId || tenantId || 0);
+    const whatsappId =
+      body.whatsappId === undefined || body.whatsappId === null || String(body.whatsappId).trim() === ""
+        ? null
+        : Number(body.whatsappId);
+    const queueIdsRaw = Array.isArray(body.queueIds) ? body.queueIds : [];
+    const queueIds = queueIdsRaw
+      .map((q: any) => Number(q))
+      .filter((n: any) => Number.isFinite(n) && n > 0);
 
     if (!name || !email || !password) {
       return res.status(400).json({ error: true, message: "name, email and password are required" });
@@ -338,13 +383,28 @@ export async function create(req: Request, res: Response) {
     const now = new Date();
     const inserted = await queryUsersTable<any>(
       (table) => `
-        INSERT INTO ${table} (name, email, "companyId", profile, "passwordHash", "super", "createdAt", "updatedAt")
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+        INSERT INTO ${table} (name, email, "companyId", profile, "passwordHash", "super", "whatsappId", "createdAt", "updatedAt")
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
         RETURNING id, name, email, "companyId", profile, "super"
       `,
-      [name, email, companyId, profile, hash, false, now, now]
+      [name, email, companyId, profile, hash, false, whatsappId, now, now]
     );
     const user = Array.isArray(inserted) && inserted[0];
+
+    // Persist queues (UserQueues)
+    try {
+      const uid = Number(user?.id || 0);
+      if (uid) {
+        await pgQuery(`DELETE FROM "UserQueues" WHERE "userId" = $1`, [uid]);
+        for (const qid of queueIds) {
+          await pgQuery(
+            `INSERT INTO "UserQueues" ("userId","queueId","createdAt","updatedAt") VALUES ($1,$2,$3,$4)`,
+            [uid, qid, now, now]
+          );
+        }
+      }
+    } catch {}
+
     try {
       const io = getIO();
       io.emit(`company-${companyId}-user`, {
