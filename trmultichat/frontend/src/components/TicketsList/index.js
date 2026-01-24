@@ -211,8 +211,21 @@ const TicketsList = ({
     const socket = socketConnection({ companyId });
 
     const hasQueueFilter = Array.isArray(selectedQueueIds) && selectedQueueIds.length > 0;
+    const userQueueIds = (Array.isArray(user?.queues) ? user.queues : []).map((q) => q.id);
+    const userWhatsappId = user?.whatsappId ? Number(user.whatsappId) : null;
+
+    const belongsToUserScope = (ticket) => {
+      if (!ticket) return false;
+      if (ticket.queueId && userQueueIds.indexOf(ticket.queueId) > -1) return true;
+      if (!ticket.queueId) {
+        if (userWhatsappId) return Number(ticket.whatsappId || 0) === userWhatsappId;
+        return true;
+      }
+      return false;
+    };
+
     const shouldUpdateTicket = (ticket) =>
-      (!ticket.userId || ticket.userId === user?.id || showAll) &&
+      (showAll || !ticket.userId || ticket.userId === user?.id || (!isAdmin && belongsToUserScope(ticket))) &&
       (!hasQueueFilter || !ticket.queueId || selectedQueueIds.indexOf(ticket.queueId) > -1);
 
     const notBelongsToUserQueues = (ticket) =>

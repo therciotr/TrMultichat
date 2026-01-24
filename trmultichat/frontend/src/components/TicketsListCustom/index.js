@@ -202,6 +202,7 @@ const TicketsListCustom = (props) => {
   const { user } = useContext(AuthContext);
   const profile = user?.profile;
   const queues = user?.queues || [];
+  const userWhatsappIdValue = user?.whatsappId;
   const isAdmin = useMemo(() => {
     const p = String(user?.profile || "").toLowerCase();
     return Boolean(user?.admin) || p === "admin" || p === "super";
@@ -229,25 +230,50 @@ const TicketsListCustom = (props) => {
   });
 
   useEffect(() => {
-    const queueIds = queues.map((q) => q.id);
-    const filteredTickets = tickets.filter(
-      (t) => queueIds.indexOf(t.queueId) > -1
-    );
+    const userQueueIds = (Array.isArray(queues) ? queues : []).map((q) => q.id);
+    const userWhatsappId = userWhatsappIdValue ? Number(userWhatsappIdValue) : null;
+
+    const canUserSeeTicket = (t) => {
+      // if ticket is in one of the user's queues, show it
+      if (t?.queueId && userQueueIds.indexOf(t.queueId) > -1) return true;
+
+      // pending/unrouted tickets (queueId null) should still be visible
+      if (!t?.queueId) {
+        // if user has a default connection, only show tickets from that connection
+        if (userWhatsappId) return Number(t?.whatsappId || 0) === userWhatsappId;
+        return true;
+      }
+
+      return false;
+    };
 
     if (profile === "user") {
-      dispatch({ type: "LOAD_TICKETS", payload: filteredTickets });
+      dispatch({ type: "LOAD_TICKETS", payload: tickets.filter(canUserSeeTicket) });
     } else {
       dispatch({ type: "LOAD_TICKETS", payload: tickets });
     }
-  }, [tickets, status, searchParam, queues, profile]);
+  }, [tickets, status, searchParam, queues, profile, userWhatsappIdValue]);
 
   useEffect(() => {
     const companyId = localStorage.getItem("companyId");
     const socket = socketConnection({ companyId });
 
     const hasQueueFilter = Array.isArray(selectedQueueIds) && selectedQueueIds.length > 0;
+    const userQueueIds = (Array.isArray(queues) ? queues : []).map((q) => q.id);
+    const userWhatsappId = userWhatsappIdValue ? Number(userWhatsappIdValue) : null;
+
+    const belongsToUserScope = (ticket) => {
+      if (!ticket) return false;
+      if (ticket.queueId && userQueueIds.indexOf(ticket.queueId) > -1) return true;
+      if (!ticket.queueId) {
+        if (userWhatsappId) return Number(ticket.whatsappId || 0) === userWhatsappId;
+        return true;
+      }
+      return false;
+    };
+
     const shouldUpdateTicket = (ticket) =>
-      (!ticket.userId || ticket.userId === user?.id || showAll) &&
+      (showAll || !ticket.userId || ticket.userId === user?.id || (profile === "user" && belongsToUserScope(ticket))) &&
       (!hasQueueFilter || !ticket.queueId || selectedQueueIds.indexOf(ticket.queueId) > -1);
 
     const notBelongsToUserQueues = (ticket) =>
@@ -328,7 +354,7 @@ const TicketsListCustom = (props) => {
     return () => {
       socket.disconnect();
     };
-  }, [status, showAll, user, selectedQueueIds, tags, users, profile, queues]);
+  }, [status, showAll, user, selectedQueueIds, tags, users, profile, queues, userWhatsappIdValue]);
 
   const visibleTicketIds = useMemo(() => (Array.isArray(ticketsList) ? ticketsList.map((t) => t.id) : []), [ticketsList]);
   const allVisibleSelected = useMemo(() => {
