@@ -97,6 +97,8 @@ export async function login(req: Request, res: Response) {
       name: result.user.name,
       email: result.user.email,
       companyId: result.user.tenantId,
+      whatsappId: (result.user as any).whatsappId ?? null,
+      queues: [] as any[],
       admin: isAdmin,
       profile,
       super: isSuper,
@@ -111,6 +113,23 @@ export async function login(req: Request, res: Response) {
     accessToken: result.accessToken,
     refreshToken: result.refreshToken
   };
+
+  // Attach user queues for filtering/permissions in the UI (tickets + queue dropdown)
+  try {
+    const q = await pgQuery<any>(
+      `
+        SELECT q.id, q.name, q.color
+        FROM "UserQueues" uq
+        JOIN "Queues" q ON q.id = uq."queueId"
+        WHERE uq."userId" = $1
+        ORDER BY q.id ASC
+      `,
+      [Number(result.user.id)]
+    );
+    (legacy.user as any).queues = Array.isArray(q) ? q : [];
+  } catch {
+    (legacy.user as any).queues = [];
+  }
 
   return res.json(legacy);
 }

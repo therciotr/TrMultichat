@@ -12,6 +12,7 @@ export type AuthUser = {
   tenantId: number;
   admin?: boolean;
   profile?: string;
+  whatsappId?: number | null;
 };
 
 export type AuthTokens = {
@@ -69,8 +70,9 @@ export async function login({ email, password }: LoginInput): Promise<{ user: Au
       profile?: string;
       passwordHash?: string;
       super?: boolean;
+      whatsappId?: number | null;
     }>(
-      'SELECT id, name, email, "companyId", profile, "passwordHash", "super" FROM "Users" WHERE lower(email)=lower($1) LIMIT 1',
+      'SELECT id, name, email, "companyId", profile, "passwordHash", "super", "whatsappId" FROM "Users" WHERE lower(email)=lower($1) LIMIT 1',
       [email.toLowerCase()]
     );
     const row: any = Array.isArray(rows) && rows[0];
@@ -95,7 +97,8 @@ export async function login({ email, password }: LoginInput): Promise<{ user: Au
       email: String(row.email || ""),
       tenantId: Number(row.companyId || 0),
       admin: isAdmin,
-      profile: String((row as any).profile || (isAdmin ? "admin" : "user"))
+      profile: String((row as any).profile || (isAdmin ? "admin" : "user")),
+      whatsappId: (row as any).whatsappId ?? null
     };
 
     const accessToken = jwt.sign(

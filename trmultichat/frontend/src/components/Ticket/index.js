@@ -75,13 +75,25 @@ const Ticket = () => {
         try {
           const { data } = await api.get("/tickets/u/" + ticketId);
           const { queueId } = data;
-          const { queues, profile } = user;
+          const queues = Array.isArray(user?.queues) ? user.queues : [];
+          const profile = String(user?.profile || "user");
+          const userWhatsappId = user?.whatsappId ? Number(user.whatsappId) : null;
 
-          const queueAllowed = queues.find((q) => q.id === queueId);
-          if (queueAllowed === undefined && profile !== "admin") {
-            toast.error("Acesso não permitido");
-            history.push("/tickets");
-            return;
+          // Access rules for non-admins:
+          // - allowed if ticket is assigned to the user
+          // - allowed if ticket queue is one of user's queues
+          // - if ticket has no queue yet (queueId null), allow when it belongs to user's default whatsapp connection
+          if (profile !== "admin") {
+            const assignedToMe = Number(data?.userId || 0) === Number(user?.id || 0);
+            const queueAllowed = queueId ? queues.find((q) => q.id === queueId) : null;
+            const pendingNoQueueAllowed =
+              !queueId && userWhatsappId ? Number(data?.whatsappId || 0) === userWhatsappId : false;
+
+            if (!assignedToMe && !queueAllowed && !pendingNoQueueAllowed) {
+              toast.error("Acesso não permitido");
+              history.push("/tickets");
+              return;
+            }
           }
 
           setContact(data.contact);
