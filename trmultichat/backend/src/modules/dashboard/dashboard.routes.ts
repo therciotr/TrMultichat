@@ -303,6 +303,7 @@ router.get("/", async (req, res) => {
   }
 
   // Attendants ranking (by closed tickets)
+  const attendantsUserFilter = scope === "user" && targetUserId ? ` AND u.id = $2` : "";
   const attendantsRankSql = `
     SELECT
       u.id,
@@ -319,6 +320,7 @@ router.get("/", async (req, res) => {
       ${rFrom}
       ${rTo}
     WHERE ${companyId ? 'u."companyId" = $1' : "TRUE"}
+    ${attendantsUserFilter}
     ${companyId ? "" : ""}
     GROUP BY u.id, u.name, u.online
     ORDER BY "closedCount" DESC, "openCount" DESC, u.name ASC
