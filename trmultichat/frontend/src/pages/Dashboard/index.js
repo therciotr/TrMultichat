@@ -170,17 +170,34 @@ export default function Dashboard() {
   }, [defaultScope]);
 
   const scopeLabel =
-    scope === "system" ? "Sistema (todas as empresas)" : scope === "company" ? "Empresa" : "Usuário (meu desempenho)";
+    scope === "system"
+      ? "Sistema (todas as empresas)"
+      : scope === "company"
+      ? "Empresa"
+      : `${user?.name || "Usuário"} (meu desempenho)`;
 
   const companies = Array.isArray(apiScope?.companies) ? apiScope.companies : [];
   const canSelectCompany = Boolean(apiScope?.canSelectCompany);
 
+  const apiCompanyId = Number(apiScope?.companyId || 0);
+  const userCompanyName = user?.company?.name || "";
+
+  const companyLabel = useMemo(() => {
+    const cid = apiCompanyId;
+    if (cid > 0) {
+      const c = companies.find((x) => Number(x?.id) === cid);
+      return c?.name || userCompanyName || `Empresa #${cid}`;
+    }
+    return scope === "system" ? "Todas as empresas" : (userCompanyName || "—");
+  }, [apiCompanyId, companies, scope, userCompanyName]);
+
   async function fetchData() {
     setLoading(true);
     try {
+      const effectiveScope = defaultScope === "user" ? "user" : scope;
       const params = {
-        scope,
-        companyId: scope === "system" ? (companyId > 0 ? companyId : undefined) : undefined,
+        scope: effectiveScope,
+        companyId: effectiveScope === "system" ? (companyId > 0 ? companyId : undefined) : undefined,
         date_from: dateFrom,
         date_to: dateTo,
       };
@@ -235,7 +252,7 @@ export default function Dashboard() {
             <p className={classes.heroTitle}>Gerência (Dashboard)</p>
             <p className={classes.heroSub}>
               Visão: <strong>{scopeLabel}</strong>
-              {apiScope?.companyId ? <> · Empresa #{apiScope.companyId}</> : null}
+              {companyLabel ? <> · Empresa: <strong>{companyLabel}</strong></> : null}
             </p>
           </Paper>
         </Grid>
@@ -295,7 +312,7 @@ export default function Dashboard() {
                     <InputLabel id="company-label-fixed">Empresa</InputLabel>
                     <Select labelId="company-label-fixed" value={apiScope?.companyId || ""} label="Empresa">
                       <MenuItem value={apiScope?.companyId || ""}>
-                        {apiScope?.companyId ? `Empresa #${apiScope.companyId}` : "—"}
+                        {companyLabel || "—"}
                       </MenuItem>
                     </Select>
                   </FormControl>
