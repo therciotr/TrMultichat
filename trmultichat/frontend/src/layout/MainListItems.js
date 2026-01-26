@@ -359,6 +359,12 @@ const MainListItems = (props) => {
                 primary={i18n.t("mainDrawer.listItems.helps")}
                 icon={<HelpOutlineIcon />}
               />
+              {/* Chat - Interno (painel /informativos) */}
+              <ListItemLink
+                to="/informativos"
+                primary="Chat - Interno"
+                icon={<ForumIcon />}
+              />
             </>
           </>
         )}
@@ -463,12 +469,6 @@ const MainListItems = (props) => {
                 </Collapse>
               </>
             )}
-            {/* Chat - Interno (painel único: usuário + admin/super gerencia tudo aqui) */}
-            <ListItemLink
-              to="/informativos"
-              primary="Chat - Interno"
-              icon={<ForumIcon />}
-            />
             {showOpenAi && (
               <ListItemLink
                 to="/prompts"
