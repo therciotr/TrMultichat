@@ -28,6 +28,8 @@ import {
   InputLabel,
   MenuItem,
   Select,
+  Switch,
+  FormControlLabel,
 } from "@material-ui/core";
 import ConfirmationModal from "../ConfirmationModal";
 
@@ -78,12 +80,18 @@ const AnnouncementModal = ({ open, onClose, announcementId, reload }) => {
     text: "",
     priority: 3,
     status: true,
+    sendToAll: true,
+    targetUserId: "",
+    allowReply: false,
   };
 
   const [confirmationOpen, setConfirmationOpen] = useState(false);
   const [announcement, setAnnouncement] = useState(initialState);
   const [attachment, setAttachment] = useState(null);
   const attachmentFile = useRef(null);
+  const [users, setUsers] = useState([]);
+  const [usersLoading, setUsersLoading] = useState(false);
+  const [userSearch, setUserSearch] = useState("");
 
   useEffect(() => {
     try {
@@ -100,6 +108,23 @@ const AnnouncementModal = ({ open, onClose, announcementId, reload }) => {
     }
   }, [announcementId, open]);
 
+  useEffect(() => {
+    if (!open) return;
+    // fetch users for targeting
+    (async () => {
+      setUsersLoading(true);
+      try {
+        const { data } = await api.get("/users", { params: { searchParam: userSearch || "", pageNumber: 1 } });
+        const list = Array.isArray(data?.users) ? data.users : Array.isArray(data) ? data : [];
+        setUsers(list);
+      } catch (e) {
+        setUsers([]);
+      } finally {
+        setUsersLoading(false);
+      }
+    })();
+  }, [open, userSearch]);
+
   const handleClose = () => {
     setAnnouncement(initialState);
     setAttachment(null);
@@ -114,7 +139,11 @@ const AnnouncementModal = ({ open, onClose, announcementId, reload }) => {
   };
 
   const handleSaveAnnouncement = async (values) => {
-    const announcementData = { ...values };
+    const announcementData = {
+      ...values,
+      // normalize targetUserId
+      targetUserId: values?.sendToAll ? null : (values?.targetUserId === "" ? null : Number(values?.targetUserId)),
+    };
     try {
       if (announcementId) {
         await api.put(`/announcements/${announcementId}`, announcementData);
@@ -254,6 +283,64 @@ const AnnouncementModal = ({ open, onClose, announcementId, reload }) => {
                     </FormControl>
                   </Grid>
                   <Grid xs={12} item>
+                    <FormControlLabel
+                      control={
+                        <Field
+                          as={Switch}
+                          name="sendToAll"
+                          color="primary"
+                          checked={Boolean(values.sendToAll)}
+                        />
+                      }
+                      label="Enviar para todos"
+                    />
+                  </Grid>
+
+                  {!values.sendToAll && (
+                    <Grid xs={12} item>
+                      <TextField
+                        variant="outlined"
+                        margin="dense"
+                        fullWidth
+                        label="Buscar usuário"
+                        value={userSearch}
+                        onChange={(e) => setUserSearch(e.target.value)}
+                        disabled={usersLoading}
+                      />
+                      <FormControl variant="outlined" margin="dense" fullWidth>
+                        <InputLabel id="target-user-selection-label">Usuário</InputLabel>
+                        <Field
+                          as={Select}
+                          label="Usuário"
+                          labelId="target-user-selection-label"
+                          id="targetUserId"
+                          name="targetUserId"
+                        >
+                          <MenuItem value={""}>&nbsp;</MenuItem>
+                          {users.map((u) => (
+                            <MenuItem key={u.id} value={String(u.id)}>
+                              {u.name ? `${u.name} (#${u.id})` : `Usuário #${u.id}`}
+                            </MenuItem>
+                          ))}
+                        </Field>
+                      </FormControl>
+                    </Grid>
+                  )}
+
+                  <Grid xs={12} item>
+                    <FormControlLabel
+                      control={
+                        <Field
+                          as={Switch}
+                          name="allowReply"
+                          color="primary"
+                          checked={Boolean(values.allowReply)}
+                        />
+                      }
+                      label="Permitir resposta do usuário"
+                    />
+                  </Grid>
+                  <Grid xs={12} item>
                     <FormControl variant="outlined" margin="dense" fullWidth>
                       <InputLabel id="priority-selection-label">
                         {i18n.t("announcements.dialog.form.priority")}
@@ -301,8 +388,8 @@ const AnnouncementModal = ({ open, onClose, announcementId, reload }) => {
                 </TrButton>
                 <TrButton type="submit" disabled={isSubmitting} className={classes.btnWrapper}>
                   {announcementId
-                    ? `${i18n.t("announcements.dialog.buttons.add")}`
-                    : `${i18n.t("announcements.dialog.buttons.edit")}`}
+                    ? `${i18n.t("announcements.dialog.buttons.edit")}`
+                    : `${i18n.t("announcements.dialog.buttons.add")}`}
                   {isSubmitting && (
                     <CircularProgress
                       size={24}

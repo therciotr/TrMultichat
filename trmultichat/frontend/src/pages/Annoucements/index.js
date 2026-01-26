@@ -18,6 +18,14 @@ import InputAdornment from "@material-ui/core/InputAdornment";
 
 import DeleteOutlineIcon from "@material-ui/icons/DeleteOutline";
 import EditIcon from "@material-ui/icons/Edit";
+import ChatBubbleOutlineIcon from "@material-ui/icons/ChatBubbleOutline";
+import Dialog from "@material-ui/core/Dialog";
+import DialogTitle from "@material-ui/core/DialogTitle";
+import DialogContent from "@material-ui/core/DialogContent";
+import DialogActions from "@material-ui/core/DialogActions";
+import List from "@material-ui/core/List";
+import ListItem from "@material-ui/core/ListItem";
+import ListItemText from "@material-ui/core/ListItemText";
 
 import MainContainer from "../../components/MainContainer";
 import MainHeader from "../../components/MainHeader";
@@ -107,11 +115,17 @@ const Announcements = () => {
   const [confirmModalOpen, setConfirmModalOpen] = useState(false);
   const [searchParam, setSearchParam] = useState("");
   const [announcements, dispatch] = useReducer(reducer, []);
+  const [repliesOpen, setRepliesOpen] = useState(false);
+  const [repliesLoading, setRepliesLoading] = useState(false);
+  const [replies, setReplies] = useState([]);
+  // kept for future context (e.g., reply drafting) - not needed yet
 
   // trava para nao acessar pagina que não pode  
   useEffect(() => {
     async function fetchData() {
-      if (!user.super) {
+      const p = String(user?.profile || "").toLowerCase();
+      const isAdmin = Boolean(user?.super) || p === "admin" || Boolean(user?.admin);
+      if (!isAdmin) {
         toast.error("Esta empresa não possui permissão para acessar essa página! Estamos lhe redirecionando.");
         setTimeout(() => {
           history.push(`/`)
@@ -201,6 +215,21 @@ const Announcements = () => {
     setPageNumber(1);
   };
 
+  const handleOpenReplies = async (announcement) => {
+    setReplies([]);
+    setRepliesOpen(true);
+    setRepliesLoading(true);
+    try {
+      const { data } = await api.get(`/announcements/${announcement.id}/replies`);
+      setReplies(Array.isArray(data?.records) ? data.records : []);
+    } catch (e) {
+      setReplies([]);
+      toastError(e);
+    } finally {
+      setRepliesLoading(false);
+    }
+  };
+
   const loadMore = () => {
     setPageNumber((prevState) => prevState + 1);
   };
@@ -249,6 +278,34 @@ const Announcements = () => {
         aria-labelledby="form-dialog-title"
         announcementId={selectedAnnouncement && selectedAnnouncement.id}
       />
+      <Dialog open={repliesOpen} onClose={() => setRepliesOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Respostas do informativo</DialogTitle>
+        <DialogContent dividers>
+          {repliesLoading ? (
+            <TableRowSkeleton columns={1} />
+          ) : (
+            <List dense>
+              {replies.length === 0 ? (
+                <ListItem>
+                  <ListItemText primary="Nenhuma resposta ainda." />
+                </ListItem>
+              ) : (
+                replies.map((r) => (
+                  <ListItem key={r.id}>
+                    <ListItemText
+                      primary={`${r.userName || "Usuário"}: ${r.text}`}
+                      secondary={r.createdAt ? new Date(r.createdAt).toLocaleString() : ""}
+                    />
+                  </ListItem>
+                ))
+              )}
+            </List>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <TrButton onClick={() => setRepliesOpen(false)}>Fechar</TrButton>
+        </DialogActions>
+      </Dialog>
       <MainHeader>
         <Grid style={{ width: "99.6%" }} container>
           <Grid xs={12} sm={8} item>
@@ -302,6 +359,12 @@ const Announcements = () => {
                 {i18n.t("announcements.table.status")}
               </TableCell>
               <TableCell align="center">
+                Destino
+              </TableCell>
+              <TableCell align="center">
+                Resposta
+              </TableCell>
+              <TableCell align="center">
                 {i18n.t("announcements.table.actions")}
               </TableCell>
             </TableRow>
@@ -321,11 +384,24 @@ const Announcements = () => {
                     {announcement.status ? i18n.t("announcements.active") : i18n.t("announcements.inactive")}
                   </TableCell>
                   <TableCell align="center">
+                    {announcement.sendToAll ? "Todos" : (announcement.targetUserId ? `Usuário #${announcement.targetUserId}` : "—")}
+                  </TableCell>
+                  <TableCell align="center">
+                    {announcement.allowReply ? "Sim" : "Não"}
+                  </TableCell>
+                  <TableCell align="center">
                     <IconButton
                       size="small"
                       onClick={() => handleEditAnnouncement(announcement)}
                     >
                       <EditIcon />
+                    </IconButton>
+                    <IconButton
+                      size="small"
+                      onClick={() => handleOpenReplies(announcement)}
+                      title="Ver respostas"
+                    >
+                      <ChatBubbleOutlineIcon />
                     </IconButton>
 
                     <IconButton
@@ -340,7 +416,7 @@ const Announcements = () => {
                   </TableCell>
                 </TableRow>
               ))}
-              {loading && <TableRowSkeleton columns={5} />}
+              {loading && <TableRowSkeleton columns={7} />}
             </>
           </TableBody>
         </Table>

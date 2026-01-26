@@ -1,8 +1,7 @@
-import React, { useEffect, useReducer, useState } from "react";
+import React, { useContext, useEffect, useReducer, useState } from "react";
 import { makeStyles } from "@material-ui/core/styles";
 import toastError from "../../errors/toastError";
 import Popover from "@material-ui/core/Popover";
-import AnnouncementIcon from "@material-ui/icons/Announcement";
 import Notifications from "@material-ui/icons/Notifications"
 
 import {
@@ -21,11 +20,13 @@ import {
   DialogActions,
   Button,
   DialogContentText,
+  TextField,
 } from "@material-ui/core";
 import api from "../../services/api";
 import { isArray } from "lodash";
 import moment from "moment";
 import { socketConnection } from "../../services/socket";
+import { AuthContext } from "../../context/Auth/AuthContext";
 
 const useStyles = makeStyles((theme) => ({
   mainPaper: {
@@ -38,9 +39,56 @@ const useStyles = makeStyles((theme) => ({
   },
 }));
 
-function AnnouncementDialog({ announcement, open, handleClose }) {
+function AnnouncementDialog({ announcement, open, handleClose, currentUserId }) {
   const getMediaPath = (filename) => {
-    return `${process.env.REACT_APP_BACKEND_URL}/public/${filename}`;
+    // backend serves /public as static at root
+    return `${process.env.REACT_APP_BACKEND_URL}/${filename}`;
+  };
+  const [replyText, setReplyText] = useState("");
+  const [sending, setSending] = useState(false);
+  const [repliesLoading, setRepliesLoading] = useState(false);
+  const [replies, setReplies] = useState([]);
+
+  const canReply =
+    Boolean(announcement?.allowReply) &&
+    Boolean(currentUserId) &&
+    (Boolean(announcement?.sendToAll) || Number(announcement?.targetUserId || 0) === Number(currentUserId || 0));
+
+  const announcementId = announcement?.id;
+
+  useEffect(() => {
+    if (!open || !announcementId) return;
+    setReplies([]);
+    setRepliesLoading(true);
+    (async () => {
+      try {
+        const { data } = await api.get(`/announcements/${announcementId}/replies`);
+        setReplies(Array.isArray(data?.records) ? data.records : []);
+      } catch {
+        setReplies([]);
+      } finally {
+        setRepliesLoading(false);
+      }
+    })();
+  }, [open, announcementId]);
+
+  const handleSendReply = async () => {
+    const t = String(replyText || "").trim();
+    if (!t || !announcement?.id) return;
+    setSending(true);
+    try {
+      await api.post(`/announcements/${announcement.id}/replies`, { text: t });
+      setReplyText("");
+      // refresh replies
+      try {
+        const { data } = await api.get(`/announcements/${announcement.id}/replies`);
+        setReplies(Array.isArray(data?.records) ? data.records : []);
+      } catch {}
+    } catch (e) {
+      toastError(e);
+    } finally {
+      setSending(false);
+    }
   };
   return (
     <Dialog
@@ -69,8 +117,45 @@ function AnnouncementDialog({ announcement, open, handleClose }) {
         <DialogContentText id="alert-dialog-description">
           {announcement.text}
         </DialogContentText>
+
+        {repliesLoading ? (
+          <div style={{ marginTop: 16 }}>Carregando respostas...</div>
+        ) : replies.length > 0 ? (
+          <Paper variant="outlined" style={{ marginTop: 16, padding: 12 }}>
+            <Typography style={{ fontWeight: 700, marginBottom: 8 }}>Respostas</Typography>
+            <List dense>
+              {replies.map((r) => (
+                <ListItem key={r.id}>
+                  <ListItemText
+                    primary={`${r.userName || "Usuário"}: ${r.text}`}
+                    secondary={r.createdAt ? moment(r.createdAt).format("DD/MM/YYYY HH:mm") : ""}
+                  />
+                </ListItem>
+              ))}
+            </List>
+          </Paper>
+        ) : null}
+
+        {canReply && (
+          <div style={{ marginTop: 16 }}>
+            <TextField
+              fullWidth
+              variant="outlined"
+              size="small"
+              label="Responder informativo"
+              value={replyText}
+              onChange={(e) => setReplyText(e.target.value)}
+              disabled={sending}
+            />
+          </div>
+        )}
       </DialogContent>
       <DialogActions>
+        {canReply && (
+          <Button onClick={handleSendReply} color="primary" disabled={sending || !String(replyText || "").trim()}>
+            {sending ? "Enviando..." : "Enviar resposta"}
+          </Button>
+        )}
         <Button onClick={() => handleClose()} color="primary" autoFocus>
           Fechar
         </Button>
@@ -129,6 +214,7 @@ const reducer = (state, action) => {
 
 export default function AnnouncementsPopover() {
   const classes = useStyles();
+  const { user } = useContext(AuthContext);
 
   const [loading, setLoading] = useState(false);
   const [anchorEl, setAnchorEl] = useState(null);
@@ -237,6 +323,7 @@ export default function AnnouncementsPopover() {
         announcement={announcement}
         open={showAnnouncementDialog}
         handleClose={() => setShowAnnouncementDialog(false)}
+        currentUserId={user?.id || localStorage.getItem("userId")}
       />
       <IconButton
         variant="contained"
