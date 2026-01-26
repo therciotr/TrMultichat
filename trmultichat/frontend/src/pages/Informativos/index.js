@@ -122,6 +122,8 @@ export default function Informativos() {
     return Boolean(selected.allowReply);
   }, [selected, isAdmin]);
 
+  const currentUserId = Number(user?.id || 0);
+
   const fetchAnnouncements = async () => {
     setLoading(true);
     try {
@@ -314,7 +316,8 @@ export default function Informativos() {
                     {a.text}
                   </Typography>
                   <Box display="flex" alignItems="center" gridGap={8} style={{ marginTop: 10 }}>
-                    <Chip size="small" label={a.sendToAll ? "Todos" : (a.targetUserName || `Usuário #${a.targetUserId}`)} />
+                    <Chip size="small" label={`De: ${a.senderName || "Sistema"}`} />
+                    <Chip size="small" label={`Para: ${a.sendToAll ? "Todos" : (a.targetUserName || `Usuário #${a.targetUserId}`)}`} />
                     <Chip size="small" label={a.allowReply ? "Resposta: sim" : "Resposta: não"} />
                     {isAdmin ? (
                       <Chip size="small" label={a.status ? "Ativo" : "Inativo"} />
@@ -337,6 +340,10 @@ export default function Informativos() {
                       <Typography style={{ marginTop: 4, color: "rgba(15, 23, 42, 0.65)", fontSize: 12 }}>
                         {selected.createdAt ? moment(selected.createdAt).format("DD/MM/YYYY HH:mm") : ""}
                       </Typography>
+                      <Box display="flex" alignItems="center" gridGap={8} style={{ marginTop: 10, flexWrap: "wrap" }}>
+                        <Chip size="small" label={`De: ${selected.senderName || "Sistema"}`} />
+                        <Chip size="small" label={`Para: ${selected.sendToAll ? "Todos" : (selected.targetUserName || `Usuário #${selected.targetUserId}`)}`} />
+                      </Box>
                     </div>
                     <Box display="flex" alignItems="center" gridGap={8}>
                       <Chip icon={<ForumOutlinedIcon />} label="Conversa" />
@@ -364,17 +371,28 @@ export default function Informativos() {
                   ) : replies.length === 0 ? (
                     <div style={{ color: "rgba(15, 23, 42, 0.65)" }}>Ainda não há mensagens nesta conversa.</div>
                   ) : (
-                    replies.map((r) => (
-                      <div className={classes.bubble} key={r.id}>
-                        <Typography style={{ fontWeight: 900, fontSize: 13 }}>
-                          {r.userName || "Usuário"}
-                        </Typography>
-                        <Typography style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>{r.text}</Typography>
-                        <div className={classes.bubbleMeta}>
-                          {r.createdAt ? moment(r.createdAt).format("DD/MM/YYYY HH:mm") : ""}
+                    replies.map((r) => {
+                      const mine = Number(r.userId || 0) === currentUserId;
+                      return (
+                        <div
+                          className={classes.bubble}
+                          key={r.id}
+                          style={{
+                            marginLeft: mine ? "auto" : undefined,
+                            maxWidth: "92%",
+                            background: mine ? "rgba(59,130,246,0.08)" : "#fff",
+                          }}
+                        >
+                          <Typography style={{ fontWeight: 900, fontSize: 13 }}>
+                            {mine ? "Você" : (r.userName || "Usuário")}
+                          </Typography>
+                          <Typography style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>{r.text}</Typography>
+                          <div className={classes.bubbleMeta}>
+                            {r.createdAt ? moment(r.createdAt).format("DD/MM/YYYY HH:mm") : ""}
+                          </div>
                         </div>
-                      </div>
-                    ))
+                      );
+                    })
                   )}
                 </div>
 

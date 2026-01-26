@@ -42,7 +42,20 @@ export default function ChatPopover() {
     const socket = socketConnection({ companyId });
     
     socket.on(`company-announcement`, (data) => {
-      if (data?.action === "create" || data?.action === "update" || data?.action === "reply") {
+      // só notifica se o evento for visível para o usuário atual
+      const visibleToMe = (() => {
+        if (!data) return false;
+        // create/update mandam record; reply manda sendToAll/targetUserId/status
+        const sendToAll = data?.record?.sendToAll ?? data?.sendToAll;
+        const targetUserId = data?.record?.targetUserId ?? data?.targetUserId;
+        const status = data?.record?.status ?? data?.status ?? true;
+        if (status === false) return false;
+        if (sendToAll === true) return true;
+        if (targetUserId === null || targetUserId === undefined) return false;
+        return Number(targetUserId) === Number(user?.id || 0);
+      })();
+
+      if (visibleToMe && (data?.action === "create" || data?.action === "update" || data?.action === "reply")) {
         setInvisible(false);
         // toca som se foi resposta de outro usuário (ex.: admin recebeu resposta do usuário, ou vice-versa)
         if (data?.action === "reply" && Number(data?.reply?.userId || 0) !== Number(user?.id || 0)) {

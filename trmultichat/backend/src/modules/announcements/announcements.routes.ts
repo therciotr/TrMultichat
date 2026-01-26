@@ -75,6 +75,12 @@ async function ensureAnnouncementsSchema() {
       []
     );
   } catch {}
+  try {
+    await pgQuery(
+      `ALTER TABLE "Announcements" ADD COLUMN IF NOT EXISTS "userId" integer NULL`,
+      []
+    );
+  } catch {}
 
   // FK to Users (best-effort; ignore if constraint exists or fails)
   try {
@@ -90,6 +96,27 @@ async function ensureAnnouncementsSchema() {
            ALTER TABLE "Announcements"
            ADD CONSTRAINT "Announcements_targetUserId_fkey"
            FOREIGN KEY ("targetUserId") REFERENCES "Users"(id)
+           ON UPDATE CASCADE ON DELETE SET NULL;
+         END IF;
+       END$$;`,
+      []
+    );
+  } catch {}
+
+  // FK for sender userId
+  try {
+    await pgQuery(
+      `DO $$
+       BEGIN
+         IF NOT EXISTS (
+           SELECT 1 FROM information_schema.table_constraints
+           WHERE constraint_type = 'FOREIGN KEY'
+             AND table_name = 'Announcements'
+             AND constraint_name = 'Announcements_userId_fkey'
+         ) THEN
+           ALTER TABLE "Announcements"
+           ADD CONSTRAINT "Announcements_userId_fkey"
+           FOREIGN KEY ("userId") REFERENCES "Users"(id)
            ON UPDATE CASCADE ON DELETE SET NULL;
          END IF;
        END$$;`,
@@ -180,12 +207,15 @@ router.get("/", async (req, res) => {
       SELECT
         a.id, a.priority, a.title, a.text, a."mediaPath", a."mediaName",
         a."companyId", a.status, a."createdAt", a."updatedAt",
+        a."userId",
+        su.name as "senderName",
         COALESCE(a."sendToAll", true) as "sendToAll",
         a."targetUserId",
         tu.name as "targetUserName",
         COALESCE(a."allowReply", false) as "allowReply"
       FROM "Announcements" a
       LEFT JOIN "Users" tu ON tu.id = a."targetUserId"
+      LEFT JOIN "Users" su ON su.id = a."userId"
       WHERE ${whereParts.join(" AND ")}
       ORDER BY a."createdAt" DESC
       LIMIT $${params.length - 1} OFFSET $${params.length}
@@ -213,12 +243,15 @@ router.get("/:id", async (req, res) => {
       SELECT
         a.id, a.priority, a.title, a.text, a."mediaPath", a."mediaName",
         a."companyId", a.status, a."createdAt", a."updatedAt",
+        a."userId",
+        su.name as "senderName",
         COALESCE(a."sendToAll", true) as "sendToAll",
         a."targetUserId",
         tu.name as "targetUserName",
         COALESCE(a."allowReply", false) as "allowReply"
       FROM "Announcements" a
       LEFT JOIN "Users" tu ON tu.id = a."targetUserId"
+      LEFT JOIN "Users" su ON su.id = a."userId"
       WHERE a.id = $1 AND a."companyId" = $2
       LIMIT 1
     `,
@@ -263,13 +296,31 @@ router.post("/", async (req, res) => {
   const now = new Date();
   const rows = await pgQuery<any>(
     `
-      INSERT INTO "Announcements" (priority, title, text, "companyId", status, "createdAt", "updatedAt", "sendToAll", "targetUserId", "allowReply")
-      VALUES ($1,$2,$3,$4,$5,$6,$6,$7,$8,$9)
-      RETURNING id, priority, title, text, "mediaPath", "mediaName", "companyId", status, "createdAt", "updatedAt", "sendToAll", "targetUserId", "allowReply"
+      INSERT INTO "Announcements" (priority, title, text, "companyId", status, "createdAt", "updatedAt", "sendToAll", "targetUserId", "allowReply", "userId")
+      VALUES ($1,$2,$3,$4,$5,$6,$6,$7,$8,$9,$10)
+      RETURNING id
     `,
-    [priority, title, text, companyId, status, now, sendToAll, targetUserId, allowReply]
+    [priority, title, text, companyId, status, now, sendToAll, targetUserId, allowReply, requester.id]
   );
-  const record = rows?.[0];
+  const createdId = Number(rows?.[0]?.id || 0);
+  const full = await pgQuery<any>(
+    `
+      SELECT
+        a.id, a.priority, a.title, a.text, a."mediaPath", a."mediaName",
+        a."companyId", a.status, a."createdAt", a."updatedAt",
+        a."userId", su.name as "senderName",
+        COALESCE(a."sendToAll", true) as "sendToAll",
+        a."targetUserId", tu.name as "targetUserName",
+        COALESCE(a."allowReply", false) as "allowReply"
+      FROM "Announcements" a
+      LEFT JOIN "Users" tu ON tu.id = a."targetUserId"
+      LEFT JOIN "Users" su ON su.id = a."userId"
+      WHERE a.id = $1 AND a."companyId" = $2
+      LIMIT 1
+    `,
+    [createdId, companyId]
+  );
+  const record = full?.[0];
 
   try {
     const io = getIO();
@@ -331,11 +382,29 @@ router.put("/:id", async (req, res) => {
         "allowReply" = COALESCE($7, "allowReply"),
         "updatedAt" = $8
       WHERE id = $9 AND "companyId" = $10
-      RETURNING id, priority, title, text, "mediaPath", "mediaName", "companyId", status, "createdAt", "updatedAt", "sendToAll", "targetUserId", "allowReply"
+      RETURNING id
     `,
     [priority ?? null, title ?? null, text ?? null, status ?? null, sendToAll ?? null, nextTargetUserId, allowReply ?? null, now, id, companyId]
   );
-  const record = updated?.[0];
+  const updatedId = Number(updated?.[0]?.id || 0);
+  const full = await pgQuery<any>(
+    `
+      SELECT
+        a.id, a.priority, a.title, a.text, a."mediaPath", a."mediaName",
+        a."companyId", a.status, a."createdAt", a."updatedAt",
+        a."userId", su.name as "senderName",
+        COALESCE(a."sendToAll", true) as "sendToAll",
+        a."targetUserId", tu.name as "targetUserName",
+        COALESCE(a."allowReply", false) as "allowReply"
+      FROM "Announcements" a
+      LEFT JOIN "Users" tu ON tu.id = a."targetUserId"
+      LEFT JOIN "Users" su ON su.id = a."userId"
+      WHERE a.id = $1 AND a."companyId" = $2
+      LIMIT 1
+    `,
+    [updatedId, companyId]
+  );
+  const record = full?.[0];
 
   try {
     const io = getIO();
@@ -505,10 +574,22 @@ router.post("/:id/replies", async (req, res) => {
     [id, userId, companyId, text, now]
   );
   const record = rows?.[0];
+  let userName: string | undefined = undefined;
+  try {
+    const urows = await pgQuery<any>(`SELECT name FROM "Users" WHERE id = $1 LIMIT 1`, [userId]);
+    userName = String(urows?.[0]?.name || "");
+  } catch {}
 
   try {
     const io = getIO();
-    io.emit("company-announcement", { action: "reply", announcementId: id, reply: { ...record, userId } });
+    io.emit("company-announcement", {
+      action: "reply",
+      announcementId: id,
+      reply: { ...record, userId, userName },
+      sendToAll: Boolean(ann.sendToAll),
+      targetUserId: ann.targetUserId ?? null,
+      status: ann.status !== false
+    });
   } catch {}
 
   return res.status(201).json(record);
