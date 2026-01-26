@@ -153,6 +153,17 @@ async function ensureAnnouncementsSchema() {
     );
   } catch {}
 
+  // If the table already existed (older deployments), ensure new media columns exist.
+  try {
+    await pgQuery(`ALTER TABLE "AnnouncementReplies" ADD COLUMN IF NOT EXISTS "mediaPath" text NULL`, []);
+  } catch {}
+  try {
+    await pgQuery(`ALTER TABLE "AnnouncementReplies" ADD COLUMN IF NOT EXISTS "mediaName" text NULL`, []);
+  } catch {}
+  try {
+    await pgQuery(`ALTER TABLE "AnnouncementReplies" ADD COLUMN IF NOT EXISTS "mediaType" text NULL`, []);
+  } catch {}
+
   // Backfill sender userId for old announcements (avoid "De: Sistema")
   // Strategy: set to first admin/super user of the company; if none, first user in company.
   try {
