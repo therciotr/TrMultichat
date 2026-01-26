@@ -266,10 +266,37 @@ router.get("/", async (req, res) => {
         COALESCE(a."sendToAll", true) as "sendToAll",
         a."targetUserId",
         tu.name as "targetUserName",
-        COALESCE(a."allowReply", false) as "allowReply"
+        COALESCE(a."allowReply", false) as "allowReply",
+        COALESCE(stats."repliesCount", 0)::int as "repliesCount",
+        COALESCE(stats."attachmentsCount", 0)::int as "attachmentsCount",
+        last."lastReplyAt" as "lastReplyAt",
+        last."lastReplyUserName" as "lastReplyUserName",
+        last."lastReplyText" as "lastReplyText",
+        last."lastReplyMediaName" as "lastReplyMediaName",
+        last."lastReplyMediaType" as "lastReplyMediaType"
       FROM "Announcements" a
       LEFT JOIN "Users" tu ON tu.id = a."targetUserId"
       LEFT JOIN "Users" su ON su.id = a."userId"
+      LEFT JOIN LATERAL (
+        SELECT
+          COUNT(1)::int as "repliesCount",
+          COUNT(1) FILTER (WHERE r."mediaPath" IS NOT NULL)::int as "attachmentsCount"
+        FROM "AnnouncementReplies" r
+        WHERE r."companyId" = a."companyId" AND r."announcementId" = a.id
+      ) stats ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT
+          r."createdAt" as "lastReplyAt",
+          u.name as "lastReplyUserName",
+          r.text as "lastReplyText",
+          r."mediaName" as "lastReplyMediaName",
+          r."mediaType" as "lastReplyMediaType"
+        FROM "AnnouncementReplies" r
+        JOIN "Users" u ON u.id = r."userId"
+        WHERE r."companyId" = a."companyId" AND r."announcementId" = a.id
+        ORDER BY r."createdAt" DESC
+        LIMIT 1
+      ) last ON TRUE
       WHERE ${whereParts.join(" AND ")}
       ORDER BY a."createdAt" DESC
       LIMIT $${params.length - 1} OFFSET $${params.length}

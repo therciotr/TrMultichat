@@ -22,6 +22,10 @@ import EditOutlinedIcon from "@material-ui/icons/EditOutlined";
 import DeleteOutlineOutlinedIcon from "@material-ui/icons/DeleteOutlineOutlined";
 import AttachFileOutlinedIcon from "@material-ui/icons/AttachFileOutlined";
 import MoodOutlinedIcon from "@material-ui/icons/MoodOutlined";
+import ChatBubbleOutlineOutlinedIcon from "@material-ui/icons/ChatBubbleOutlineOutlined";
+import AccessTimeOutlinedIcon from "@material-ui/icons/AccessTimeOutlined";
+import CloseOutlinedIcon from "@material-ui/icons/CloseOutlined";
+import ZoomInOutlinedIcon from "@material-ui/icons/ZoomInOutlined";
 
 import api from "../../services/api";
 import toastError from "../../errors/toastError";
@@ -31,6 +35,9 @@ import { socketConnection } from "../../services/socket";
 import moment from "moment";
 import AnnouncementModal from "../../components/AnnouncementModal";
 import ConfirmationModal from "../../components/ConfirmationModal";
+import Dialog from "@material-ui/core/Dialog";
+import DialogContent from "@material-ui/core/DialogContent";
+import DialogTitle from "@material-ui/core/DialogTitle";
 
 const useStyles = makeStyles((theme) => ({
   page: {
@@ -99,6 +106,34 @@ const useStyles = makeStyles((theme) => ({
     gap: 10,
     alignItems: "center",
   },
+  pill: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    padding: "4px 8px",
+    borderRadius: 999,
+    border: "1px solid rgba(15, 23, 42, 0.10)",
+    background: "rgba(15, 23, 42, 0.03)",
+    fontSize: 12,
+    fontWeight: 800,
+    color: "rgba(15, 23, 42, 0.70)",
+  },
+  attachmentsRow: {
+    display: "flex",
+    gap: 10,
+    overflowX: "auto",
+    paddingBottom: 6,
+    ...theme.scrollbarStylesSoft,
+  },
+  thumb: {
+    width: 86,
+    height: 64,
+    borderRadius: 12,
+    border: "1px solid rgba(15, 23, 42, 0.12)",
+    background: "rgba(15, 23, 42, 0.03)",
+    objectFit: "cover",
+    cursor: "pointer",
+  },
 }));
 
 export default function Informativos() {
@@ -121,6 +156,8 @@ export default function Informativos() {
   const [sending, setSending] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [file, setFile] = useState(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewItem, setPreviewItem] = useState(null);
 
   const canReply = useMemo(() => {
     if (!selected) return false;
@@ -224,11 +261,10 @@ export default function Informativos() {
   };
 
   const baseURL = String(process.env.REACT_APP_BACKEND_URL || api?.defaults?.baseURL || "").replace(/\/$/, "");
-  const fileUrl = (p) => (p ? `${baseURL}/${String(p).replace(/^\//, "")}` : "");
 
   const renderReplyMedia = (r) => {
     if (!r?.mediaPath) return null;
-    const url = fileUrl(r.mediaPath);
+    const url = r?.mediaPath ? `${baseURL}/${String(r.mediaPath).replace(/^\//, "")}` : "";
     const name = r.mediaName || "arquivo";
     const type = String(r.mediaType || "");
     const isImg = type.startsWith("image/") || String(name).toLowerCase().endsWith(".gif");
@@ -239,11 +275,35 @@ export default function Informativos() {
             src={url}
             alt={name}
             style={{ maxWidth: 360, width: "100%", borderRadius: 12, border: "1px solid rgba(15, 23, 42, 0.10)" }}
+            onClick={() => {
+              setPreviewItem({ url, name, type });
+              setPreviewOpen(true);
+            }}
           />
           <div style={{ marginTop: 6 }}>
             <a href={url} target="_blank" rel="noopener noreferrer">
               {name}
             </a>
+          </div>
+        </div>
+      );
+    }
+    if (type.startsWith("video/")) {
+      return (
+        <div style={{ marginTop: 10 }}>
+          <video src={url} controls style={{ width: "100%", maxWidth: 420, borderRadius: 12 }} />
+          <div style={{ marginTop: 6 }}>
+            <a href={url} target="_blank" rel="noopener noreferrer">{name}</a>
+          </div>
+        </div>
+      );
+    }
+    if (type.startsWith("audio/")) {
+      return (
+        <div style={{ marginTop: 10 }}>
+          <audio src={url} controls style={{ width: "100%" }} />
+          <div style={{ marginTop: 6 }}>
+            <a href={url} target="_blank" rel="noopener noreferrer">{name}</a>
           </div>
         </div>
       );
@@ -256,6 +316,17 @@ export default function Informativos() {
       </div>
     );
   };
+
+  const attachments = useMemo(() => {
+    return (Array.isArray(replies) ? replies : [])
+      .filter((r) => Boolean(r?.mediaPath))
+      .map((r) => ({
+        id: r.id,
+        url: r?.mediaPath ? `${baseURL}/${String(r.mediaPath).replace(/^\//, "")}` : "",
+        name: r.mediaName,
+        type: r.mediaType,
+      }));
+  }, [replies, baseURL]);
 
   const handleOpenCreate = () => {
     setEditingAnnouncementId(null);
@@ -282,6 +353,27 @@ export default function Informativos() {
 
   return (
     <div className={classes.page}>
+      <Dialog open={previewOpen} onClose={() => setPreviewOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          <span style={{ fontWeight: 900 }}>{previewItem?.name || "Preview"}</span>
+          <IconButton onClick={() => setPreviewOpen(false)} size="small">
+            <CloseOutlinedIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent dividers>
+          {previewItem?.type?.startsWith("image/") ? (
+            <img src={previewItem.url} alt={previewItem.name} style={{ width: "100%", borderRadius: 12 }} />
+          ) : previewItem?.type?.startsWith("video/") ? (
+            <video src={previewItem.url} controls style={{ width: "100%", borderRadius: 12 }} />
+          ) : previewItem?.type?.startsWith("audio/") ? (
+            <audio src={previewItem.url} controls style={{ width: "100%" }} />
+          ) : (
+            <a href={previewItem?.url || "#"} target="_blank" rel="noopener noreferrer">
+              Abrir arquivo
+            </a>
+          )}
+        </DialogContent>
+      </Dialog>
       <ConfirmationModal
         title="Excluir informativo?"
         open={confirmDeleteOpen}
@@ -364,9 +456,36 @@ export default function Informativos() {
                   <Typography style={{ marginTop: 6, fontSize: 12, color: "rgba(15, 23, 42, 0.62)" }} noWrap>
                     {a.text}
                   </Typography>
+                  <Box display="flex" alignItems="center" justifyContent="space-between" style={{ marginTop: 10 }}>
+                    <Box display="flex" alignItems="center" gridGap={8} style={{ flexWrap: "wrap" }}>
+                      <Chip size="small" label={`De: ${a.senderName || "Sistema"}`} />
+                      <Chip size="small" label={`Para: ${a.sendToAll ? "Todos" : (a.targetUserName || `Usuário #${a.targetUserId}`)}`} />
+                    </Box>
+                    <Box display="flex" alignItems="center" gridGap={8}>
+                      {Number(a.attachmentsCount || 0) > 0 ? (
+                        <span className={classes.pill} title="Anexos">
+                          <AttachFileOutlinedIcon style={{ fontSize: 16 }} />
+                          {Number(a.attachmentsCount)}
+                        </span>
+                      ) : null}
+                      {Number(a.repliesCount || 0) > 0 ? (
+                        <span className={classes.pill} title="Mensagens">
+                          <ChatBubbleOutlineOutlinedIcon style={{ fontSize: 16 }} />
+                          {Number(a.repliesCount)}
+                        </span>
+                      ) : null}
+                      {a.lastReplyAt ? (
+                        <span
+                          className={classes.pill}
+                          title={`Última atividade: ${moment(a.lastReplyAt).format("DD/MM/YYYY HH:mm")}`}
+                        >
+                          <AccessTimeOutlinedIcon style={{ fontSize: 16 }} />
+                          {moment(a.lastReplyAt).fromNow()}
+                        </span>
+                      ) : null}
+                    </Box>
+                  </Box>
                   <Box display="flex" alignItems="center" gridGap={8} style={{ marginTop: 10 }}>
-                    <Chip size="small" label={`De: ${a.senderName || "Sistema"}`} />
-                    <Chip size="small" label={`Para: ${a.sendToAll ? "Todos" : (a.targetUserName || `Usuário #${a.targetUserId}`)}`} />
                     <Chip size="small" label={a.allowReply ? "Resposta: sim" : "Resposta: não"} />
                     {isAdmin ? (
                       <Chip size="small" label={a.status ? "Ativo" : "Inativo"} />
@@ -414,6 +533,45 @@ export default function Informativos() {
 
                 <div className={classes.detailBody}>
                   <TrSectionTitle title="Mensagens" subtitle={canReply ? "Você pode responder abaixo." : "Respostas desativadas."} />
+
+                  {attachments.length > 0 ? (
+                    <div style={{ marginBottom: 14 }}>
+                      <Box display="flex" alignItems="center" justifyContent="space-between">
+                        <Typography style={{ fontWeight: 900, fontSize: 13, color: "rgba(15,23,42,0.78)" }}>
+                          Anexos ({attachments.length})
+                        </Typography>
+                        <ZoomInOutlinedIcon style={{ fontSize: 18, color: "rgba(15,23,42,0.45)" }} />
+                      </Box>
+                      <div className={classes.attachmentsRow} style={{ marginTop: 10 }}>
+                        {attachments.map((att) => {
+                          const isImg = String(att.type || "").startsWith("image/") || String(att.name || "").toLowerCase().endsWith(".gif");
+                          return (
+                            <div key={att.id} title={att.name}>
+                              {isImg ? (
+                                <img
+                                  className={classes.thumb}
+                                  src={att.url}
+                                  alt={att.name}
+                                  onClick={() => {
+                                    setPreviewItem(att);
+                                    setPreviewOpen(true);
+                                  }}
+                                />
+                              ) : (
+                                <div
+                                  className={classes.thumb}
+                                  style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: 10 }}
+                                  onClick={() => window.open(att.url, "_blank", "noopener,noreferrer")}
+                                >
+                                  <AttachFileOutlinedIcon />
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
 
                   {repliesLoading ? (
                     <Skeleton variant="rect" height={140} style={{ borderRadius: 16 }} />
@@ -464,6 +622,15 @@ export default function Informativos() {
                   <IconButton onClick={() => setEmojiOpen((v) => !v)} disabled={sending} title="Emojis">
                     <MoodOutlinedIcon />
                   </IconButton>
+                  {file ? (
+                    <span className={classes.pill} title={file.name} style={{ maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      <AttachFileOutlinedIcon style={{ fontSize: 16 }} />
+                      {file.name}
+                      <IconButton size="small" onClick={() => setFile(null)} style={{ padding: 2 }}>
+                        <CloseOutlinedIcon style={{ fontSize: 16 }} />
+                      </IconButton>
+                    </span>
+                  ) : null}
                   <TextField
                     fullWidth
                     variant="outlined"
