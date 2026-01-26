@@ -15,6 +15,9 @@ import SearchOutlinedIcon from "@material-ui/icons/SearchOutlined";
 import ForumOutlinedIcon from "@material-ui/icons/ForumOutlined";
 import SendOutlinedIcon from "@material-ui/icons/SendOutlined";
 import NotificationsOutlinedIcon from "@material-ui/icons/NotificationsOutlined";
+import AddOutlinedIcon from "@material-ui/icons/AddOutlined";
+import EditOutlinedIcon from "@material-ui/icons/EditOutlined";
+import DeleteOutlineOutlinedIcon from "@material-ui/icons/DeleteOutlineOutlined";
 
 import api from "../../services/api";
 import toastError from "../../errors/toastError";
@@ -22,6 +25,8 @@ import { AuthContext } from "../../context/Auth/AuthContext";
 import { TrSectionTitle, TrButton } from "../../components/ui";
 import { socketConnection } from "../../services/socket";
 import moment from "moment";
+import AnnouncementModal from "../../components/AnnouncementModal";
+import ConfirmationModal from "../../components/ConfirmationModal";
 
 const useStyles = makeStyles((theme) => ({
   page: {
@@ -102,6 +107,9 @@ export default function Informativos() {
   const [loading, setLoading] = useState(false);
   const [announcements, setAnnouncements] = useState([]);
   const [selected, setSelected] = useState(null);
+  const [announcementModalOpen, setAnnouncementModalOpen] = useState(false);
+  const [editingAnnouncementId, setEditingAnnouncementId] = useState(null);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
 
   const [repliesLoading, setRepliesLoading] = useState(false);
   const [replies, setReplies] = useState([]);
@@ -121,6 +129,10 @@ export default function Informativos() {
       const list = Array.isArray(data?.records) ? data.records : [];
       setAnnouncements(list);
       if (!selected && list.length) setSelected(list[0]);
+      if (selected?.id) {
+        const still = list.find((a) => Number(a.id) === Number(selected.id));
+        if (still) setSelected(still);
+      }
     } catch (e) {
       toastError(e);
       setAnnouncements([]);
@@ -194,8 +206,47 @@ export default function Informativos() {
     }
   };
 
+  const handleOpenCreate = () => {
+    setEditingAnnouncementId(null);
+    setAnnouncementModalOpen(true);
+  };
+
+  const handleOpenEdit = (id) => {
+    setEditingAnnouncementId(id);
+    setAnnouncementModalOpen(true);
+  };
+
+  const handleDelete = async () => {
+    if (!selected?.id) return;
+    try {
+      await api.delete(`/announcements/${selected.id}`);
+      setConfirmDeleteOpen(false);
+      setSelected(null);
+      await fetchAnnouncements();
+    } catch (e) {
+      toastError(e);
+      setConfirmDeleteOpen(false);
+    }
+  };
+
   return (
     <div className={classes.page}>
+      <ConfirmationModal
+        title="Excluir informativo?"
+        open={confirmDeleteOpen}
+        onClose={setConfirmDeleteOpen}
+        onConfirm={handleDelete}
+      >
+        Essa ação é permanente.
+      </ConfirmationModal>
+
+      <AnnouncementModal
+        open={announcementModalOpen}
+        onClose={() => setAnnouncementModalOpen(false)}
+        announcementId={editingAnnouncementId}
+        reload={() => fetchAnnouncements()}
+      />
+
       <TrSectionTitle
         title="Informativos"
         subtitle="Acompanhe comunicados e converse diretamente pelo painel."
@@ -219,6 +270,13 @@ export default function Informativos() {
                       <SearchOutlinedIcon />
                     </InputAdornment>
                   ),
+                  endAdornment: isAdmin ? (
+                    <InputAdornment position="end">
+                      <IconButton onClick={handleOpenCreate} size="small" title="Novo informativo">
+                        <AddOutlinedIcon />
+                      </IconButton>
+                    </InputAdornment>
+                  ) : null,
                 }}
               />
             </div>
@@ -258,6 +316,9 @@ export default function Informativos() {
                   <Box display="flex" alignItems="center" gridGap={8} style={{ marginTop: 10 }}>
                     <Chip size="small" label={a.sendToAll ? "Todos" : (a.targetUserName || `Usuário #${a.targetUserId}`)} />
                     <Chip size="small" label={a.allowReply ? "Resposta: sim" : "Resposta: não"} />
+                    {isAdmin ? (
+                      <Chip size="small" label={a.status ? "Ativo" : "Inativo"} />
+                    ) : null}
                   </Box>
                 </div>
               ))
@@ -277,7 +338,19 @@ export default function Informativos() {
                         {selected.createdAt ? moment(selected.createdAt).format("DD/MM/YYYY HH:mm") : ""}
                       </Typography>
                     </div>
-                    <Chip icon={<ForumOutlinedIcon />} label="Conversa" />
+                    <Box display="flex" alignItems="center" gridGap={8}>
+                      <Chip icon={<ForumOutlinedIcon />} label="Conversa" />
+                      {isAdmin ? (
+                        <>
+                          <IconButton size="small" title="Editar" onClick={() => handleOpenEdit(selected.id)}>
+                            <EditOutlinedIcon />
+                          </IconButton>
+                          <IconButton size="small" title="Excluir" onClick={() => setConfirmDeleteOpen(true)}>
+                            <DeleteOutlineOutlinedIcon />
+                          </IconButton>
+                        </>
+                      ) : null}
+                    </Box>
                   </Box>
                   <Divider style={{ marginTop: 12 }} />
                   <Typography style={{ marginTop: 12, color: "rgba(15, 23, 42, 0.82)" }}>{selected.text}</Typography>

@@ -31,7 +31,6 @@ import Schedules from "../pages/Schedules";
 import Campaigns from "../pages/Campaigns";
 import CampaignsConfig from "../pages/CampaignsConfig";
 import CampaignReport from "../pages/CampaignReport";
-import Annoucements from "../pages/Annoucements";
 import Informativos from "../pages/Informativos";
 import Chat from "../pages/Chat";
 import ToDoList from "../pages/ToDoList/";
@@ -168,12 +167,8 @@ const Routes = () => {
                   isPrivate
                 />
                 <Route exact path="/queues" component={Queues} isPrivate />
-                <Route
-                  exact
-                  path="/announcements"
-                  component={Annoucements}
-                  isPrivate
-                />
+                {/* Compat: rota antiga abre o mesmo painel */}
+                <Route exact path="/announcements" component={Informativos} isPrivate />
                 <Route
                   exact
                   path="/informativos"

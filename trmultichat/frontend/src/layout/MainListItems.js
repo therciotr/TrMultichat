@@ -464,21 +464,12 @@ const MainListItems = (props) => {
                 </Collapse>
               </>
             )}
-            {/* Painel do usuário (todos os perfis) */}
+            {/* Informativos (painel único: usuário + admin/super gerencia tudo aqui) */}
             <ListItemLink
               to="/informativos"
               primary="Informativos"
               icon={<AnnouncementIcon />}
             />
-
-            {/* Painel administrativo para gerenciar informativos */}
-            {isSuper && (
-              <ListItemLink
-                to="/announcements"
-                primary="Admin · Informativos"
-                icon={<AnnouncementIcon />}
-              />
-            )}
             {showOpenAi && (
               <ListItemLink
                 to="/prompts"
