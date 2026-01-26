@@ -248,7 +248,7 @@ export default function Informativos() {
       />
 
       <TrSectionTitle
-        title="Informativos"
+        title="Chat - Interno"
         subtitle="Acompanhe comunicados e converse diretamente pelo painel."
         icon={<NotificationsOutlinedIcon />}
       />

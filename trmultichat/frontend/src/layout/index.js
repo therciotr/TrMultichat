@@ -31,7 +31,6 @@ import BackdropLoading from "../components/BackdropLoading";
 import DarkMode from "../components/DarkMode";
 import { i18n } from "../translate/i18n";
 import toastError from "../errors/toastError";
-import AnnouncementsPopover from "../components/AnnouncementsPopover";
 
 import logo from "../assets/logo-tr.png";
 import { socketConnection } from "../services/socket";
@@ -420,8 +419,6 @@ const LoggedInLayout = ({ children, themeToggle }) => {
           </IconButton>
 
           {user.id && <NotificationsPopOver volume={volume} />}
-
-          <AnnouncementsPopover />
 
           <ChatPopover />
 
