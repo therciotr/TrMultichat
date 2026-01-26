@@ -219,6 +219,16 @@ const repliesStorage = multer.diskStorage({
 });
 const repliesUpload = multer({ storage: repliesStorage });
 
+// Multer must only run for multipart/form-data. If a JSON request hits multer, it can throw
+// "Multipart: Boundary not found" and break text-only replies.
+function maybeRepliesUpload(req: any, res: any, next: any) {
+  const ct = String(req?.headers?.["content-type"] || "").toLowerCase();
+  if (ct.includes("multipart/form-data")) {
+    return (repliesUpload.single("file") as any)(req, res, next);
+  }
+  return next();
+}
+
 router.get("/", async (req, res) => {
   setNoCache(res);
   await ensureAnnouncementsSchema();
@@ -613,7 +623,7 @@ router.get("/:id/replies", async (req, res) => {
   return res.json({ records: Array.isArray(rows) ? rows : [] });
 });
 
-router.post("/:id/replies", repliesUpload.single("file"), async (req, res) => {
+router.post("/:id/replies", maybeRepliesUpload, async (req, res) => {
   setNoCache(res);
   await ensureAnnouncementsSchema();
   const companyId = tenantIdFromReq(req);
