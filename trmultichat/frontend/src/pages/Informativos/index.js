@@ -1,5 +1,7 @@
 import React, { useContext, useEffect, useMemo, useState } from "react";
 import { makeStyles } from "@material-ui/core/styles";
+import "emoji-mart/css/emoji-mart.css";
+import { Picker } from "emoji-mart";
 import Grid from "@material-ui/core/Grid";
 import Paper from "@material-ui/core/Paper";
 import Typography from "@material-ui/core/Typography";
@@ -18,6 +20,8 @@ import NotificationsOutlinedIcon from "@material-ui/icons/NotificationsOutlined"
 import AddOutlinedIcon from "@material-ui/icons/AddOutlined";
 import EditOutlinedIcon from "@material-ui/icons/EditOutlined";
 import DeleteOutlineOutlinedIcon from "@material-ui/icons/DeleteOutlineOutlined";
+import AttachFileOutlinedIcon from "@material-ui/icons/AttachFileOutlined";
+import MoodOutlinedIcon from "@material-ui/icons/MoodOutlined";
 
 import api from "../../services/api";
 import toastError from "../../errors/toastError";
@@ -115,6 +119,8 @@ export default function Informativos() {
   const [replies, setReplies] = useState([]);
   const [replyText, setReplyText] = useState("");
   const [sending, setSending] = useState(false);
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  const [file, setFile] = useState(null);
 
   const canReply = useMemo(() => {
     if (!selected) return false;
@@ -195,17 +201,60 @@ export default function Informativos() {
 
   const handleSendReply = async () => {
     const text = String(replyText || "").trim();
-    if (!text || !selected?.id) return;
+    if ((!text && !file) || !selected?.id) return;
     setSending(true);
     try {
-      await api.post(`/announcements/${selected.id}/replies`, { text });
+      if (file) {
+        const formData = new FormData();
+        formData.append("text", text || "");
+        formData.append("file", file);
+        await api.post(`/announcements/${selected.id}/replies`, formData);
+      } else {
+        await api.post(`/announcements/${selected.id}/replies`, { text });
+      }
       setReplyText("");
+      setFile(null);
+      setEmojiOpen(false);
       await fetchReplies(selected.id);
     } catch (e) {
       toastError(e);
     } finally {
       setSending(false);
     }
+  };
+
+  const baseURL = String(process.env.REACT_APP_BACKEND_URL || api?.defaults?.baseURL || "").replace(/\/$/, "");
+  const fileUrl = (p) => (p ? `${baseURL}/${String(p).replace(/^\//, "")}` : "");
+
+  const renderReplyMedia = (r) => {
+    if (!r?.mediaPath) return null;
+    const url = fileUrl(r.mediaPath);
+    const name = r.mediaName || "arquivo";
+    const type = String(r.mediaType || "");
+    const isImg = type.startsWith("image/") || String(name).toLowerCase().endsWith(".gif");
+    if (isImg) {
+      return (
+        <div style={{ marginTop: 10 }}>
+          <img
+            src={url}
+            alt={name}
+            style={{ maxWidth: 360, width: "100%", borderRadius: 12, border: "1px solid rgba(15, 23, 42, 0.10)" }}
+          />
+          <div style={{ marginTop: 6 }}>
+            <a href={url} target="_blank" rel="noopener noreferrer">
+              {name}
+            </a>
+          </div>
+        </div>
+      );
+    }
+    return (
+      <div style={{ marginTop: 10 }}>
+        <a href={url} target="_blank" rel="noopener noreferrer">
+          {name}
+        </a>
+      </div>
+    );
   };
 
   const handleOpenCreate = () => {
@@ -387,6 +436,7 @@ export default function Informativos() {
                             {mine ? "Você" : (r.userName || "Usuário")}
                           </Typography>
                           <Typography style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>{r.text}</Typography>
+                          {renderReplyMedia(r)}
                           <div className={classes.bubbleMeta}>
                             {r.createdAt ? moment(r.createdAt).format("DD/MM/YYYY HH:mm") : ""}
                           </div>
@@ -397,6 +447,23 @@ export default function Informativos() {
                 </div>
 
                 <div className={classes.replyBar}>
+                  <input
+                    id="chat-interno-file"
+                    type="file"
+                    style={{ display: "none" }}
+                    onChange={(e) => setFile(e.target.files && e.target.files[0] ? e.target.files[0] : null)}
+                    accept="image/*,.gif,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip"
+                  />
+                  <IconButton
+                    onClick={() => document.getElementById("chat-interno-file")?.click()}
+                    disabled={sending}
+                    title="Anexar arquivo (inclui GIF)"
+                  >
+                    <AttachFileOutlinedIcon />
+                  </IconButton>
+                  <IconButton onClick={() => setEmojiOpen((v) => !v)} disabled={sending} title="Emojis">
+                    <MoodOutlinedIcon />
+                  </IconButton>
                   <TextField
                     fullWidth
                     variant="outlined"
@@ -409,7 +476,7 @@ export default function Informativos() {
                   <IconButton
                     color="primary"
                     onClick={handleSendReply}
-                    disabled={!canReply || sending || !String(replyText || "").trim()}
+                    disabled={!canReply || sending || (!String(replyText || "").trim() && !file)}
                   >
                     <SendOutlinedIcon />
                   </IconButton>
@@ -417,6 +484,14 @@ export default function Informativos() {
                     Atualizar
                   </TrButton>
                 </div>
+                {emojiOpen && canReply ? (
+                  <div style={{ padding: 12, borderTop: "1px solid rgba(15, 23, 42, 0.08)" }}>
+                    <Picker
+                      title="Emojis"
+                      onSelect={(e) => setReplyText((prev) => `${prev || ""}${e?.native || ""}`)}
+                    />
+                  </div>
+                ) : null}
               </>
             )}
           </Grid>

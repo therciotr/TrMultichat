@@ -134,6 +134,9 @@ async function ensureAnnouncementsSchema() {
         "userId" integer NOT NULL REFERENCES "Users"(id) ON UPDATE CASCADE ON DELETE CASCADE,
         "companyId" integer NOT NULL REFERENCES "Companies"(id) ON UPDATE CASCADE ON DELETE CASCADE,
         text text NOT NULL,
+        "mediaPath" text NULL,
+        "mediaName" text NULL,
+        "mediaType" text NULL,
         "createdAt" timestamp with time zone NOT NULL DEFAULT NOW(),
         "updatedAt" timestamp with time zone NOT NULL DEFAULT NOW()
       )
@@ -146,6 +149,44 @@ async function ensureAnnouncementsSchema() {
     );
     await pgQuery(
       `CREATE INDEX IF NOT EXISTS "AnnouncementReplies_companyId_idx" ON "AnnouncementReplies" ("companyId")`,
+      []
+    );
+  } catch {}
+
+  // Backfill sender userId for old announcements (avoid "De: Sistema")
+  // Strategy: set to first admin/super user of the company; if none, first user in company.
+  try {
+    await pgQuery(
+      `
+      UPDATE "Announcements" a
+      SET "userId" = u.id
+      FROM LATERAL (
+        SELECT id
+        FROM "Users" u
+        WHERE u."companyId" = a."companyId"
+          AND LOWER(COALESCE(u.profile,'')) IN ('admin','super')
+        ORDER BY u.id ASC
+        LIMIT 1
+      ) u
+      WHERE a."userId" IS NULL AND u.id IS NOT NULL
+      `,
+      []
+    );
+  } catch {}
+  try {
+    await pgQuery(
+      `
+      UPDATE "Announcements" a
+      SET "userId" = u.id
+      FROM LATERAL (
+        SELECT id
+        FROM "Users" u
+        WHERE u."companyId" = a."companyId"
+        ORDER BY u.id ASC
+        LIMIT 1
+      ) u
+      WHERE a."userId" IS NULL AND u.id IS NOT NULL
+      `,
       []
     );
   } catch {}
@@ -164,6 +205,19 @@ const storage = multer.diskStorage({
   }
 });
 const upload = multer({ storage });
+
+const REPLIES_UPLOAD_DIR = path.join(process.cwd(), "public", "uploads", "chat-interno");
+try {
+  if (!fs.existsSync(REPLIES_UPLOAD_DIR)) fs.mkdirSync(REPLIES_UPLOAD_DIR, { recursive: true });
+} catch {}
+const repliesStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, REPLIES_UPLOAD_DIR),
+  filename: (_req, file, cb) => {
+    const safe = String(file.originalname || "file").replace(/[^\w.\-]+/g, "_");
+    cb(null, `${Date.now()}-${safe}`);
+  }
+});
+const repliesUpload = multer({ storage: repliesStorage });
 
 router.get("/", async (req, res) => {
   setNoCache(res);
@@ -520,7 +574,7 @@ router.get("/:id/replies", async (req, res) => {
 
   const rows = await pgQuery<any>(
     `
-      SELECT r.id, r.text, r."createdAt", r."updatedAt",
+      SELECT r.id, r.text, r."mediaPath", r."mediaName", r."mediaType", r."createdAt", r."updatedAt",
              u.id as "userId", u.name as "userName", u.email as "userEmail"
       FROM "AnnouncementReplies" r
       JOIN "Users" u ON u.id = r."userId"
@@ -532,7 +586,7 @@ router.get("/:id/replies", async (req, res) => {
   return res.json({ records: Array.isArray(rows) ? rows : [] });
 });
 
-router.post("/:id/replies", async (req, res) => {
+router.post("/:id/replies", repliesUpload.single("file"), async (req, res) => {
   setNoCache(res);
   await ensureAnnouncementsSchema();
   const companyId = tenantIdFromReq(req);
@@ -541,8 +595,9 @@ router.post("/:id/replies", async (req, res) => {
   if (!companyId || !userId) return res.status(401).json({ error: true, message: "missing auth context" });
   if (!id) return res.status(400).json({ error: true, message: "invalid id" });
 
+  const file = (req as any).file as any;
   const text = String((req.body as any)?.text || "").trim();
-  if (!text) return res.status(400).json({ error: true, message: "text is required" });
+  if (!text && !file) return res.status(400).json({ error: true, message: "text or file is required" });
 
   const requester = await getRequester(req);
   const isAdmin = isAdminLike(requester);
@@ -565,13 +620,16 @@ router.post("/:id/replies", async (req, res) => {
   }
 
   const now = new Date();
+  const mediaName = file ? String(file.originalname || "") : null;
+  const mediaPath = file ? `uploads/chat-interno/${String(file.filename)}` : null;
+  const mediaType = file ? String(file.mimetype || "") : null;
   const rows = await pgQuery<any>(
     `
-      INSERT INTO "AnnouncementReplies" ("announcementId", "userId", "companyId", text, "createdAt", "updatedAt")
-      VALUES ($1,$2,$3,$4,$5,$5)
-      RETURNING id, text, "createdAt", "updatedAt"
+      INSERT INTO "AnnouncementReplies" ("announcementId", "userId", "companyId", text, "mediaPath", "mediaName", "mediaType", "createdAt", "updatedAt")
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$8)
+      RETURNING id, text, "mediaPath", "mediaName", "mediaType", "createdAt", "updatedAt"
     `,
-    [id, userId, companyId, text, now]
+    [id, userId, companyId, text || "", mediaPath, mediaName, mediaType, now]
   );
   const record = rows?.[0];
   let userName: string | undefined = undefined;
