@@ -26,6 +26,7 @@ import DialogActions from "@material-ui/core/DialogActions";
 import List from "@material-ui/core/List";
 import ListItem from "@material-ui/core/ListItem";
 import ListItemText from "@material-ui/core/ListItemText";
+import TextareaAutosize from "@material-ui/core/TextareaAutosize";
 
 import MainContainer from "../../components/MainContainer";
 import MainHeader from "../../components/MainHeader";
@@ -119,6 +120,8 @@ const Announcements = () => {
   const [repliesLoading, setRepliesLoading] = useState(false);
   const [replies, setReplies] = useState([]);
   // kept for future context (e.g., reply drafting) - not needed yet
+  const [replyText, setReplyText] = useState("");
+  const [sendingReply, setSendingReply] = useState(false);
 
   // trava para nao acessar pagina que não pode  
   useEffect(() => {
@@ -160,6 +163,17 @@ const Announcements = () => {
       }
       if (data.action === "delete") {
         dispatch({ type: "DELETE_ANNOUNCEMENT", payload: +data.id });
+      }
+      if (data.action === "reply") {
+        // if replies dialog is open for this announcement, refresh replies
+        if (repliesOpen && selectedAnnouncement?.id && Number(data.announcementId) === Number(selectedAnnouncement.id)) {
+          (async () => {
+            try {
+              const { data: rr } = await api.get(`/announcements/${selectedAnnouncement.id}/replies`);
+              setReplies(Array.isArray(rr?.records) ? rr.records : []);
+            } catch {}
+          })();
+        }
       }
     });
     return () => {
@@ -219,6 +233,7 @@ const Announcements = () => {
     setReplies([]);
     setRepliesOpen(true);
     setRepliesLoading(true);
+    setReplyText("");
     try {
       const { data } = await api.get(`/announcements/${announcement.id}/replies`);
       setReplies(Array.isArray(data?.records) ? data.records : []);
@@ -227,6 +242,24 @@ const Announcements = () => {
       toastError(e);
     } finally {
       setRepliesLoading(false);
+    }
+  };
+
+  const handleSendReply = async () => {
+    if (!selectedAnnouncement?.id) return;
+    const text = String(replyText || "").trim();
+    if (!text) return;
+    setSendingReply(true);
+    try {
+      await api.post(`/announcements/${selectedAnnouncement.id}/replies`, { text });
+      setReplyText("");
+      const { data } = await api.get(`/announcements/${selectedAnnouncement.id}/replies`);
+      setReplies(Array.isArray(data?.records) ? data.records : []);
+      toast.success("Mensagem enviada.");
+    } catch (e) {
+      toastError(e);
+    } finally {
+      setSendingReply(false);
     }
   };
 
@@ -301,8 +334,28 @@ const Announcements = () => {
               )}
             </List>
           )}
+          <div style={{ marginTop: 14 }}>
+            <TextareaAutosize
+              minRows={3}
+              placeholder="Digite uma nova mensagem/resposta..."
+              value={replyText}
+              onChange={(e) => setReplyText(e.target.value)}
+              style={{
+                width: "100%",
+                padding: 10,
+                borderRadius: 12,
+                border: "1px solid rgba(15, 23, 42, 0.12)",
+                outline: "none",
+                fontFamily: "inherit",
+              }}
+              disabled={sendingReply}
+            />
+          </div>
         </DialogContent>
         <DialogActions>
+          <TrButton onClick={handleSendReply} disabled={sendingReply || !String(replyText || "").trim()}>
+            {sendingReply ? "Enviando..." : "Enviar"}
+          </TrButton>
           <TrButton onClick={() => setRepliesOpen(false)}>Fechar</TrButton>
         </DialogActions>
       </Dialog>
@@ -398,7 +451,10 @@ const Announcements = () => {
                     </IconButton>
                     <IconButton
                       size="small"
-                      onClick={() => handleOpenReplies(announcement)}
+                      onClick={() => {
+                        setSelectedAnnouncement(announcement);
+                        handleOpenReplies(announcement);
+                      }}
                       title="Ver respostas"
                     >
                       <ChatBubbleOutlineIcon />

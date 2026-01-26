@@ -32,6 +32,7 @@ import Campaigns from "../pages/Campaigns";
 import CampaignsConfig from "../pages/CampaignsConfig";
 import CampaignReport from "../pages/CampaignReport";
 import Annoucements from "../pages/Annoucements";
+import Informativos from "../pages/Informativos";
 import Chat from "../pages/Chat";
 import ToDoList from "../pages/ToDoList/";
 import Subscription from "../pages/Subscription/";
@@ -171,6 +172,12 @@ const Routes = () => {
                   exact
                   path="/announcements"
                   component={Annoucements}
+                  isPrivate
+                />
+                <Route
+                  exact
+                  path="/informativos"
+                  component={Informativos}
                   isPrivate
                 />
                 <Route

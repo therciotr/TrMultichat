@@ -182,8 +182,10 @@ router.get("/", async (req, res) => {
         a."companyId", a.status, a."createdAt", a."updatedAt",
         COALESCE(a."sendToAll", true) as "sendToAll",
         a."targetUserId",
+        tu.name as "targetUserName",
         COALESCE(a."allowReply", false) as "allowReply"
       FROM "Announcements" a
+      LEFT JOIN "Users" tu ON tu.id = a."targetUserId"
       WHERE ${whereParts.join(" AND ")}
       ORDER BY a."createdAt" DESC
       LIMIT $${params.length - 1} OFFSET $${params.length}
@@ -213,8 +215,10 @@ router.get("/:id", async (req, res) => {
         a."companyId", a.status, a."createdAt", a."updatedAt",
         COALESCE(a."sendToAll", true) as "sendToAll",
         a."targetUserId",
+        tu.name as "targetUserName",
         COALESCE(a."allowReply", false) as "allowReply"
       FROM "Announcements" a
+      LEFT JOIN "Users" tu ON tu.id = a."targetUserId"
       WHERE a.id = $1 AND a."companyId" = $2
       LIMIT 1
     `,
@@ -486,7 +490,8 @@ router.post("/:id/replies", async (req, res) => {
     if (!canSee) return res.status(403).json({ error: true, message: "forbidden" });
   }
 
-  if (!Boolean(ann.allowReply)) {
+  // allowReply gates USER replies; admins can always reply (internal notes)
+  if (!isAdmin && !Boolean(ann.allowReply)) {
     return res.status(409).json({ error: true, message: "replies disabled for this announcement" });
   }
 

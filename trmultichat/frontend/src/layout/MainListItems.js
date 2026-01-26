@@ -464,10 +464,18 @@ const MainListItems = (props) => {
                 </Collapse>
               </>
             )}
+            {/* Painel do usuário (todos os perfis) */}
+            <ListItemLink
+              to="/informativos"
+              primary="Informativos"
+              icon={<AnnouncementIcon />}
+            />
+
+            {/* Painel administrativo para gerenciar informativos */}
             {isSuper && (
               <ListItemLink
                 to="/announcements"
-                primary={i18n.t("mainDrawer.listItems.annoucements")}
+                primary="Admin · Informativos"
                 icon={<AnnouncementIcon />}
               />
             )}
