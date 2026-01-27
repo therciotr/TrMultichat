@@ -15,7 +15,6 @@ import CardActions from "@material-ui/core/CardActions";
 import Typography from "@material-ui/core/Typography";
 import Chip from "@material-ui/core/Chip";
 import Box from "@material-ui/core/Box";
-import WhatsAppIcon from "@material-ui/icons/WhatsApp";
 import SearchOutlinedIcon from "@material-ui/icons/SearchOutlined";
 import TextField from "@material-ui/core/TextField";
 import InputAdornment from "@material-ui/core/InputAdornment";
@@ -24,6 +23,10 @@ import IconButton from "@material-ui/core/IconButton";
 import DeleteOutlineIcon from "@material-ui/icons/DeleteOutline";
 import EditOutlinedIcon from "@material-ui/icons/EditOutlined";
 import PersonOutlineIcon from "@material-ui/icons/PersonOutline";
+import ChatOutlinedIcon from "@material-ui/icons/ChatOutlined";
+import PhoneIphoneOutlinedIcon from "@material-ui/icons/PhoneIphoneOutlined";
+import AlternateEmailOutlinedIcon from "@material-ui/icons/AlternateEmailOutlined";
+import GroupOutlinedIcon from "@material-ui/icons/GroupOutlined";
 import CloudDownloadOutlinedIcon from "@material-ui/icons/CloudDownloadOutlined";
 import PersonAddOutlinedIcon from "@material-ui/icons/PersonAddOutlined";
 import FileDownloadOutlinedIcon from "@material-ui/icons/GetAppOutlined";
@@ -89,6 +92,23 @@ const reducer = (state, action) => {
   }
 };
 
+function getInitials(name = "") {
+  const parts = String(name || "")
+    .trim()
+    .split(/\s+/g)
+    .filter(Boolean);
+  const a = parts[0]?.[0] || "";
+  const b = parts.length > 1 ? parts[parts.length - 1]?.[0] || "" : (parts[0]?.[1] || "");
+  return `${a}${b}`.toUpperCase();
+}
+
+function hueFromString(input = "") {
+  let h = 0;
+  const s = String(input || "");
+  for (let i = 0; i < s.length; i += 1) h = (h * 31 + s.charCodeAt(i)) % 360;
+  return h;
+}
+
 const useStyles = makeStyles((theme) => ({
   mainPaper: {
     flex: 1,
@@ -120,10 +140,21 @@ const useStyles = makeStyles((theme) => ({
   },
   card: {
     height: "100%",
+    position: "relative",
+    overflow: "hidden",
     borderRadius: 14,
     border: "1px solid rgba(15, 23, 42, 0.08)",
     boxShadow: "0 1px 2px rgba(15, 23, 42, 0.06)",
     transition: "box-shadow 150ms ease, transform 150ms ease, border-color 150ms ease",
+    "&:before": {
+      content: '""',
+      position: "absolute",
+      inset: "0 0 auto 0",
+      height: 3,
+      background:
+        "linear-gradient(90deg, rgba(16, 185, 129, 0.85), rgba(59, 130, 246, 0.85), rgba(99, 102, 241, 0.85))",
+      opacity: 0.75,
+    },
     "&:hover": {
       borderColor: "rgba(15, 23, 42, 0.14)",
       boxShadow: "0 10px 22px rgba(15, 23, 42, 0.10)",
@@ -148,6 +179,13 @@ const useStyles = makeStyles((theme) => ({
     borderRadius: 14,
     border: "1px solid rgba(15, 23, 42, 0.08)",
     backgroundColor: "rgba(15, 23, 42, 0.06)",
+    color: "rgba(15, 23, 42, 0.92)",
+    fontWeight: 900,
+  },
+  avatarFallback: {
+    color: "#fff",
+    border: "1px solid rgba(255,255,255,0.65)",
+    boxShadow: "0 8px 18px rgba(15, 23, 42, 0.12)",
   },
   name: {
     fontWeight: 900,
@@ -168,6 +206,10 @@ const useStyles = makeStyles((theme) => ({
   chip: {
     borderRadius: 999,
     backgroundColor: "rgba(15, 23, 42, 0.04)",
+  },
+  actionIcon: {
+    color: "rgba(15, 23, 42, 0.68)",
+    "&:hover": { color: "rgba(15, 23, 42, 0.92)" },
   },
   actions: {
     justifyContent: "flex-end",
@@ -259,7 +301,8 @@ const Contacts = () => {
   }, []);
 
   const handleSearch = (event) => {
-    setSearchParam(event.target.value.toLowerCase());
+    // keep as typed; backend handles case-insensitive search and digit normalization
+    setSearchParam(event.target.value);
   };
 
   const handleOpenContactModal = () => {
@@ -433,13 +476,27 @@ const Contacts = () => {
                   <CardContent>
                     <div className={classes.cardTop}>
                       <div className={classes.titleRow}>
-                        <Avatar className={classes.avatar} src={contact.profilePicUrl} />
+                        {contact.profilePicUrl ? (
+                          <Avatar className={classes.avatar} src={contact.profilePicUrl} />
+                        ) : (
+                          <Avatar
+                            className={`${classes.avatar} ${classes.avatarFallback}`}
+                            style={{
+                              background: `linear-gradient(135deg, hsl(${hueFromString(
+                                String(contact.id || contact.name || ""),
+                              )} 85% 45%), hsl(${(hueFromString(String(contact.id || contact.name || "")) + 48) % 360
+                              } 85% 48%))`,
+                            }}
+                          >
+                            {getInitials(contact.name)}
+                          </Avatar>
+                        )}
                         <div style={{ minWidth: 0 }}>
                           <Typography className={classes.name} noWrap>
                             {contact.name}
                           </Typography>
                           <Typography className={classes.sub} noWrap>
-                            {contact.number || "—"}
+                            {contact.isGroup ? "Grupo" : (contact.number || "—")}
                           </Typography>
                         </div>
                       </div>
@@ -452,14 +509,14 @@ const Contacts = () => {
                           }}
                           aria-label="Abrir atendimento"
                         >
-                          <WhatsAppIcon />
+                          <ChatOutlinedIcon className={classes.actionIcon} />
                         </IconButton>
                         <IconButton
                           size="small"
                           onClick={() => hadleEditContact(contact.id)}
                           aria-label="Editar contato"
                         >
-                          <EditOutlinedIcon />
+                          <EditOutlinedIcon className={classes.actionIcon} />
                         </IconButton>
                         <Can
                           role={user?.profile || "user"}
@@ -473,7 +530,7 @@ const Contacts = () => {
                               }}
                               aria-label="Excluir contato"
                             >
-                              <DeleteOutlineIcon />
+                              <DeleteOutlineIcon className={classes.actionIcon} />
                             </IconButton>
                           )}
                         />
@@ -481,17 +538,27 @@ const Contacts = () => {
                     </div>
 
                     <div className={classes.chips}>
+                      {contact.isGroup && (
+                        <Chip
+                          className={classes.chip}
+                          size="small"
+                          icon={<GroupOutlinedIcon style={{ fontSize: 16 }} />}
+                          label="Grupo"
+                          variant="outlined"
+                        />
+                      )}
                       <Chip
                         className={classes.chip}
                         size="small"
-                        icon={<WhatsAppIcon style={{ fontSize: 16 }} />}
+                        icon={<PhoneIphoneOutlinedIcon style={{ fontSize: 16 }} />}
                         label={contact.number || "—"}
                         variant="outlined"
                       />
                       <Chip
                         className={classes.chip}
                         size="small"
-                        label={contact.email || i18n.t("contacts.table.email")}
+                        icon={<AlternateEmailOutlinedIcon style={{ fontSize: 16 }} />}
+                        label={contact.email || "Email"}
                         variant="outlined"
                       />
                     </div>
