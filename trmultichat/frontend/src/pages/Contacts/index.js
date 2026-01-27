@@ -39,7 +39,6 @@ import ContactModal from "../../components/ContactModal";
 import ConfirmationModal from "../../components/ConfirmationModal/";
 
 import { i18n } from "../../translate/i18n";
-import Title from "../../components/Title";
 import MainContainer from "../../components/MainContainer";
 import toastError from "../../errors/toastError";
 import { AuthContext } from "../../context/Auth/AuthContext";
@@ -51,7 +50,7 @@ import {CSVLink} from "react-csv";
 
 const reducer = (state, action) => {
   if (action.type === "LOAD_CONTACTS") {
-    const contacts = action.payload;
+    const contacts = (action.payload || []).map((c) => ({ ...c, id: Number(c.id) }));
     const newContacts = [];
 
     contacts.forEach((contact) => {
@@ -67,7 +66,7 @@ const reducer = (state, action) => {
   }
 
   if (action.type === "UPDATE_CONTACTS") {
-    const contact = action.payload;
+    const contact = { ...(action.payload || {}), id: Number(action.payload?.id) };
     const contactIndex = state.findIndex((c) => c.id === contact.id);
 
     if (contactIndex !== -1) {
@@ -116,7 +115,7 @@ const useStyles = makeStyles((theme) => ({
     background: "rgba(255,255,255,0.82)",
     border: "1px solid rgba(15, 23, 42, 0.10)",
     borderRadius: 16,
-    padding: theme.spacing(1.25, 1.25),
+    padding: theme.spacing(1, 1),
     boxShadow: "0 10px 30px rgba(15, 23, 42, 0.10)",
     backdropFilter: "blur(10px)",
     marginBottom: theme.spacing(1.5),
@@ -125,10 +124,21 @@ const useStyles = makeStyles((theme) => ({
     display: "flex",
     alignItems: "center",
     gap: theme.spacing(1.5),
-    flexWrap: "wrap",
+    flexWrap: "nowrap",
+    overflowX: "auto",
+    overflowY: "hidden",
   },
   headerTitle: {
-    minWidth: 160,
+    minWidth: 120,
+    display: "flex",
+    alignItems: "center",
+  },
+  headerTitleText: {
+    fontWeight: 900,
+    fontSize: 18,
+    lineHeight: "22px",
+    color: "rgba(15, 23, 42, 0.92)",
+    margin: 0,
   },
   mainPaper: {
     flex: 1,
@@ -144,6 +154,8 @@ const useStyles = makeStyles((theme) => ({
     alignItems: "center",
   },
   searchField: {
+    minWidth: 220,
+    flex: "1 1 240px",
     "& .MuiOutlinedInput-root": {
       borderRadius: 12,
       backgroundColor: "#fff",
@@ -160,6 +172,9 @@ const useStyles = makeStyles((theme) => ({
     textTransform: "none",
     whiteSpace: "nowrap",
     boxShadow: "0 1px 2px rgba(15, 23, 42, 0.06)",
+    padding: "6px 10px",
+    minHeight: 34,
+    fontSize: 12,
   },
   dangerBtn: {
     borderRadius: 12,
@@ -169,6 +184,9 @@ const useStyles = makeStyles((theme) => ({
     boxShadow: "0 10px 22px rgba(239, 68, 68, 0.22)",
     background: "linear-gradient(135deg, rgba(239, 68, 68, 0.95), rgba(220, 38, 38, 0.95))",
     color: "#fff",
+    padding: "6px 10px",
+    minHeight: 34,
+    fontSize: 12,
     "&:hover": {
       background: "linear-gradient(135deg, rgba(220, 38, 38, 0.98), rgba(185, 28, 28, 0.98))",
     },
@@ -182,6 +200,8 @@ const useStyles = makeStyles((theme) => ({
     border: "1px solid rgba(15, 23, 42, 0.10)",
     background: "#fff",
     boxShadow: "0 1px 2px rgba(15, 23, 42, 0.06)",
+    cursor: "pointer",
+    userSelect: "none",
   },
   selectPillLabel: {
     fontSize: 12,
@@ -223,6 +243,11 @@ const useStyles = makeStyles((theme) => ({
       boxShadow: "0 10px 22px rgba(15, 23, 42, 0.10)",
       transform: "translateY(-1px)",
     },
+  },
+  cardSelected: {
+    borderColor: "rgba(59, 130, 246, 0.55)",
+    boxShadow: "0 12px 26px rgba(59, 130, 246, 0.18)",
+    background: "linear-gradient(180deg, rgba(59, 130, 246, 0.06), rgba(255,255,255,1) 55%)",
   },
   cardTop: {
     display: "flex",
@@ -442,7 +467,8 @@ const Contacts = () => {
   };
 
   const handleToggleSelected = (id) => {
-    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+    const nid = Number(id);
+    setSelectedIds((prev) => (prev.includes(nid) ? prev.filter((x) => x !== nid) : [...prev, nid]));
   };
 
   const allSelected = contacts.length > 0 && selectedIds.length > 0 && selectedIds.length === contacts.length;
@@ -542,7 +568,7 @@ const Contacts = () => {
       <Paper className={classes.headerSurface} variant="outlined">
         <div className={classes.headerInner}>
           <div className={classes.headerTitle}>
-            <Title>{i18n.t("contacts.title")}</Title>
+            <Typography className={classes.headerTitleText}>{i18n.t("contacts.title")}</Typography>
           </div>
           <TextField
             placeholder={i18n.t("contacts.searchPlaceholder")}
@@ -579,15 +605,17 @@ const Contacts = () => {
               setConfirmOpen(true);
             }}
             startIcon={<CloudDownloadOutlinedIcon />}
+            size="small"
           >
-            {i18n.t("contacts.buttons.import")}
+            Importar
           </TrButton>
           <TrButton
             className={classes.actionBtn}
             onClick={handleOpenContactModal}
             startIcon={<PersonAddOutlinedIcon />}
+            size="small"
           >
-            {i18n.t("contacts.buttons.add")}
+            Novo
           </TrButton>
 
           <CSVLink
@@ -601,7 +629,7 @@ const Contacts = () => {
             }))}
           >
             <TrButton className={classes.actionBtn} startIcon={<FileDownloadOutlinedIcon />}>
-              EXPORTAR CONTATOS
+              Exportar
             </TrButton>
           </CSVLink>
 
@@ -610,12 +638,22 @@ const Contacts = () => {
             perform="contacts-page:deleteContact"
             yes={() => (
               <>
-                <div className={classes.selectPill} title="Selecionar todos os contatos visíveis">
+                <div
+                  className={classes.selectPill}
+                  title="Selecionar todos os contatos visíveis"
+                  onClick={handleSelectAllVisible}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") handleSelectAllVisible();
+                  }}
+                >
                   <Checkbox
                     size="small"
                     checked={allSelected}
                     indeterminate={someSelected}
-                    onChange={handleSelectAllVisible}
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={() => handleSelectAllVisible()}
                     color="primary"
                   />
                   <span className={classes.selectPillLabel}>
@@ -631,8 +669,9 @@ const Contacts = () => {
                     setConfirmMode("deleteMany");
                     setConfirmOpen(true);
                   }}
+                  size="small"
                 >
-                  Excluir selecionados
+                  Excluir ({selectedIds.length || 0})
                 </TrButton>
               </>
             )}
@@ -658,7 +697,12 @@ const Contacts = () => {
           <Grid container spacing={2} className={classes.cardsGrid}>
             {contacts.map((contact) => (
               <Grid key={contact.id} item xs={12} sm={6} md={4} lg={3}>
-                <Card className={classes.card} variant="outlined">
+                <Card
+                  className={`${classes.card} ${
+                    selectedIds.includes(contact.id) ? classes.cardSelected : ""
+                  }`}
+                  variant="outlined"
+                >
                   <div className={classes.cardSelect}>
                     <Checkbox
                       size="small"
