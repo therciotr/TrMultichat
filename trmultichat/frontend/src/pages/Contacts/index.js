@@ -15,6 +15,7 @@ import CardActions from "@material-ui/core/CardActions";
 import Typography from "@material-ui/core/Typography";
 import Chip from "@material-ui/core/Chip";
 import Box from "@material-ui/core/Box";
+import Checkbox from "@material-ui/core/Checkbox";
 import SearchOutlinedIcon from "@material-ui/icons/SearchOutlined";
 import TextField from "@material-ui/core/TextField";
 import InputAdornment from "@material-ui/core/InputAdornment";
@@ -172,6 +173,31 @@ const useStyles = makeStyles((theme) => ({
       background: "linear-gradient(135deg, rgba(220, 38, 38, 0.98), rgba(185, 28, 28, 0.98))",
     },
   },
+  selectPill: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    padding: "2px 10px 2px 6px",
+    borderRadius: 999,
+    border: "1px solid rgba(15, 23, 42, 0.10)",
+    background: "#fff",
+    boxShadow: "0 1px 2px rgba(15, 23, 42, 0.06)",
+  },
+  selectPillLabel: {
+    fontSize: 12,
+    fontWeight: 900,
+    color: "rgba(15, 23, 42, 0.76)",
+    whiteSpace: "nowrap",
+  },
+  cardSelect: {
+    position: "absolute",
+    left: 8,
+    top: 10,
+    background: "rgba(255,255,255,0.88)",
+    borderRadius: 10,
+    border: "1px solid rgba(15, 23, 42, 0.08)",
+    padding: 2,
+  },
   cardsGrid: {
     marginTop: theme.spacing(0.5),
   },
@@ -291,12 +317,14 @@ const Contacts = () => {
   const [contactTicket, setContactTicket] = useState({});
   const [deletingContact, setDeletingContact] = useState(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [confirmMode, setConfirmMode] = useState("import"); // import | deleteOne | deleteAll
+  const [confirmMode, setConfirmMode] = useState("import"); // import | deleteOne | deleteAll | deleteMany
   const [hasMore, setHasMore] = useState(false);
+  const [selectedIds, setSelectedIds] = useState([]);
 
   useEffect(() => {
     dispatch({ type: "RESET" });
     setPageNumber(1);
+    setSelectedIds([]);
   }, [searchParam]);
 
   useEffect(() => {
@@ -330,11 +358,13 @@ const Contacts = () => {
 
       if (data.action === "delete") {
         dispatch({ type: "DELETE_CONTACT", payload: +data.contactId });
+        setSelectedIds((prev) => prev.filter((id) => id !== +data.contactId));
       }
 
       if (data.action === "deleteAll") {
         dispatch({ type: "RESET" });
         setPageNumber(1);
+        setSelectedIds([]);
       }
     });
 
@@ -405,6 +435,35 @@ const Contacts = () => {
       dispatch({ type: "RESET" });
       setSearchParam("");
       setPageNumber(1);
+      setSelectedIds([]);
+    } catch (err) {
+      toastError(err);
+    }
+  };
+
+  const handleToggleSelected = (id) => {
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  };
+
+  const allSelected = contacts.length > 0 && selectedIds.length > 0 && selectedIds.length === contacts.length;
+  const someSelected = selectedIds.length > 0 && selectedIds.length < contacts.length;
+
+  const handleSelectAllVisible = () => {
+    if (allSelected) {
+      setSelectedIds([]);
+      return;
+    }
+    setSelectedIds(contacts.map((c) => c.id));
+  };
+
+  const handleDeleteSelected = async () => {
+    try {
+      const { data } = await api.post(`/contacts/bulk-delete`, { ids: selectedIds });
+      toast.success(`Contatos excluídos: ${data?.deleted ?? "ok"}`);
+      // reducer will be updated by socket events; ensure local state stays consistent
+      setSelectedIds([]);
+      setSearchParam("");
+      setPageNumber(1);
     } catch (err) {
       toastError(err);
     }
@@ -450,6 +509,8 @@ const Contacts = () => {
         title={
           confirmMode === "deleteAll"
             ? "Excluir TODOS os contatos?"
+            : confirmMode === "deleteMany"
+            ? `Excluir ${selectedIds.length} contato${selectedIds.length > 1 ? "s" : ""}?`
             : deletingContact
             ? `${i18n.t("contacts.confirmationModal.deleteTitle")} ${deletingContact.name}?`
             : `${i18n.t("contacts.confirmationModal.importTitlte")}`
@@ -458,6 +519,7 @@ const Contacts = () => {
         onClose={setConfirmOpen}
         onConfirm={() => {
           if (confirmMode === "deleteAll") return handleDeleteAllContacts();
+          if (confirmMode === "deleteMany") return handleDeleteSelected();
           if (deletingContact) return handleDeleteContact(deletingContact.id);
           return handleimportContact();
         }}
@@ -465,6 +527,11 @@ const Contacts = () => {
         {confirmMode === "deleteAll" ? (
           <>
             Esta ação é irreversível e removerá <strong>todos</strong> os contatos da sua empresa.
+          </>
+        ) : confirmMode === "deleteMany" ? (
+          <>
+            Esta ação é irreversível e removerá <strong>{selectedIds.length}</strong>{" "}
+            contato{selectedIds.length > 1 ? "s" : ""} selecionado{selectedIds.length > 1 ? "s" : ""}.
           </>
         ) : deletingContact ? (
           `${i18n.t("contacts.confirmationModal.deleteMessage")}`
@@ -542,16 +609,32 @@ const Contacts = () => {
             role={user?.profile || "user"}
             perform="contacts-page:deleteContact"
             yes={() => (
-              <TrButton
-                className={classes.dangerBtn}
-                startIcon={<DeleteSweepOutlinedIcon />}
-                onClick={() => {
-                  setConfirmMode("deleteAll");
-                  setConfirmOpen(true);
-                }}
-              >
-                Excluir todos
-              </TrButton>
+              <>
+                <div className={classes.selectPill} title="Selecionar todos os contatos visíveis">
+                  <Checkbox
+                    size="small"
+                    checked={allSelected}
+                    indeterminate={someSelected}
+                    onChange={handleSelectAllVisible}
+                    color="primary"
+                  />
+                  <span className={classes.selectPillLabel}>
+                    Selecionar ({selectedIds.length})
+                  </span>
+                </div>
+
+                <TrButton
+                  className={classes.dangerBtn}
+                  startIcon={<DeleteSweepOutlinedIcon />}
+                  disabled={!selectedIds.length}
+                  onClick={() => {
+                    setConfirmMode("deleteMany");
+                    setConfirmOpen(true);
+                  }}
+                >
+                  Excluir selecionados
+                </TrButton>
+              </>
             )}
           />
         </div>
@@ -576,6 +659,15 @@ const Contacts = () => {
             {contacts.map((contact) => (
               <Grid key={contact.id} item xs={12} sm={6} md={4} lg={3}>
                 <Card className={classes.card} variant="outlined">
+                  <div className={classes.cardSelect}>
+                    <Checkbox
+                      size="small"
+                      color="primary"
+                      checked={selectedIds.includes(contact.id)}
+                      onChange={() => handleToggleSelected(contact.id)}
+                      inputProps={{ "aria-label": "Selecionar contato" }}
+                    />
+                  </div>
                   <CardContent>
                     <div className={classes.cardTop}>
                       <div className={classes.titleRow}>

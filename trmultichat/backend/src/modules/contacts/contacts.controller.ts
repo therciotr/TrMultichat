@@ -173,6 +173,57 @@ export async function removeAll(req: Request, res: Response) {
   }
 }
 
+export async function removeMany(req: Request, res: Response) {
+  setNoCache(res);
+  const ok = await requireAdmin(req, res);
+  if (!ok) return;
+
+  const companyId = Number((req as any).tenantId || 0);
+  const body: any = (req as any).body || {};
+  const idsRaw: any[] = Array.isArray(body?.ids) ? body.ids : [];
+  const ids = Array.from(
+    new Set(
+      idsRaw
+        .map((v) => Number(v))
+        .filter((n) => Number.isFinite(n) && n > 0)
+    )
+  );
+
+  if (!ids.length) return res.status(400).json({ error: true, message: "ids is required" });
+
+  try {
+    // Only delete contacts from this company
+    const rows = await pgQuery<{ id: number }>(
+      `SELECT id FROM "Contacts" WHERE "companyId" = $1 AND id = ANY($2::int[])`,
+      [companyId, ids]
+    );
+    const foundIds = (rows || []).map((r) => Number(r.id));
+    if (!foundIds.length) return res.json({ ok: true, deleted: 0, ids: [] });
+
+    await pgQuery(`DELETE FROM "Contacts" WHERE "companyId" = $1 AND id = ANY($2::int[])`, [companyId, foundIds]);
+
+    try {
+      const io = getIO();
+      for (const id of foundIds) {
+        io.emit(`company-${companyId}-contact`, { action: "delete", contactId: id });
+      }
+      io.emit(`company-${companyId}-contact`, { action: "deleteMany", deleted: foundIds.length, ids: foundIds });
+    } catch {}
+
+    return res.json({ ok: true, deleted: foundIds.length, ids: foundIds });
+  } catch (e: any) {
+    const msg = String(e?.message || "");
+    if (msg.toLowerCase().includes("foreign key")) {
+      return res.status(409).json({
+        error: true,
+        message:
+          "Não foi possível excluir alguns contatos porque existem registros vinculados (ex.: atendimentos)."
+      });
+    }
+    return res.status(500).json({ error: true, message: e?.message || "bulk delete failed" });
+  }
+}
+
 export async function importContacts(req: Request, res: Response) {
   const companyId = Number((req as any).tenantId || 0);
   if (!companyId) return res.status(401).json({ error: true, message: "missing tenantId" });
