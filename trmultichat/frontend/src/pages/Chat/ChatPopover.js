@@ -83,10 +83,16 @@ const useStyles = makeStyles((theme) => ({
     lineHeight: "16px",
     margin: 0,
   },
-  snackSub: {
+  snackMeta: {
     marginTop: 2,
     fontSize: 12,
     color: "rgba(15, 23, 42, 0.62)",
+    lineHeight: "16px",
+  },
+  snackPreview: {
+    marginTop: 6,
+    fontSize: 12,
+    color: "rgba(15, 23, 42, 0.70)",
     whiteSpace: "nowrap",
     overflow: "hidden",
     textOverflow: "ellipsis",
@@ -136,7 +142,9 @@ export default function ChatPopover() {
   const lastToastAtRef = useRef(0);
   const [snackOpen, setSnackOpen] = useState(false);
   const [snackTitle, setSnackTitle] = useState("Chat - Interno");
-  const [snackSub, setSnackSub] = useState("Nova mensagem interna");
+  const [snackFrom, setSnackFrom] = useState("Sistema");
+  const [snackTo, setSnackTo] = useState("Todos");
+  const [snackPreview, setSnackPreview] = useState("Nova mensagem interna");
 
   useEffect(() => {
     soundAlertRef.current = play;
@@ -197,7 +205,9 @@ export default function ChatPopover() {
     if (now - (Number(lastToastAtRef.current) || 0) < 2500) return;
     lastToastAtRef.current = now;
     setSnackTitle("Chat - Interno");
-    setSnackSub("Nova mensagem interna");
+    setSnackFrom("Sistema");
+    setSnackTo("Todos");
+    setSnackPreview("Nova mensagem interna");
     setSnackOpen(true);
   }, []);
 
@@ -232,12 +242,16 @@ export default function ChatPopover() {
           if (data?.action === "reply") {
             const txt = String(data?.reply?.text || "").trim();
             setSnackTitle(`Resposta de ${fromLabel}`);
-            setSnackSub(`Para: ${toLabel} • ${txt || "Nova resposta no Chat - Interno"}`);
+            setSnackFrom(fromLabel);
+            setSnackTo(toLabel);
+            setSnackPreview(txt || "Nova resposta no Chat - Interno");
           } else if (data?.record) {
             const title = String(data?.record?.title || "Chat - Interno").trim();
             const txt = String(data?.record?.text || "").trim();
             setSnackTitle(title || "Chat - Interno");
-            setSnackSub(`De: ${fromLabel} • Para: ${toLabel} • ${txt || "Novo informativo"}`);
+            setSnackFrom(fromLabel);
+            setSnackTo(toLabel);
+            setSnackPreview(txt || "Novo informativo");
           }
         } catch {}
         bumpUnread({ storageKey });
@@ -301,11 +315,16 @@ export default function ChatPopover() {
           const toLabel =
             newestRec?.sendToAll === true
               ? "Todos"
-              : String(newestRec?.targetUserName || (newestRec?.targetUserId ? `Usuário #${newestRec?.targetUserId}` : "—"));
+              : String(
+                  newestRec?.targetUserName ||
+                    (newestRec?.targetUserId ? `Usuário #${newestRec?.targetUserId}` : "—")
+                );
           const fromLabel = String(newestRec?.lastReplyUserName || newestRec?.senderName || "Sistema");
           const preview = String(newestRec?.lastReplyText || newestRec?.title || "Nova mensagem interna").trim();
           setSnackTitle("Chat - Interno");
-          setSnackSub(`De: ${fromLabel} • Para: ${toLabel} • ${preview}`);
+          setSnackFrom(fromLabel);
+          setSnackTo(toLabel);
+          setSnackPreview(preview);
           bumpUnread({ storageKey });
           maybeToast();
           try { localStorage.setItem(lastSeenKey, new Date(newest).toISOString()); } catch {}
@@ -390,7 +409,13 @@ export default function ChatPopover() {
               </div>
               <div className={classes.snackTexts}>
                 <Typography className={classes.snackTitle}>{snackTitle}</Typography>
-                <div className={classes.snackSub}>{snackSub}</div>
+                <div className={classes.snackMeta}>
+                  <strong>De:</strong> {snackFrom}
+                </div>
+                <div className={classes.snackMeta}>
+                  <strong>Para:</strong> {snackTo}
+                </div>
+                <div className={classes.snackPreview}>{snackPreview}</div>
               </div>
               <div className={classes.snackActions}>
                 <Button
