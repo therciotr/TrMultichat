@@ -11,7 +11,7 @@ import {
 } from "@material-ui/core";
 import { socketConnection } from "../../services/socket";
 import { AuthContext } from "../../context/Auth/AuthContext";
-import { useHistory } from "react-router-dom";
+import { useHistory, useLocation } from "react-router-dom";
 
 import notifySound from "../../assets/chat_notify.mp3";
 import useSound from "use-sound";
@@ -22,10 +22,14 @@ import useSound from "use-sound";
 export default function ChatPopover() {
   const { user } = useContext(AuthContext);
   const history = useHistory();
+  const location = useLocation();
+  const pathname = location.pathname;
+  const userIdDep = user?.id;
 
-  const [invisible, setInvisible] = useState(true);
+  const [unreadCount, setUnreadCount] = useState(0);
   const [play] = useSound(notifySound);
   const soundAlertRef = useRef();
+  const pathnameRef = useRef(pathname || "");
 
   useEffect(() => {
     soundAlertRef.current = play;
@@ -38,9 +42,22 @@ export default function ChatPopover() {
   }, [play]);
 
   useEffect(() => {
+    pathnameRef.current = String(pathname || "");
+  }, [pathname]);
+
+  useEffect(() => {
     const companyId = localStorage.getItem("companyId");
+    const userId = Number(userIdDep || 0);
+    if (!companyId || !userId) return undefined;
+
+    const storageKey = `chat-interno:unread:${companyId}:${userId}`;
+    try {
+      const stored = Number(localStorage.getItem(storageKey) || "0");
+      if (Number.isFinite(stored) && stored > 0) setUnreadCount(stored);
+    } catch {}
+
     const socket = socketConnection({ companyId });
-    
+
     socket.on(`company-announcement`, (data) => {
       // só notifica se o evento for visível para o usuário atual
       const visibleToMe = (() => {
@@ -52,13 +69,22 @@ export default function ChatPopover() {
         if (status === false) return false;
         if (sendToAll === true) return true;
         if (targetUserId === null || targetUserId === undefined) return false;
-        return Number(targetUserId) === Number(user?.id || 0);
+        return Number(targetUserId) === userId;
       })();
 
-      if (visibleToMe && (data?.action === "create" || data?.action === "update" || data?.action === "reply")) {
-        setInvisible(false);
+      const actionOk = data?.action === "create" || data?.action === "update" || data?.action === "reply";
+      if (visibleToMe && actionOk) {
+        // Não contar como "não lida" se o usuário já está no painel
+        const isOnPanel = String(pathnameRef.current || "").startsWith("/informativos");
+        if (!isOnPanel) {
+          setUnreadCount((prev) => {
+            const next = (Number(prev) || 0) + 1;
+            try { localStorage.setItem(storageKey, String(next)); } catch {}
+            return next;
+          });
+        }
         // toca som se foi resposta de outro usuário (ex.: admin recebeu resposta do usuário, ou vice-versa)
-        if (data?.action === "reply" && Number(data?.reply?.userId || 0) !== Number(user?.id || 0)) {
+        if (data?.action === "reply" && Number(data?.reply?.userId || 0) !== userId) {
           try { soundAlertRef.current(); } catch {}
         }
       }
@@ -66,24 +92,48 @@ export default function ChatPopover() {
     return () => {
       socket.disconnect();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [userIdDep]);
+
+  useEffect(() => {
+    const companyId = localStorage.getItem("companyId");
+    const userId = Number(userIdDep || 0);
+    if (!companyId || !userId) return;
+    const storageKey = `chat-interno:unread:${companyId}:${userId}`;
+    const isOnPanel = String(pathname || "").startsWith("/informativos");
+    if (isOnPanel) {
+      setUnreadCount(0);
+      try { localStorage.setItem(storageKey, "0"); } catch {}
+    }
+  }, [pathname, userIdDep]);
 
   const handleClick = (event) => {
-    setInvisible(true);
+    const companyId = localStorage.getItem("companyId");
+    const userId = Number(userIdDep || 0);
+    if (companyId && userId) {
+      const storageKey = `chat-interno:unread:${companyId}:${userId}`;
+      try { localStorage.setItem(storageKey, "0"); } catch {}
+    }
+    setUnreadCount(0);
     history.push("/informativos");
   };
+
+  const hasUnread = unreadCount > 0;
 
   return (
     <div>
       <IconButton
         variant="contained"
-        color={invisible ? "default" : "inherit"}
+        color={hasUnread ? "inherit" : "default"}
         onClick={handleClick}
         style={{ color: "white" }}
         title="Chat - Interno"
       >
-        <Badge color="secondary" variant="dot" invisible={invisible}>
+        <Badge
+          color="secondary"
+          badgeContent={hasUnread ? unreadCount : 0}
+          invisible={!hasUnread}
+          max={99}
+        >
           <ForumIcon />
         </Badge>
       </IconButton>
