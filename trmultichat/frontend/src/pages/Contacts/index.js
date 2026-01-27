@@ -21,12 +21,14 @@ import InputAdornment from "@material-ui/core/InputAdornment";
 
 import IconButton from "@material-ui/core/IconButton";
 import DeleteOutlineIcon from "@material-ui/icons/DeleteOutline";
+import DeleteSweepOutlinedIcon from "@material-ui/icons/DeleteSweepOutlined";
 import EditOutlinedIcon from "@material-ui/icons/EditOutlined";
 import PersonOutlineIcon from "@material-ui/icons/PersonOutline";
 import ChatOutlinedIcon from "@material-ui/icons/ChatOutlined";
 import PhoneIphoneOutlinedIcon from "@material-ui/icons/PhoneIphoneOutlined";
 import AlternateEmailOutlinedIcon from "@material-ui/icons/AlternateEmailOutlined";
 import GroupOutlinedIcon from "@material-ui/icons/GroupOutlined";
+import CloseOutlinedIcon from "@material-ui/icons/CloseOutlined";
 import CloudDownloadOutlinedIcon from "@material-ui/icons/CloudDownloadOutlined";
 import PersonAddOutlinedIcon from "@material-ui/icons/PersonAddOutlined";
 import FileDownloadOutlinedIcon from "@material-ui/icons/GetAppOutlined";
@@ -36,9 +38,7 @@ import ContactModal from "../../components/ContactModal";
 import ConfirmationModal from "../../components/ConfirmationModal/";
 
 import { i18n } from "../../translate/i18n";
-import MainHeader from "../../components/MainHeader";
 import Title from "../../components/Title";
-import MainHeaderButtonsWrapper from "../../components/MainHeaderButtonsWrapper";
 import MainContainer from "../../components/MainContainer";
 import toastError from "../../errors/toastError";
 import { AuthContext } from "../../context/Auth/AuthContext";
@@ -110,6 +110,25 @@ function hueFromString(input = "") {
 }
 
 const useStyles = makeStyles((theme) => ({
+  headerSurface: {
+    width: "100%",
+    background: "rgba(255,255,255,0.82)",
+    border: "1px solid rgba(15, 23, 42, 0.10)",
+    borderRadius: 16,
+    padding: theme.spacing(1.25, 1.25),
+    boxShadow: "0 10px 30px rgba(15, 23, 42, 0.10)",
+    backdropFilter: "blur(10px)",
+    marginBottom: theme.spacing(1.5),
+  },
+  headerInner: {
+    display: "flex",
+    alignItems: "center",
+    gap: theme.spacing(1.5),
+    flexWrap: "wrap",
+  },
+  headerTitle: {
+    minWidth: 160,
+  },
   mainPaper: {
     flex: 1,
     padding: theme.spacing(2),
@@ -127,6 +146,11 @@ const useStyles = makeStyles((theme) => ({
     "& .MuiOutlinedInput-root": {
       borderRadius: 12,
       backgroundColor: "#fff",
+      boxShadow: "0 1px 2px rgba(15, 23, 42, 0.06)",
+      transition: "box-shadow 150ms ease, border-color 150ms ease",
+      "&.Mui-focused": {
+        boxShadow: "0 0 0 4px rgba(59, 130, 246, 0.18)",
+      },
     },
   },
   actionBtn: {
@@ -134,6 +158,19 @@ const useStyles = makeStyles((theme) => ({
     fontWeight: 900,
     textTransform: "none",
     whiteSpace: "nowrap",
+    boxShadow: "0 1px 2px rgba(15, 23, 42, 0.06)",
+  },
+  dangerBtn: {
+    borderRadius: 12,
+    fontWeight: 900,
+    textTransform: "none",
+    whiteSpace: "nowrap",
+    boxShadow: "0 10px 22px rgba(239, 68, 68, 0.22)",
+    background: "linear-gradient(135deg, rgba(239, 68, 68, 0.95), rgba(220, 38, 38, 0.95))",
+    color: "#fff",
+    "&:hover": {
+      background: "linear-gradient(135deg, rgba(220, 38, 38, 0.98), rgba(185, 28, 28, 0.98))",
+    },
   },
   cardsGrid: {
     marginTop: theme.spacing(0.5),
@@ -254,6 +291,7 @@ const Contacts = () => {
   const [contactTicket, setContactTicket] = useState({});
   const [deletingContact, setDeletingContact] = useState(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmMode, setConfirmMode] = useState("import"); // import | deleteOne | deleteAll
   const [hasMore, setHasMore] = useState(false);
 
   useEffect(() => {
@@ -292,6 +330,11 @@ const Contacts = () => {
 
       if (data.action === "delete") {
         dispatch({ type: "DELETE_CONTACT", payload: +data.contactId });
+      }
+
+      if (data.action === "deleteAll") {
+        dispatch({ type: "RESET" });
+        setPageNumber(1);
       }
     });
 
@@ -355,6 +398,18 @@ const Contacts = () => {
     setPageNumber(1);
   };
 
+  const handleDeleteAllContacts = async () => {
+    try {
+      const { data } = await api.delete(`/contacts`);
+      toast.success(`Contatos excluídos: ${data?.deleted ?? "ok"}`);
+      dispatch({ type: "RESET" });
+      setSearchParam("");
+      setPageNumber(1);
+    } catch (err) {
+      toastError(err);
+    }
+  };
+
   const handleimportContact = async () => {
     try {
       await api.post("/contacts/import");
@@ -393,27 +448,35 @@ const Contacts = () => {
       ></ContactModal>
       <ConfirmationModal
         title={
-          deletingContact
-            ? `${i18n.t("contacts.confirmationModal.deleteTitle")} ${
-                deletingContact.name
-              }?`
+          confirmMode === "deleteAll"
+            ? "Excluir TODOS os contatos?"
+            : deletingContact
+            ? `${i18n.t("contacts.confirmationModal.deleteTitle")} ${deletingContact.name}?`
             : `${i18n.t("contacts.confirmationModal.importTitlte")}`
         }
         open={confirmOpen}
         onClose={setConfirmOpen}
-        onConfirm={(e) =>
-          deletingContact
-            ? handleDeleteContact(deletingContact.id)
-            : handleimportContact()
-        }
+        onConfirm={() => {
+          if (confirmMode === "deleteAll") return handleDeleteAllContacts();
+          if (deletingContact) return handleDeleteContact(deletingContact.id);
+          return handleimportContact();
+        }}
       >
-        {deletingContact
-          ? `${i18n.t("contacts.confirmationModal.deleteMessage")}`
-          : `${i18n.t("contacts.confirmationModal.importMessage")}`}
+        {confirmMode === "deleteAll" ? (
+          <>
+            Esta ação é irreversível e removerá <strong>todos</strong> os contatos da sua empresa.
+          </>
+        ) : deletingContact ? (
+          `${i18n.t("contacts.confirmationModal.deleteMessage")}`
+        ) : (
+          `${i18n.t("contacts.confirmationModal.importMessage")}`
+        )}
       </ConfirmationModal>
-      <MainHeader>
-        <Title>{i18n.t("contacts.title")}</Title>
-        <MainHeaderButtonsWrapper>
+      <Paper className={classes.headerSurface} variant="outlined">
+        <div className={classes.headerInner}>
+          <div className={classes.headerTitle}>
+            <Title>{i18n.t("contacts.title")}</Title>
+          </div>
           <TextField
             placeholder={i18n.t("contacts.searchPlaceholder")}
             type="search"
@@ -428,11 +491,26 @@ const Contacts = () => {
                   <SearchOutlinedIcon style={{ color: "rgba(15, 23, 42, 0.55)" }} />
                 </InputAdornment>
               ),
+              endAdornment: searchParam ? (
+                <InputAdornment position="end">
+                  <IconButton
+                    size="small"
+                    onClick={() => setSearchParam("")}
+                    aria-label="Limpar busca"
+                    title="Limpar"
+                  >
+                    <CloseOutlinedIcon style={{ color: "rgba(15, 23, 42, 0.55)" }} />
+                  </IconButton>
+                </InputAdornment>
+              ) : null,
             }}
           />
           <TrButton
             className={classes.actionBtn}
-            onClick={(e) => setConfirmOpen(true)}
+            onClick={() => {
+              setConfirmMode("import");
+              setConfirmOpen(true);
+            }}
             startIcon={<CloudDownloadOutlinedIcon />}
           >
             {i18n.t("contacts.buttons.import")}
@@ -445,14 +523,39 @@ const Contacts = () => {
             {i18n.t("contacts.buttons.add")}
           </TrButton>
 
-         <CSVLink style={{ textDecoration:'none'}} separator=";" filename={'trtecnologias.csv'} data={contacts.map((contact) => ({ name: contact.name, number: contact.number, email: contact.email }))}>
-          <TrButton className={classes.actionBtn} startIcon={<FileDownloadOutlinedIcon />}>
-          EXPORTAR CONTATOS 
-          </TrButton>
+          <CSVLink
+            style={{ textDecoration: "none" }}
+            separator=";"
+            filename={"trtecnologias.csv"}
+            data={contacts.map((contact) => ({
+              name: contact.name,
+              number: contact.number,
+              email: contact.email,
+            }))}
+          >
+            <TrButton className={classes.actionBtn} startIcon={<FileDownloadOutlinedIcon />}>
+              EXPORTAR CONTATOS
+            </TrButton>
           </CSVLink>
 
-        </MainHeaderButtonsWrapper>
-      </MainHeader>
+          <Can
+            role={user?.profile || "user"}
+            perform="contacts-page:deleteContact"
+            yes={() => (
+              <TrButton
+                className={classes.dangerBtn}
+                startIcon={<DeleteSweepOutlinedIcon />}
+                onClick={() => {
+                  setConfirmMode("deleteAll");
+                  setConfirmOpen(true);
+                }}
+              >
+                Excluir todos
+              </TrButton>
+            )}
+          />
+        </div>
+      </Paper>
       <Paper
         className={`${classes.mainPaper} tr-card-border`}
         variant="outlined"

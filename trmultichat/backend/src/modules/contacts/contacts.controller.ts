@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { pgQuery } from "../../utils/pgClient";
 import { getSessionStore } from "../../libs/baileysManager";
+import { getIO } from "../../libs/socket";
 
 function setNoCache(res: any) {
   try {
@@ -11,6 +12,29 @@ function setNoCache(res: any) {
     // Avoid 304/etag-related issues on some clients/proxies
     res.removeHeader?.("ETag");
   } catch {}
+}
+
+function userIdFromReq(req: any): number {
+  return Number(req?.userId || 0);
+}
+
+async function requireAdmin(req: Request, res: Response): Promise<boolean> {
+  const companyId = Number((req as any).tenantId || 0);
+  const userId = userIdFromReq(req as any);
+  if (!companyId || !userId) {
+    res.status(401).json({ error: true, message: "missing auth context" });
+    return false;
+  }
+  try {
+    const rows = await pgQuery<any>(
+      `SELECT id, LOWER(COALESCE(profile,'')) as profile FROM "Users" WHERE id = $1 AND "companyId" = $2 LIMIT 1`,
+      [userId, companyId]
+    );
+    const profile = String(rows?.[0]?.profile || "");
+    if (profile === "admin" || profile === "super") return true;
+  } catch {}
+  res.status(403).json({ error: true, message: "forbidden" });
+  return false;
 }
 
 export async function list(req: Request, res: Response) {
@@ -84,6 +108,69 @@ export async function find(req: Request, res: Response) {
   const contact = rows[0] || null;
   if (!contact) return res.status(404).json({ error: true, message: "not found" });
   return res.json(contact);
+}
+
+export async function remove(req: Request, res: Response) {
+  setNoCache(res);
+  const ok = await requireAdmin(req, res);
+  if (!ok) return;
+
+  const companyId = Number((req as any).tenantId || 0);
+  const id = Number(req.params.id || 0);
+  if (!id) return res.status(400).json({ error: true, message: "invalid id" });
+
+  try {
+    const exists = await pgQuery<any>(
+      `SELECT id FROM "Contacts" WHERE id = $1 AND "companyId" = $2 LIMIT 1`,
+      [id, companyId]
+    );
+    if (!exists?.[0]?.id) return res.status(404).json({ error: true, message: "not found" });
+
+    await pgQuery(`DELETE FROM "Contacts" WHERE id = $1 AND "companyId" = $2`, [id, companyId]);
+
+    try {
+      getIO().emit(`company-${companyId}-contact`, { action: "delete", contactId: id });
+    } catch {}
+
+    return res.json({ ok: true });
+  } catch (e: any) {
+    return res.status(500).json({ error: true, message: e?.message || "delete failed" });
+  }
+}
+
+export async function removeAll(req: Request, res: Response) {
+  setNoCache(res);
+  const ok = await requireAdmin(req, res);
+  if (!ok) return;
+
+  const companyId = Number((req as any).tenantId || 0);
+
+  try {
+    const rows = await pgQuery<{ count: string }>(
+      `SELECT COUNT(*)::text as count FROM "Contacts" WHERE "companyId" = $1`,
+      [companyId]
+    );
+    const total = Number(rows?.[0]?.count || 0);
+
+    await pgQuery(`DELETE FROM "Contacts" WHERE "companyId" = $1`, [companyId]);
+
+    try {
+      getIO().emit(`company-${companyId}-contact`, { action: "deleteAll", deleted: total });
+    } catch {}
+
+    return res.json({ ok: true, deleted: total });
+  } catch (e: any) {
+    // If some environments have FK restrictions, return a clearer error to the UI.
+    const msg = String(e?.message || "");
+    if (msg.toLowerCase().includes("foreign key")) {
+      return res.status(409).json({
+        error: true,
+        message:
+          "Não foi possível excluir todos os contatos porque existem registros vinculados (ex.: atendimentos)."
+      });
+    }
+    return res.status(500).json({ error: true, message: e?.message || "delete all failed" });
+  }
 }
 
 export async function importContacts(req: Request, res: Response) {
