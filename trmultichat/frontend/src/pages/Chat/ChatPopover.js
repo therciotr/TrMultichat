@@ -11,12 +11,18 @@ import {
   IconButton,
 } from "@material-ui/core";
 import Snackbar from "@material-ui/core/Snackbar";
+import SnackbarContent from "@material-ui/core/SnackbarContent";
+import Slide from "@material-ui/core/Slide";
+import Typography from "@material-ui/core/Typography";
+import CloseIcon from "@material-ui/icons/Close";
+import ForumOutlinedIcon from "@material-ui/icons/ForumOutlined";
+import OpenInNewOutlinedIcon from "@material-ui/icons/OpenInNewOutlined";
 import Button from "@material-ui/core/Button";
+import { makeStyles } from "@material-ui/core/styles";
 import { socketConnection } from "../../services/socket";
 import { AuthContext } from "../../context/Auth/AuthContext";
 import { useHistory, useLocation } from "react-router-dom";
 import api from "../../services/api";
-import { toast } from "react-toastify";
 
 import notifySound from "../../assets/chat_notify.mp3";
 import useSound from "use-sound";
@@ -24,12 +30,102 @@ import useSound from "use-sound";
 // OBS: este componente foi reaproveitado como o ícone do "Chat - Interno" (painel /informativos)
 // Ele notifica via socket quando há novo informativo ou resposta e abre o painel ao clicar.
 
+const useStyles = makeStyles((theme) => ({
+  snackRoot: {
+    borderRadius: 14,
+    background: "rgba(255,255,255,0.96)",
+    color: "rgba(15, 23, 42, 0.92)",
+    border: "1px solid rgba(15, 23, 42, 0.10)",
+    boxShadow: "0 18px 40px rgba(15, 23, 42, 0.22)",
+    backdropFilter: "blur(10px)",
+    padding: theme.spacing(1.25, 1.5),
+    position: "relative",
+    overflow: "hidden",
+    minWidth: 340,
+    maxWidth: 440,
+    [theme.breakpoints.down("xs")]: {
+      minWidth: 280,
+      maxWidth: "calc(100vw - 24px)",
+    },
+    "&:before": {
+      content: '""',
+      position: "absolute",
+      left: 0,
+      top: 0,
+      bottom: 0,
+      width: 4,
+      background:
+        "linear-gradient(180deg, rgba(16, 185, 129, 0.95), rgba(59, 130, 246, 0.95), rgba(99, 102, 241, 0.95))",
+    },
+  },
+  snackRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: theme.spacing(1.25),
+  },
+  snackIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    display: "grid",
+    placeItems: "center",
+    background: "rgba(59, 130, 246, 0.10)",
+    color: "rgba(59, 130, 246, 0.95)",
+    flex: "0 0 auto",
+  },
+  snackTexts: {
+    flex: "1 1 auto",
+    minWidth: 0,
+  },
+  snackTitle: {
+    fontWeight: 900,
+    fontSize: 13,
+    lineHeight: "16px",
+    margin: 0,
+  },
+  snackSub: {
+    marginTop: 2,
+    fontSize: 12,
+    color: "rgba(15, 23, 42, 0.62)",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+  },
+  snackActions: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    marginLeft: theme.spacing(0.5),
+    flex: "0 0 auto",
+  },
+  snackBtn: {
+    borderRadius: 999,
+    padding: "6px 10px",
+    fontSize: 12,
+    fontWeight: 900,
+    color: "rgba(59, 130, 246, 0.98)",
+    border: "1px solid rgba(59, 130, 246, 0.25)",
+    background: "rgba(59, 130, 246, 0.06)",
+    textTransform: "none",
+    minHeight: 32,
+    "&:hover": { background: "rgba(59, 130, 246, 0.10)" },
+  },
+  snackClose: {
+    color: "rgba(15, 23, 42, 0.55)",
+  },
+}));
+
+function SlideUp(props) {
+  return <Slide {...props} direction="up" />;
+}
+
 export default function ChatPopover() {
   const { user } = useContext(AuthContext);
   const history = useHistory();
   const location = useLocation();
   const pathname = location.pathname;
   const myUserId = Number(user?.id || localStorage.getItem("userId") || 0);
+  const classes = useStyles();
 
   const [unreadCount, setUnreadCount] = useState(0);
   const [play] = useSound(notifySound);
@@ -37,7 +133,8 @@ export default function ChatPopover() {
   const pathnameRef = useRef(pathname || "");
   const lastToastAtRef = useRef(0);
   const [snackOpen, setSnackOpen] = useState(false);
-  const [snackText, setSnackText] = useState("Nova mensagem no Chat - Interno");
+  const [snackTitle, setSnackTitle] = useState("Chat - Interno");
+  const [snackSub, setSnackSub] = useState("Nova mensagem interna");
 
   useEffect(() => {
     soundAlertRef.current = play;
@@ -78,14 +175,10 @@ export default function ChatPopover() {
     const now = Date.now();
     if (now - (Number(lastToastAtRef.current) || 0) < 2500) return;
     lastToastAtRef.current = now;
-    setSnackText("Nova mensagem no Chat - Interno");
+    setSnackTitle("Chat - Interno");
+    setSnackSub("Nova mensagem interna");
     setSnackOpen(true);
-    toast.info("Nova mensagem no Chat - Interno", {
-      autoClose: 6000,
-      closeOnClick: true,
-      onClick: () => history.push("/informativos"),
-    });
-  }, [history]);
+  }, []);
 
   useEffect(() => {
     const companyId = localStorage.getItem("companyId");
@@ -111,6 +204,20 @@ export default function ChatPopover() {
 
       const actionOk = data?.action === "create" || data?.action === "update" || data?.action === "reply";
       if (visibleToMe && actionOk) {
+        // Improve popup text with context when available
+        try {
+          if (data?.action === "reply") {
+            const who = String(data?.reply?.userName || "Alguém");
+            const txt = String(data?.reply?.text || "").trim();
+            setSnackTitle(`Mensagem de ${who}`);
+            setSnackSub(txt || "Nova resposta no Chat - Interno");
+          } else if (data?.record) {
+            const title = String(data?.record?.title || "Chat - Interno").trim();
+            const txt = String(data?.record?.text || "").trim();
+            setSnackTitle(title || "Chat - Interno");
+            setSnackSub(txt || "Novo informativo");
+          }
+        } catch {}
         bumpUnread({ storageKey });
         maybeToast();
         // toca som se foi resposta de outro usuário (ex.: admin recebeu resposta do usuário, ou vice-versa)
@@ -157,6 +264,9 @@ export default function ChatPopover() {
         }
 
         if (hasNew) {
+          // polling doesn't know exact message: keep generic but professional
+          setSnackTitle("Chat - Interno");
+          setSnackSub("Nova mensagem interna");
           bumpUnread({ storageKey });
           maybeToast();
           try { localStorage.setItem(lastSeenKey, new Date(newest).toISOString()); } catch {}
@@ -229,23 +339,45 @@ export default function ChatPopover() {
         anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
         open={snackOpen}
         onClose={() => setSnackOpen(false)}
-        message={snackText}
         autoHideDuration={6000}
-        action={
-          <>
-            <Button
-              color="secondary"
-              size="small"
-              onClick={() => {
-                setSnackOpen(false);
-                handleClick();
-              }}
-            >
-              Abrir
-            </Button>
-          </>
-        }
-      />
+        TransitionComponent={SlideUp}
+      >
+        <SnackbarContent
+          className={classes.snackRoot}
+          message={
+            <div className={classes.snackRow}>
+              <div className={classes.snackIconWrap}>
+                <ForumOutlinedIcon style={{ fontSize: 20 }} />
+              </div>
+              <div className={classes.snackTexts}>
+                <Typography className={classes.snackTitle}>{snackTitle}</Typography>
+                <div className={classes.snackSub}>{snackSub}</div>
+              </div>
+              <div className={classes.snackActions}>
+                <Button
+                  className={classes.snackBtn}
+                  onClick={() => {
+                    setSnackOpen(false);
+                    handleClick();
+                  }}
+                  title="Abrir"
+                >
+                  <OpenInNewOutlinedIcon style={{ fontSize: 16, marginRight: 6 }} />
+                  Abrir
+                </Button>
+                <IconButton
+                  size="small"
+                  onClick={() => setSnackOpen(false)}
+                  className={classes.snackClose}
+                  title="Fechar"
+                >
+                  <CloseIcon style={{ fontSize: 18 }} />
+                </IconButton>
+              </div>
+            </div>
+          }
+        />
+      </Snackbar>
     </div>
   );
 }
