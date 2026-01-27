@@ -10,6 +10,8 @@ import {
   Badge,
   IconButton,
 } from "@material-ui/core";
+import Snackbar from "@material-ui/core/Snackbar";
+import Button from "@material-ui/core/Button";
 import { socketConnection } from "../../services/socket";
 import { AuthContext } from "../../context/Auth/AuthContext";
 import { useHistory, useLocation } from "react-router-dom";
@@ -27,13 +29,15 @@ export default function ChatPopover() {
   const history = useHistory();
   const location = useLocation();
   const pathname = location.pathname;
-  const userIdDep = user?.id;
+  const myUserId = Number(user?.id || localStorage.getItem("userId") || 0);
 
   const [unreadCount, setUnreadCount] = useState(0);
   const [play] = useSound(notifySound);
   const soundAlertRef = useRef();
   const pathnameRef = useRef(pathname || "");
   const lastToastAtRef = useRef(0);
+  const [snackOpen, setSnackOpen] = useState(false);
+  const [snackText, setSnackText] = useState("Nova mensagem no Chat - Interno");
 
   useEffect(() => {
     soundAlertRef.current = play;
@@ -74,6 +78,8 @@ export default function ChatPopover() {
     const now = Date.now();
     if (now - (Number(lastToastAtRef.current) || 0) < 2500) return;
     lastToastAtRef.current = now;
+    setSnackText("Nova mensagem no Chat - Interno");
+    setSnackOpen(true);
     toast.info("Nova mensagem no Chat - Interno", {
       autoClose: 6000,
       closeOnClick: true,
@@ -83,7 +89,7 @@ export default function ChatPopover() {
 
   useEffect(() => {
     const companyId = localStorage.getItem("companyId");
-    const userId = Number(userIdDep || 0);
+    const userId = Number(myUserId || 0);
     if (!companyId || !userId) return undefined;
 
     const storageKey = `chat-interno:unread:${companyId}:${userId}`;
@@ -116,12 +122,12 @@ export default function ChatPopover() {
     return () => {
       socket.disconnect();
     };
-  }, [userIdDep, bumpUnread, isVisibleToMeFromPayload, maybeToast]);
+  }, [myUserId, bumpUnread, isVisibleToMeFromPayload, maybeToast]);
 
   // Fallback robusto: polling (caso o socket falhe no navegador/rede do usuário)
   useEffect(() => {
     const companyId = localStorage.getItem("companyId");
-    const userId = Number(userIdDep || 0);
+    const userId = Number(myUserId || 0);
     if (!companyId || !userId) return undefined;
     const storageKey = `chat-interno:unread:${companyId}:${userId}`;
     const lastSeenKey = `chat-interno:lastSeen:${companyId}:${userId}`;
@@ -169,11 +175,11 @@ export default function ChatPopover() {
       cancelled = true;
       if (timer) clearInterval(timer);
     };
-  }, [userIdDep, bumpUnread, maybeToast]);
+  }, [myUserId, bumpUnread, maybeToast]);
 
   useEffect(() => {
     const companyId = localStorage.getItem("companyId");
-    const userId = Number(userIdDep || 0);
+    const userId = Number(myUserId || 0);
     if (!companyId || !userId) return;
     const storageKey = `chat-interno:unread:${companyId}:${userId}`;
     const lastSeenKey = `chat-interno:lastSeen:${companyId}:${userId}`;
@@ -183,11 +189,11 @@ export default function ChatPopover() {
       try { localStorage.setItem(storageKey, "0"); } catch {}
       try { localStorage.setItem(lastSeenKey, new Date().toISOString()); } catch {}
     }
-  }, [pathname, userIdDep]);
+  }, [pathname, myUserId]);
 
   const handleClick = (event) => {
     const companyId = localStorage.getItem("companyId");
-    const userId = Number(userIdDep || 0);
+    const userId = Number(myUserId || 0);
     if (companyId && userId) {
       const storageKey = `chat-interno:unread:${companyId}:${userId}`;
       const lastSeenKey = `chat-interno:lastSeen:${companyId}:${userId}`;
@@ -218,6 +224,28 @@ export default function ChatPopover() {
           <ForumIcon />
         </Badge>
       </IconButton>
+
+      <Snackbar
+        anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
+        open={snackOpen}
+        onClose={() => setSnackOpen(false)}
+        message={snackText}
+        autoHideDuration={6000}
+        action={
+          <>
+            <Button
+              color="secondary"
+              size="small"
+              onClick={() => {
+                setSnackOpen(false);
+                handleClick();
+              }}
+            >
+              Abrir
+            </Button>
+          </>
+        }
+      />
     </div>
   );
 }
