@@ -126,6 +126,8 @@ export default function ChatPopover() {
   const pathname = location.pathname;
   const myUserId = Number(user?.id || localStorage.getItem("userId") || 0);
   const classes = useStyles();
+  const profile = String(user?.profile || localStorage.getItem("profile") || "").toLowerCase();
+  const isAdminLike = Boolean(user?.super) || profile === "admin" || profile === "super";
 
   const [unreadCount, setUnreadCount] = useState(0);
   const [play] = useSound(notifySound);
@@ -156,9 +158,28 @@ export default function ChatPopover() {
     const targetUserId = data?.record?.targetUserId ?? data?.targetUserId;
     const status = data?.record?.status ?? data?.status ?? true;
     if (status === false) return false;
+    // Admin/Super: notify for all active messages in the company
+    if (isAdminLike) return true;
     if (sendToAll === true) return true;
     if (targetUserId === null || targetUserId === undefined) return false;
     return Number(targetUserId) === Number(myUserId || 0);
+  }, [isAdminLike]);
+
+  const formatRecipient = useCallback((data) => {
+    const sendToAll = data?.record?.sendToAll ?? data?.sendToAll;
+    const targetUserId = data?.record?.targetUserId ?? data?.targetUserId;
+    const targetUserName = data?.record?.targetUserName ?? data?.targetUserName;
+    if (sendToAll === true) return "Todos";
+    if (targetUserName) return String(targetUserName);
+    if (targetUserId !== null && targetUserId !== undefined && String(targetUserId) !== "") return `Usuário #${targetUserId}`;
+    return "—";
+  }, []);
+
+  const formatSender = useCallback((data) => {
+    if (data?.action === "reply") {
+      return String(data?.reply?.userName || "Sistema");
+    }
+    return String(data?.record?.senderName || "Sistema");
   }, []);
 
   const bumpUnread = useCallback(({ storageKey }) => {
@@ -206,16 +227,17 @@ export default function ChatPopover() {
       if (visibleToMe && actionOk) {
         // Improve popup text with context when available
         try {
+          const toLabel = formatRecipient(data);
+          const fromLabel = formatSender(data);
           if (data?.action === "reply") {
-            const who = String(data?.reply?.userName || "Alguém");
             const txt = String(data?.reply?.text || "").trim();
-            setSnackTitle(`Mensagem de ${who}`);
-            setSnackSub(txt || "Nova resposta no Chat - Interno");
+            setSnackTitle(`Resposta de ${fromLabel}`);
+            setSnackSub(`Para: ${toLabel} • ${txt || "Nova resposta no Chat - Interno"}`);
           } else if (data?.record) {
             const title = String(data?.record?.title || "Chat - Interno").trim();
             const txt = String(data?.record?.text || "").trim();
             setSnackTitle(title || "Chat - Interno");
-            setSnackSub(txt || "Novo informativo");
+            setSnackSub(`De: ${fromLabel} • Para: ${toLabel} • ${txt || "Novo informativo"}`);
           }
         } catch {}
         bumpUnread({ storageKey });
@@ -229,7 +251,7 @@ export default function ChatPopover() {
     return () => {
       socket.disconnect();
     };
-  }, [myUserId, bumpUnread, isVisibleToMeFromPayload, maybeToast]);
+  }, [myUserId, bumpUnread, isVisibleToMeFromPayload, maybeToast, formatRecipient, formatSender]);
 
   // Fallback robusto: polling (caso o socket falhe no navegador/rede do usuário)
   useEffect(() => {
@@ -255,18 +277,35 @@ export default function ChatPopover() {
         const lastSeen = lastSeenIso ? new Date(lastSeenIso).getTime() : 0;
 
         let newest = lastSeen;
+        let newestRec = null;
         let hasNew = false;
         for (const r of records) {
           const t = new Date(r?.lastReplyAt || r?.updatedAt || r?.createdAt || 0).getTime();
           if (!Number.isFinite(t) || t <= 0) continue;
           if (t > newest) newest = t;
-          if (t > lastSeen) hasNew = true;
+          if (t > lastSeen) {
+            hasNew = true;
+            if (
+              !newestRec ||
+              t >
+                new Date(
+                  newestRec?.lastReplyAt || newestRec?.updatedAt || newestRec?.createdAt || 0
+                ).getTime()
+            ) {
+              newestRec = r;
+            }
+          }
         }
 
         if (hasNew) {
-          // polling doesn't know exact message: keep generic but professional
+          const toLabel =
+            newestRec?.sendToAll === true
+              ? "Todos"
+              : String(newestRec?.targetUserName || (newestRec?.targetUserId ? `Usuário #${newestRec?.targetUserId}` : "—"));
+          const fromLabel = String(newestRec?.lastReplyUserName || newestRec?.senderName || "Sistema");
+          const preview = String(newestRec?.lastReplyText || newestRec?.title || "Nova mensagem interna").trim();
           setSnackTitle("Chat - Interno");
-          setSnackSub("Nova mensagem interna");
+          setSnackSub(`De: ${fromLabel} • Para: ${toLabel} • ${preview}`);
           bumpUnread({ storageKey });
           maybeToast();
           try { localStorage.setItem(lastSeenKey, new Date(newest).toISOString()); } catch {}

@@ -686,11 +686,34 @@ router.post("/:id/replies", maybeRepliesUpload, async (req, res) => {
     userName = String(urows?.[0]?.name || "");
   } catch {}
 
+  // Fetch full announcement context (sender + target names) for richer notifications
+  let announcementRecord: any = undefined;
+  try {
+    const aFull = await pgQuery<any>(
+      `
+        SELECT
+          a.id, a.title, a.text, a."companyId", a.status, a."createdAt", a."updatedAt",
+          a."userId", su.name as "senderName",
+          COALESCE(a."sendToAll", true) as "sendToAll",
+          a."targetUserId", tu.name as "targetUserName",
+          COALESCE(a."allowReply", false) as "allowReply"
+        FROM "Announcements" a
+        LEFT JOIN "Users" tu ON tu.id = a."targetUserId"
+        LEFT JOIN "Users" su ON su.id = a."userId"
+        WHERE a.id = $1 AND a."companyId" = $2
+        LIMIT 1
+      `,
+      [id, companyId]
+    );
+    announcementRecord = aFull?.[0];
+  } catch {}
+
   try {
     const io = getIO();
     io.emit("company-announcement", {
       action: "reply",
       announcementId: id,
+      record: announcementRecord,
       reply: { ...record, userId, userName },
       sendToAll: Boolean(ann.sendToAll),
       targetUserId: ann.targetUserId ?? null,
