@@ -8,14 +8,16 @@ import { makeStyles } from "@material-ui/core/styles";
 import { green } from "@material-ui/core/colors";
 import { TrButton } from "../ui";
 import TextField from "@material-ui/core/TextField";
+import InputAdornment from "@material-ui/core/InputAdornment";
 import Dialog from "@material-ui/core/Dialog";
 import DialogActions from "@material-ui/core/DialogActions";
 import DialogContent from "@material-ui/core/DialogContent";
 import DialogTitle from "@material-ui/core/DialogTitle";
 import CircularProgress from "@material-ui/core/CircularProgress";
-import AttachFileIcon from "@material-ui/icons/AttachFile";
-import DeleteOutlineIcon from "@material-ui/icons/DeleteOutline";
 import IconButton from "@material-ui/core/IconButton";
+import Box from "@material-ui/core/Box";
+import Divider from "@material-ui/core/Divider";
+import Chip from "@material-ui/core/Chip";
 
 import { i18n } from "../../translate/i18n";
 import { head } from "lodash";
@@ -32,19 +34,91 @@ import {
   FormControlLabel,
 } from "@material-ui/core";
 import ConfirmationModal from "../ConfirmationModal";
+import CloseOutlinedIcon from "@material-ui/icons/CloseOutlined";
+import NotificationsOutlinedIcon from "@material-ui/icons/NotificationsOutlined";
+import TitleOutlinedIcon from "@material-ui/icons/TitleOutlined";
+import SubjectOutlinedIcon from "@material-ui/icons/SubjectOutlined";
+import LabelImportantOutlinedIcon from "@material-ui/icons/LabelImportantOutlined";
+import ToggleOnOutlinedIcon from "@material-ui/icons/ToggleOnOutlined";
+import PeopleOutlineOutlinedIcon from "@material-ui/icons/PeopleOutlineOutlined";
+import PersonOutlineOutlinedIcon from "@material-ui/icons/PersonOutlineOutlined";
+import SearchOutlinedIcon from "@material-ui/icons/SearchOutlined";
+import AttachFileOutlinedIcon from "@material-ui/icons/AttachFileOutlined";
+import DeleteOutlineOutlinedIcon from "@material-ui/icons/DeleteOutlineOutlined";
+import CheckCircleOutlineOutlinedIcon from "@material-ui/icons/CheckCircleOutlineOutlined";
 
 const useStyles = makeStyles((theme) => ({
   root: {
     display: "flex",
     flexWrap: "wrap",
   },
-  multFieldLine: {
-    display: "flex",
-    "& > *:not(:last-child)": {
-      marginRight: theme.spacing(1),
-    },
+  dialogPaper: {
+    borderRadius: 18,
   },
-
+  header: {
+    display: "flex",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: theme.spacing(1.5),
+    padding: theme.spacing(2, 2, 1.25),
+  },
+  headerLeft: {
+    display: "flex",
+    alignItems: "center",
+    gap: theme.spacing(1.5),
+    minWidth: 0,
+  },
+  headerIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    display: "grid",
+    placeItems: "center",
+    background: "rgba(59,130,246,0.10)",
+    color: "rgba(59,130,246,0.95)",
+    border: "1px solid rgba(59,130,246,0.18)",
+    flexShrink: 0,
+  },
+  headerTitle: {
+    fontWeight: 1000,
+    fontSize: 16,
+    color: "rgba(15,23,42,0.92)",
+    lineHeight: "20px",
+  },
+  headerSub: {
+    marginTop: 4,
+    fontSize: 13,
+    color: "rgba(15,23,42,0.62)",
+    lineHeight: "18px",
+  },
+  closeBtn: {
+    color: "rgba(15,23,42,0.55)",
+  },
+  content: {
+    padding: theme.spacing(1.75, 2),
+  },
+  section: {
+    borderRadius: 16,
+    border: "1px solid rgba(15,23,42,0.10)",
+    background: "rgba(255,255,255,0.92)",
+    padding: theme.spacing(1.5),
+  },
+  sectionTitleRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: theme.spacing(1),
+    color: "rgba(15,23,42,0.82)",
+  },
+  sectionTitle: {
+    fontWeight: 1000,
+    fontSize: 13,
+  },
+  helper: {
+    marginTop: 6,
+    fontSize: 12,
+    color: "rgba(15,23,42,0.60)",
+  },
   btnWrapper: {
     position: "relative",
   },
@@ -57,13 +131,51 @@ const useStyles = makeStyles((theme) => ({
     marginTop: -12,
     marginLeft: -12,
   },
-  formControl: {
-    margin: theme.spacing(1),
-    minWidth: 120,
+  field: {
+    "& .MuiOutlinedInput-root": {
+      borderRadius: 14,
+      backgroundColor: "#fff",
+    },
   },
-  colorAdorment: {
-    width: 20,
-    height: 20,
+  toggleRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: theme.spacing(2),
+    flexWrap: "wrap",
+  },
+  pill: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    padding: "6px 10px",
+    borderRadius: 999,
+    border: "1px solid rgba(15,23,42,0.10)",
+    background: "rgba(15,23,42,0.04)",
+    fontSize: 12,
+    fontWeight: 900,
+    maxWidth: "100%",
+  },
+  actions: {
+    padding: theme.spacing(1.25, 2, 2),
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: theme.spacing(1),
+  },
+  actionBtn: {
+    borderRadius: 12,
+    fontWeight: 900,
+    textTransform: "none",
+    padding: theme.spacing(0.9, 1.6),
+    whiteSpace: "nowrap",
+  },
+  primaryBtn: {
+    background: "linear-gradient(90deg, rgba(59,130,246,0.95), rgba(99,102,241,0.95))",
+    color: "#fff",
+    "&:hover": {
+      background: "linear-gradient(90deg, rgba(59,130,246,1), rgba(99,102,241,1))",
+    },
   },
 }));
 
@@ -205,19 +317,36 @@ const AnnouncementModal = ({ open, onClose, announcementId, reload }) => {
       <Dialog
         open={open}
         onClose={handleClose}
-        maxWidth="xs"
+        maxWidth="sm"
         fullWidth
         scroll="paper"
+        classes={{ paper: classes.dialogPaper }}
       >
-        <DialogTitle id="form-dialog-title">
-          {announcementId
-            ? `${i18n.t("announcements.dialog.edit")}`
-            : `${i18n.t("announcements.dialog.add")}`}
+        <DialogTitle id="form-dialog-title" style={{ padding: 0 }}>
+          <div className={classes.header}>
+            <div className={classes.headerLeft}>
+              <div className={classes.headerIcon}>
+                <NotificationsOutlinedIcon />
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <div className={classes.headerTitle}>
+                  {announcementId ? "Editar Chat - Interno" : "Novo Chat - Interno"}
+                </div>
+                <div className={classes.headerSub}>
+                  Crie um informativo, selecione o destinatário e permita respostas se necessário.
+                </div>
+              </div>
+            </div>
+            <IconButton onClick={handleClose} size="small" className={classes.closeBtn} title="Fechar">
+              <CloseOutlinedIcon />
+            </IconButton>
+          </div>
+          <Divider />
         </DialogTitle>
         <div style={{ display: "none" }}>
           <input
             type="file"
-            accept=".png,.jpg,.jpeg"
+            accept="image/*,.gif,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.zip"
             ref={attachmentFile}
             onChange={(e) => handleAttachmentFile(e)}
           />
@@ -235,168 +364,285 @@ const AnnouncementModal = ({ open, onClose, announcementId, reload }) => {
         >
           {({ touched, errors, isSubmitting, values }) => (
             <Form>
-              <DialogContent dividers>
+              <DialogContent className={classes.content}>
                 <Grid spacing={2} container>
                   <Grid xs={12} item>
-                    <Field
-                      as={TextField}
-                      label={i18n.t("announcements.dialog.form.title")}
-                      name="title"
-                      error={touched.title && Boolean(errors.title)}
-                      helperText={touched.title && errors.title}
-                      variant="outlined"
-                      margin="dense"
-                      fullWidth
-                    />
-                  </Grid>
-                  <Grid xs={12} item>
-                    <Field
-                      as={TextField}
-                      label={i18n.t("announcements.dialog.form.text")}
-                      name="text"
-                      error={touched.text && Boolean(errors.text)}
-                      helperText={touched.text && errors.text}
-                      variant="outlined"
-                      margin="dense"
-                      multiline={true}
-                      rows={7}
-                      fullWidth
-                    />
-                  </Grid>
-                  <Grid xs={12} item>
-                    <FormControl variant="outlined" margin="dense" fullWidth>
-                      <InputLabel id="status-selection-label">
-                        {i18n.t("announcements.dialog.form.status")}
-                      </InputLabel>
-                      <Field
-                        as={Select}
-                        label={i18n.t("announcements.dialog.form.status")}
-                        placeholder={i18n.t("announcements.dialog.form.status")}
-                        labelId="status-selection-label"
-                        id="status"
-                        name="status"
-                        error={touched.status && Boolean(errors.status)}
-                      >
-                        <MenuItem value={true}>Ativo</MenuItem>
-                        <MenuItem value={false}>Inativo</MenuItem>
-                      </Field>
-                    </FormControl>
-                  </Grid>
-                  <Grid xs={12} item>
-                    <FormControlLabel
-                      control={
-                        <Field
-                          as={Switch}
-                          name="sendToAll"
-                          color="primary"
-                          checked={Boolean(values.sendToAll)}
-                        />
-                      }
-                      label="Enviar para todos"
-                    />
-                  </Grid>
+                    <div className={classes.section}>
+                      <div className={classes.sectionTitleRow}>
+                        <TitleOutlinedIcon style={{ fontSize: 18, opacity: 0.75 }} />
+                        <span className={classes.sectionTitle}>Conteúdo</span>
+                      </div>
 
-                  {!values.sendToAll && (
-                    <Grid xs={12} item>
-                      <TextField
+                      <Field
+                        as={TextField}
+                        className={classes.field}
+                        label="Título"
+                        name="title"
+                        error={touched.title && Boolean(errors.title)}
+                        helperText={touched.title && errors.title}
                         variant="outlined"
                         margin="dense"
                         fullWidth
-                        label="Buscar usuário"
-                        value={userSearch}
-                        onChange={(e) => setUserSearch(e.target.value)}
-                        disabled={usersLoading}
+                        InputProps={{
+                          startAdornment: (
+                            <InputAdornment position="start">
+                              <LabelImportantOutlinedIcon style={{ fontSize: 18, opacity: 0.65 }} />
+                            </InputAdornment>
+                          ),
+                        }}
                       />
-                      <FormControl variant="outlined" margin="dense" fullWidth>
-                        <InputLabel id="target-user-selection-label">Usuário</InputLabel>
-                        <Field
-                          as={Select}
-                          label="Usuário"
-                          labelId="target-user-selection-label"
-                          id="targetUserId"
-                          name="targetUserId"
-                        >
-                          <MenuItem value={""}>&nbsp;</MenuItem>
-                          {users.map((u) => (
-                            <MenuItem key={u.id} value={String(u.id)}>
-                              {u.name ? `${u.name} (#${u.id})` : `Usuário #${u.id}`}
-                            </MenuItem>
-                          ))}
-                        </Field>
-                      </FormControl>
-                    </Grid>
-                  )}
+                      <Field
+                        as={TextField}
+                        className={classes.field}
+                        label="Texto"
+                        name="text"
+                        error={touched.text && Boolean(errors.text)}
+                        helperText={touched.text && errors.text}
+                        variant="outlined"
+                        margin="dense"
+                        multiline={true}
+                        rows={6}
+                        fullWidth
+                        InputProps={{
+                          startAdornment: (
+                            <InputAdornment position="start">
+                              <SubjectOutlinedIcon style={{ fontSize: 18, opacity: 0.65 }} />
+                            </InputAdornment>
+                          ),
+                        }}
+                      />
+                      <div className={classes.helper}>
+                        Dica: use um título curto e um texto objetivo para facilitar a leitura no painel.
+                      </div>
+                    </div>
+                  </Grid>
 
                   <Grid xs={12} item>
-                    <FormControlLabel
-                      control={
-                        <Field
-                          as={Switch}
-                          name="allowReply"
-                          color="primary"
-                          checked={Boolean(values.allowReply)}
-                        />
-                      }
-                      label="Permitir resposta do usuário"
-                    />
-                  </Grid>
-                  <Grid xs={12} item>
-                    <FormControl variant="outlined" margin="dense" fullWidth>
-                      <InputLabel id="priority-selection-label">
-                        {i18n.t("announcements.dialog.form.priority")}
-                      </InputLabel>
-                      <Field
-                        as={Select}
-                        label={i18n.t("announcements.dialog.form.priority")}
-                        placeholder={i18n.t(
-                          "announcements.dialog.form.priority"
-                        )}
-                        labelId="priority-selection-label"
-                        id="priority"
-                        name="priority"
-                        error={touched.priority && Boolean(errors.priority)}
-                      >
-                        <MenuItem value={1}>Alta</MenuItem>
-                        <MenuItem value={2}>Média</MenuItem>
-                        <MenuItem value={3}>Baixa</MenuItem>
-                      </Field>
-                    </FormControl>
-                  </Grid>
-                  {(announcement.mediaPath || attachment) && (
-                    <Grid xs={12} item>
-                      <TrButton variant="text" disabled startIcon={<AttachFileIcon />}>
-                        {attachment ? attachment.name : announcement.mediaName}
-                      </TrButton>
-                      <IconButton
-                        onClick={() => setConfirmationOpen(true)}
-                        color="secondary"
-                      >
-                        <DeleteOutlineIcon />
-                      </IconButton>
+                    <Grid container spacing={2}>
+                      <Grid item xs={12} md={6}>
+                        <div className={classes.section}>
+                          <div className={classes.sectionTitleRow}>
+                            <ToggleOnOutlinedIcon style={{ fontSize: 18, opacity: 0.75 }} />
+                            <span className={classes.sectionTitle}>Status</span>
+                          </div>
+                          <FormControl variant="outlined" margin="dense" fullWidth className={classes.field}>
+                            <InputLabel id="status-selection-label">
+                              {i18n.t("announcements.dialog.form.status")}
+                            </InputLabel>
+                            <Field
+                              as={Select}
+                              label={i18n.t("announcements.dialog.form.status")}
+                              labelId="status-selection-label"
+                              id="status"
+                              name="status"
+                              error={touched.status && Boolean(errors.status)}
+                            >
+                              <MenuItem value={true}>Ativo</MenuItem>
+                              <MenuItem value={false}>Inativo</MenuItem>
+                            </Field>
+                          </FormControl>
+                          <div className={classes.helper}>
+                            “Inativo” oculta para usuários comuns, mas mantém registro para histórico.
+                          </div>
+                        </div>
+                      </Grid>
+                      <Grid item xs={12} md={6}>
+                        <div className={classes.section}>
+                          <div className={classes.sectionTitleRow}>
+                            <LabelImportantOutlinedIcon style={{ fontSize: 18, opacity: 0.75 }} />
+                            <span className={classes.sectionTitle}>Prioridade</span>
+                          </div>
+                          <FormControl variant="outlined" margin="dense" fullWidth className={classes.field}>
+                            <InputLabel id="priority-selection-label">
+                              {i18n.t("announcements.dialog.form.priority")}
+                            </InputLabel>
+                            <Field
+                              as={Select}
+                              label={i18n.t("announcements.dialog.form.priority")}
+                              labelId="priority-selection-label"
+                              id="priority"
+                              name="priority"
+                              error={touched.priority && Boolean(errors.priority)}
+                            >
+                              <MenuItem value={1}>Alta</MenuItem>
+                              <MenuItem value={2}>Média</MenuItem>
+                              <MenuItem value={3}>Baixa</MenuItem>
+                            </Field>
+                          </FormControl>
+                          <div className={classes.helper}>
+                            A prioridade aparece como etiqueta na lista para facilitar a triagem.
+                          </div>
+                        </div>
+                      </Grid>
                     </Grid>
-                  )}
+                  </Grid>
+
+                  <Grid xs={12} item>
+                    <div className={classes.section}>
+                      <div className={classes.sectionTitleRow}>
+                        <PeopleOutlineOutlinedIcon style={{ fontSize: 18, opacity: 0.75 }} />
+                        <span className={classes.sectionTitle}>Destino</span>
+                      </div>
+
+                      <div className={classes.toggleRow}>
+                        <FormControlLabel
+                          control={
+                            <Field
+                              as={Switch}
+                              name="sendToAll"
+                              color="primary"
+                              checked={Boolean(values.sendToAll)}
+                            />
+                          }
+                          label="Enviar para todos"
+                        />
+                        {!values.sendToAll ? (
+                          <Chip
+                            size="small"
+                            icon={<PersonOutlineOutlinedIcon />}
+                            label="Destino: usuário específico"
+                            style={{ fontWeight: 900 }}
+                          />
+                        ) : (
+                          <Chip
+                            size="small"
+                            icon={<PeopleOutlineOutlinedIcon />}
+                            label="Destino: todos"
+                            style={{ fontWeight: 900 }}
+                          />
+                        )}
+                      </div>
+
+                      {!values.sendToAll && (
+                        <Box mt={1}>
+                          <TextField
+                            className={classes.field}
+                            variant="outlined"
+                            margin="dense"
+                            fullWidth
+                            label="Buscar usuário"
+                            value={userSearch}
+                            onChange={(e) => setUserSearch(e.target.value)}
+                            disabled={usersLoading}
+                            InputProps={{
+                              startAdornment: (
+                                <InputAdornment position="start">
+                                  <SearchOutlinedIcon style={{ fontSize: 18, opacity: 0.7 }} />
+                                </InputAdornment>
+                              ),
+                            }}
+                          />
+                          <FormControl variant="outlined" margin="dense" fullWidth className={classes.field}>
+                            <InputLabel id="target-user-selection-label">Usuário</InputLabel>
+                            <Field
+                              as={Select}
+                              label="Usuário"
+                              labelId="target-user-selection-label"
+                              id="targetUserId"
+                              name="targetUserId"
+                            >
+                              <MenuItem value={""}>Selecione...</MenuItem>
+                              {users.map((u) => (
+                                <MenuItem key={u.id} value={String(u.id)}>
+                                  {u.name ? `${u.name} (#${u.id})` : `Usuário #${u.id}`}
+                                </MenuItem>
+                              ))}
+                            </Field>
+                          </FormControl>
+                        </Box>
+                      )}
+                      <div className={classes.helper}>
+                        Selecione “todos” para um comunicado geral ou um usuário específico para conversas direcionadas.
+                      </div>
+                    </div>
+                  </Grid>
+
+                  <Grid xs={12} item>
+                    <div className={classes.section}>
+                      <div className={classes.sectionTitleRow}>
+                        <CheckCircleOutlineOutlinedIcon style={{ fontSize: 18, opacity: 0.75 }} />
+                        <span className={classes.sectionTitle}>Permissões</span>
+                      </div>
+                      <FormControlLabel
+                        control={
+                          <Field
+                            as={Switch}
+                            name="allowReply"
+                            color="primary"
+                            checked={Boolean(values.allowReply)}
+                          />
+                        }
+                        label="Permitir resposta do usuário"
+                      />
+                      <div className={classes.helper}>
+                        Se estiver desligado, apenas admins poderão escrever (útil para comunicados).
+                      </div>
+                    </div>
+                  </Grid>
+
+                  <Grid xs={12} item>
+                    <div className={classes.section}>
+                      <div className={classes.sectionTitleRow}>
+                        <AttachFileOutlinedIcon style={{ fontSize: 18, opacity: 0.75 }} />
+                        <span className={classes.sectionTitle}>Anexo</span>
+                      </div>
+
+                      <Box display="flex" alignItems="center" gridGap={10} style={{ flexWrap: "wrap" }}>
+                        {!attachment && !announcement.mediaPath ? (
+                          <TrButton
+                            className={classes.actionBtn}
+                            onClick={() => attachmentFile.current.click()}
+                            disabled={isSubmitting}
+                            startIcon={<AttachFileOutlinedIcon />}
+                          >
+                            Anexar arquivo
+                          </TrButton>
+                        ) : null}
+
+                        {(announcement.mediaPath || attachment) ? (
+                          <>
+                            <span className={classes.pill} title={attachment ? attachment.name : announcement.mediaName}>
+                              <AttachFileOutlinedIcon style={{ fontSize: 16, opacity: 0.8 }} />
+                              {attachment ? attachment.name : announcement.mediaName}
+                            </span>
+                            <IconButton onClick={() => setConfirmationOpen(true)} size="small" title="Remover anexo">
+                              <DeleteOutlineOutlinedIcon />
+                            </IconButton>
+                          </>
+                        ) : (
+                          <span className={classes.helper}>Opcional. Você pode anexar imagens, PDFs, vídeos ou outros arquivos.</span>
+                        )}
+                      </Box>
+                    </div>
+                  </Grid>
                 </Grid>
               </DialogContent>
-              <DialogActions>
-                {!attachment && !announcement.mediaPath && (
-                  <TrButton onClick={() => attachmentFile.current.click()} disabled={isSubmitting}>
-                    {i18n.t("announcements.dialog.buttons.attach")}
+
+              <DialogActions className={classes.actions}>
+                <Box display="flex" alignItems="center" gridGap={10}>
+                  <span style={{ fontSize: 12, color: "rgba(15,23,42,0.55)" }}>
+                    {values.sendToAll ? "Destino: Todos" : "Destino: Usuário"}
+                  </span>
+                </Box>
+                <Box display="flex" alignItems="center" gridGap={10}>
+                  <TrButton className={classes.actionBtn} onClick={handleClose} disabled={isSubmitting}>
+                    Cancelar
                   </TrButton>
-                )}
-                <TrButton onClick={handleClose} disabled={isSubmitting}>
-                  {i18n.t("announcements.dialog.buttons.cancel")}
-                </TrButton>
-                <TrButton type="submit" disabled={isSubmitting} className={classes.btnWrapper}>
-                  {announcementId
-                    ? `${i18n.t("announcements.dialog.buttons.edit")}`
-                    : `${i18n.t("announcements.dialog.buttons.add")}`}
-                  {isSubmitting && (
-                    <CircularProgress
-                      size={24}
-                      className={classes.buttonProgress}
-                    />
-                  )}
-                </TrButton>
+                  <TrButton
+                    type="submit"
+                    disabled={isSubmitting}
+                    className={`${classes.actionBtn} ${classes.primaryBtn} ${classes.btnWrapper}`}
+                    startIcon={<CheckCircleOutlineOutlinedIcon />}
+                  >
+                    {announcementId ? "Salvar" : "Criar"}
+                    {isSubmitting && (
+                      <CircularProgress
+                        size={24}
+                        className={classes.buttonProgress}
+                      />
+                    )}
+                  </TrButton>
+                </Box>
               </DialogActions>
             </Form>
           )}
