@@ -59,11 +59,19 @@ const useStyles = makeStyles((theme) => ({
     padding: theme.spacing(1.25),
     marginBottom: theme.spacing(2),
   },
-  filtersRow: {
+  filtersTop: {
     display: "flex",
     alignItems: "center",
+    justifyContent: "space-between",
     gap: theme.spacing(1),
     flexWrap: "wrap",
+  },
+  filtersTitle: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    color: "rgba(15,23,42,0.78)",
+    fontWeight: 900,
   },
   filterField: {
     minWidth: 170,
@@ -71,6 +79,15 @@ const useStyles = makeStyles((theme) => ({
       borderRadius: 12,
       backgroundColor: "#fff",
     },
+  },
+  filtersApplyBtn: {
+    borderRadius: 12,
+    fontWeight: 900,
+    textTransform: "none",
+    height: 40,
+    paddingLeft: 14,
+    paddingRight: 14,
+    whiteSpace: "nowrap",
   },
   chipsRow: {
     display: "flex",
@@ -131,6 +148,36 @@ const useStyles = makeStyles((theme) => ({
       borderColor: "rgba(15, 23, 42, 0.14)",
     },
   },
+  listCardInner: {
+    padding: theme.spacing(1.5),
+  },
+  listMetaRow: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    marginTop: 10,
+  },
+  listChipsLeft: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    flexWrap: "wrap",
+    minWidth: 0,
+  },
+  listStatsRight: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    flexShrink: 0,
+  },
+  softChip: {
+    height: 24,
+    fontWeight: 900,
+    borderRadius: 999,
+    background: "rgba(15,23,42,0.05)",
+    border: "1px solid rgba(15,23,42,0.08)",
+  },
   listItemCardActive: {
     borderColor: "rgba(59, 130, 246, 0.35)",
     boxShadow: "0 0 0 2px rgba(59, 130, 246, 0.18), 0 1px 2px rgba(15, 23, 42, 0.06)",
@@ -160,14 +207,31 @@ const useStyles = makeStyles((theme) => ({
     padding: theme.spacing(2),
     overflow: "auto",
     flex: 1,
+    background:
+      "linear-gradient(180deg, rgba(59,130,246,0.04), rgba(255,255,255,0.0) 220px)",
     ...theme.scrollbarStyles,
   },
   bubble: {
     padding: theme.spacing(1.25),
     borderRadius: 14,
-    border: "1px solid rgba(15, 23, 42, 0.10)",
+    border: "1px solid rgba(15, 23, 42, 0.08)",
     background: "#fff",
+    boxShadow: "0 1px 2px rgba(15, 23, 42, 0.06)",
     marginBottom: theme.spacing(1),
+  },
+  bubbleMine: {
+    background: "rgba(59,130,246,0.10)",
+    borderColor: "rgba(59,130,246,0.16)",
+  },
+  bubbleName: {
+    fontWeight: 900,
+    fontSize: 13,
+    color: "rgba(15,23,42,0.88)",
+  },
+  bubbleText: {
+    marginTop: 6,
+    whiteSpace: "pre-wrap",
+    color: "rgba(15,23,42,0.88)",
   },
   bubbleMeta: {
     fontSize: 12,
@@ -541,56 +605,93 @@ export default function Informativos() {
       />
 
       <TrCard className={classes.filtersCard} elevation={0}>
-        <div className={classes.filtersRow}>
-          <FilterListOutlinedIcon style={{ color: "rgba(15,23,42,0.55)" }} />
-          <TextField
-            className={classes.filterField}
-            variant="outlined"
-            size="small"
-            type="date"
-            label="Data inicial"
-            InputLabelProps={{ shrink: true }}
-            value={dateFrom}
-            onChange={(e) => setDateFrom(e.target.value)}
-          />
-          <TextField
-            className={classes.filterField}
-            variant="outlined"
-            size="small"
-            type="date"
-            label="Data final"
-            InputLabelProps={{ shrink: true }}
-            value={dateTo}
-            onChange={(e) => setDateTo(e.target.value)}
-          />
-
-          {isAdmin ? (
-            <FormControl variant="outlined" size="small" className={classes.filterField} disabled={usersLoading}>
-              <InputLabel id="chat-interno-target-user">Usuário</InputLabel>
-              <Select
-                labelId="chat-interno-target-user"
-                value={targetUserId}
-                onChange={(e) => setTargetUserId(String(e.target.value))}
-                label="Usuário"
-              >
-                <MenuItem value={""}>Todos</MenuItem>
-                {users.map((u) => (
-                  <MenuItem key={u.id} value={String(u.id)}>
-                    {u.name ? `${u.name} (#${u.id})` : `Usuário #${u.id}`}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          ) : null}
-
-          <TrButton
-            onClick={() => fetchAnnouncements()}
-            style={{ borderRadius: 12, fontWeight: 900, textTransform: "none" }}
-            size="small"
-          >
+        <div className={classes.filtersTop}>
+          <div className={classes.filtersTitle}>
+            <FilterListOutlinedIcon style={{ color: "rgba(15,23,42,0.55)" }} />
+            <span>Filtros</span>
+          </div>
+          <TrButton className={classes.filtersApplyBtn} onClick={() => fetchAnnouncements()} size="small">
             Aplicar
           </TrButton>
         </div>
+
+        <Grid container spacing={1} style={{ marginTop: 10 }}>
+          <Grid item xs={12} sm={6} md={3}>
+            <TextField
+              fullWidth
+              className={classes.filterField}
+              variant="outlined"
+              size="small"
+              type="date"
+              label="Data inicial"
+              InputLabelProps={{ shrink: true }}
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+            />
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <TextField
+              fullWidth
+              className={classes.filterField}
+              variant="outlined"
+              size="small"
+              type="date"
+              label="Data final"
+              InputLabelProps={{ shrink: true }}
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+            />
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            {isAdmin ? (
+              <FormControl fullWidth variant="outlined" size="small" className={classes.filterField} disabled={usersLoading}>
+                <InputLabel id="chat-interno-target-user">Usuário</InputLabel>
+                <Select
+                  labelId="chat-interno-target-user"
+                  value={targetUserId}
+                  onChange={(e) => setTargetUserId(String(e.target.value))}
+                  label="Usuário"
+                >
+                  <MenuItem value={""}>Todos</MenuItem>
+                  {users.map((u) => (
+                    <MenuItem key={u.id} value={String(u.id)}>
+                      {u.name ? `${u.name} (#${u.id})` : `Usuário #${u.id}`}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            ) : (
+              <TextField
+                fullWidth
+                className={classes.filterField}
+                variant="outlined"
+                size="small"
+                label="Usuário"
+                value="Meus comunicados"
+                InputLabelProps={{ shrink: true }}
+                disabled
+              />
+            )}
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <TextField
+              fullWidth
+              className={classes.filterField}
+              variant="outlined"
+              size="small"
+              label="Busca"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchOutlinedIcon />
+                  </InputAdornment>
+                ),
+              }}
+            />
+          </Grid>
+        </Grid>
 
         <div className={classes.chipsRow}>
           <Chip
@@ -625,28 +726,20 @@ export default function Informativos() {
         <Grid container spacing={0}>
           <Grid item xs={12} md={4} className={classes.left}>
             <div className={classes.listHeader}>
-              <TextField
-                fullWidth
-                variant="outlined"
-                size="small"
-                placeholder="Buscar informativo..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <SearchOutlinedIcon />
-                    </InputAdornment>
-                  ),
-                  endAdornment: isAdmin ? (
-                    <InputAdornment position="end">
-                      <IconButton onClick={handleOpenCreate} size="small" title="Novo informativo">
-                        <AddOutlinedIcon />
-                      </IconButton>
-                    </InputAdornment>
-                  ) : null,
-                }}
-              />
+              <Box display="flex" alignItems="center" gridGap={10}>
+                <Typography style={{ fontWeight: 900, color: "rgba(15,23,42,0.82)" }}>Conversas</Typography>
+                <Box flex={1} />
+                {isAdmin ? (
+                  <TrButton
+                    size="small"
+                    onClick={handleOpenCreate}
+                    startIcon={<AddOutlinedIcon />}
+                    style={{ borderRadius: 12, fontWeight: 900, textTransform: "none" }}
+                  >
+                    Novo
+                  </TrButton>
+                ) : null}
+              </Box>
             </div>
 
             {loading ? (
@@ -669,63 +762,71 @@ export default function Informativos() {
                   className={`${classes.listItemCard} ${selected?.id === a.id ? classes.listItemCardActive : ""}`}
                   onClick={() => setSelected(a)}
                 >
-                  <Box display="flex" alignItems="center" justifyContent="space-between" gridGap={10}>
-                    <Typography style={{ fontWeight: 900, fontSize: 13 }} noWrap>
-                      {a.title}
+                  <div className={classes.listCardInner}>
+                    <Box display="flex" alignItems="center" justifyContent="space-between" gridGap={10}>
+                      <Typography style={{ fontWeight: 900, fontSize: 13 }} noWrap>
+                        {a.title}
+                      </Typography>
+                      <Chip
+                        size="small"
+                        label={a.priority === 1 ? "Alta" : a.priority === 2 ? "Média" : "Baixa"}
+                        className={classes.softChip}
+                        style={{
+                          background:
+                            a.priority === 1 ? "rgba(239,68,68,0.12)" : a.priority === 2 ? "rgba(245,158,11,0.14)" : "rgba(15,23,42,0.08)",
+                        }}
+                      />
+                    </Box>
+
+                    <Typography style={{ marginTop: 6, fontSize: 12, color: "rgba(15, 23, 42, 0.62)" }} noWrap>
+                      {a.text}
                     </Typography>
-                    <Chip
-                      size="small"
-                      label={a.priority === 1 ? "Alta" : a.priority === 2 ? "Média" : "Baixa"}
-                      style={{
-                        fontWeight: 900,
-                        background:
-                          a.priority === 1 ? "rgba(239,68,68,0.12)" : a.priority === 2 ? "rgba(245,158,11,0.14)" : "rgba(15,23,42,0.08)",
-                      }}
-                    />
-                  </Box>
-                  <Typography style={{ marginTop: 6, fontSize: 12, color: "rgba(15, 23, 42, 0.62)" }} noWrap>
-                    {a.text}
-                  </Typography>
-                  <Box display="flex" alignItems="center" justifyContent="space-between" style={{ marginTop: 10 }}>
-                    <Box display="flex" alignItems="center" gridGap={8} style={{ flexWrap: "wrap" }}>
-                      <Chip size="small" label={`De: ${a.senderName || "Sistema"}`} />
-                      <Chip size="small" label={`Para: ${a.sendToAll ? "Todos" : (a.targetUserName || `Usuário #${a.targetUserId}`)}`} />
-                    </Box>
-                    <Box display="flex" alignItems="center" gridGap={8}>
-                      {Number(a.attachmentsCount || 0) > 0 ? (
-                        <span className={classes.pill} title="Anexos">
-                          <AttachFileOutlinedIcon style={{ fontSize: 16 }} />
-                          {Number(a.attachmentsCount)}
-                        </span>
-                      ) : null}
-                      {Number(a.repliesCount || 0) > 0 ? (
-                        <span className={classes.pill} title="Mensagens">
-                          <ChatBubbleOutlineOutlinedIcon style={{ fontSize: 16 }} />
-                          {Number(a.repliesCount)}
-                        </span>
-                      ) : null}
-                      {a.lastReplyAt ? (
-                        <span
-                          className={classes.pill}
-                          title={`Última atividade: ${moment(a.lastReplyAt).format("DD/MM/YYYY HH:mm")}`}
-                        >
-                          <AccessTimeOutlinedIcon style={{ fontSize: 16 }} />
-                          {moment(a.lastReplyAt).fromNow()}
-                        </span>
-                      ) : null}
-                    </Box>
-                  </Box>
-                  <Box display="flex" alignItems="center" gridGap={8} style={{ marginTop: 10 }}>
-                    <Chip size="small" label={a.allowReply ? "Resposta: sim" : "Resposta: não"} />
-                    {isAdmin ? (
-                      <Chip size="small" label={a.status ? "Ativo" : "Inativo"} />
-                    ) : null}
-                    {a.archived ? (
-                      <Chip size="small" label="Arquivado" style={{ fontWeight: 900, background: "rgba(16,185,129,0.12)" }} />
-                    ) : (
-                      <Chip size="small" label="Aberto" style={{ fontWeight: 900, background: "rgba(59,130,246,0.10)" }} />
-                    )}
-                  </Box>
+
+                    <div className={classes.listMetaRow}>
+                      <div className={classes.listChipsLeft}>
+                        <Chip size="small" className={classes.softChip} label={`De: ${a.senderName || "Sistema"}`} />
+                        <Chip
+                          size="small"
+                          className={classes.softChip}
+                          label={`Para: ${a.sendToAll ? "Todos" : (a.targetUserName || `Usuário #${a.targetUserId}`)}`}
+                        />
+                        <Chip
+                          size="small"
+                          className={classes.softChip}
+                          icon={a.archived ? <DoneAllOutlinedIcon /> : <ForumOutlinedIcon />}
+                          label={a.archived ? "Arquivado" : "Aberto"}
+                          style={{
+                            background: a.archived ? "rgba(16,185,129,0.12)" : "rgba(59,130,246,0.10)",
+                            borderColor: a.archived ? "rgba(16,185,129,0.24)" : "rgba(59,130,246,0.20)",
+                          }}
+                        />
+                      </div>
+
+                      <div className={classes.listStatsRight}>
+                        {Number(a.attachmentsCount || 0) > 0 ? (
+                          <span className={classes.pill} title="Anexos">
+                            <AttachFileOutlinedIcon style={{ fontSize: 16 }} />
+                            {Number(a.attachmentsCount)}
+                          </span>
+                        ) : null}
+                        {Number(a.repliesCount || 0) > 0 ? (
+                          <span className={classes.pill} title="Mensagens">
+                            <ChatBubbleOutlineOutlinedIcon style={{ fontSize: 16 }} />
+                            {Number(a.repliesCount)}
+                          </span>
+                        ) : null}
+                        {a.lastReplyAt ? (
+                          <span
+                            className={classes.pill}
+                            title={`Última atividade: ${moment(a.lastReplyAt).format("DD/MM/YYYY HH:mm")}`}
+                          >
+                            <AccessTimeOutlinedIcon style={{ fontSize: 16 }} />
+                            {moment(a.lastReplyAt).fromNow()}
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
                 </div>
               ))
             )}
@@ -838,18 +939,17 @@ export default function Informativos() {
                       const mine = Number(r.userId || 0) === currentUserId;
                       return (
                         <div
-                          className={classes.bubble}
+                          className={`${classes.bubble} ${mine ? classes.bubbleMine : ""}`}
                           key={r.id}
                           style={{
                             marginLeft: mine ? "auto" : undefined,
                             maxWidth: "92%",
-                            background: mine ? "rgba(59,130,246,0.08)" : "#fff",
                           }}
                         >
-                          <Typography style={{ fontWeight: 900, fontSize: 13 }}>
+                          <Typography className={classes.bubbleName}>
                             {mine ? "Você" : (r.userName || "Usuário")}
                           </Typography>
-                          <Typography style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>{r.text}</Typography>
+                          <Typography className={classes.bubbleText}>{r.text}</Typography>
                           {renderReplyMedia(r)}
                           <div className={classes.bubbleMeta}>
                             {r.createdAt ? moment(r.createdAt).format("DD/MM/YYYY HH:mm") : ""}
