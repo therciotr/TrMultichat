@@ -117,6 +117,33 @@ const useStyles = makeStyles((theme) => ({
   listItemActive: {
     background: "rgba(59, 130, 246, 0.06)",
   },
+  listItemCard: {
+    borderRadius: 14,
+    border: "1px solid rgba(15, 23, 42, 0.08)",
+    boxShadow: "0 1px 2px rgba(15, 23, 42, 0.06)",
+    background: "#fff",
+    margin: theme.spacing(1.25),
+    marginBottom: 0,
+    transition: "transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease",
+    "&:hover": {
+      transform: "translateY(-1px)",
+      boxShadow: "0 12px 22px rgba(15, 23, 42, 0.10)",
+      borderColor: "rgba(15, 23, 42, 0.14)",
+    },
+  },
+  listItemCardActive: {
+    borderColor: "rgba(59, 130, 246, 0.35)",
+    boxShadow: "0 0 0 2px rgba(59, 130, 246, 0.18), 0 1px 2px rgba(15, 23, 42, 0.06)",
+  },
+  emptyState: {
+    padding: theme.spacing(3),
+    margin: theme.spacing(2),
+    borderRadius: 14,
+    border: "1px dashed rgba(15, 23, 42, 0.18)",
+    background: "rgba(255,255,255,0.85)",
+    textAlign: "center",
+    color: "rgba(15, 23, 42, 0.70)",
+  },
   detailHeader: {
     padding: theme.spacing(2),
     borderBottom: "1px solid rgba(15, 23, 42, 0.08)",
@@ -223,29 +250,48 @@ export default function Informativos() {
 
   const currentUserId = Number(user?.id || 0);
 
-  const fetchAnnouncements = async () => {
+  const fetchAnnouncements = async (opts = {}) => {
     setLoading(true);
     try {
+      const effectiveArchived =
+        opts.archivedFilter !== undefined ? opts.archivedFilter : archivedFilter;
+      const effectiveTargetUserId =
+        opts.targetUserId !== undefined ? opts.targetUserId : targetUserId;
+      const effectiveDateFrom = opts.dateFrom !== undefined ? opts.dateFrom : dateFrom;
+      const effectiveDateTo = opts.dateTo !== undefined ? opts.dateTo : dateTo;
+
       const params = {
         pageNumber: 1,
         searchParam: search,
-        archived: archivedFilter === "open" ? "false" : archivedFilter === "archived" ? "true" : "all",
+        archived:
+          effectiveArchived === "open"
+            ? "false"
+            : effectiveArchived === "archived"
+            ? "true"
+            : "all",
       };
-      if (isAdmin && targetUserId) params.targetUserId = Number(targetUserId);
-      if (dateFrom) params.dateFrom = dateFrom;
-      if (dateTo) params.dateTo = dateTo;
+      if (isAdmin && effectiveTargetUserId) params.targetUserId = Number(effectiveTargetUserId);
+      if (effectiveDateFrom) params.dateFrom = effectiveDateFrom;
+      if (effectiveDateTo) params.dateTo = effectiveDateTo;
 
       const { data } = await api.get("/announcements/", { params });
       const list = Array.isArray(data?.records) ? data.records : [];
       setAnnouncements(list);
-      if (!selected && list.length) setSelected(list[0]);
-      if (selected?.id) {
-        const still = list.find((a) => Number(a.id) === Number(selected.id));
-        if (still) setSelected(still);
+      const desiredSelectedId = opts.selectedId !== undefined ? opts.selectedId : selected?.id;
+      if (desiredSelectedId) {
+        const still = list.find((a) => Number(a.id) === Number(desiredSelectedId));
+        if (still) {
+          setSelected(still);
+        } else {
+          setSelected(list[0] || null);
+        }
+      } else {
+        setSelected(list[0] || null);
       }
     } catch (e) {
       toastError(e);
       setAnnouncements([]);
+      setSelected(null);
     } finally {
       setLoading(false);
     }
@@ -436,7 +482,14 @@ export default function Informativos() {
     if (!selected?.id) return;
     try {
       await api.put(`/announcements/${selected.id}`, { archived: Boolean(nextArchived) });
-      await fetchAnnouncements();
+      // If user finalized while viewing "Abertos", jump to "Arquivados" instantly and keep context
+      if (Boolean(nextArchived)) {
+        setArchivedFilter("archived");
+        await fetchAnnouncements({ archivedFilter: "archived", selectedId: selected.id });
+      } else {
+        setArchivedFilter("open");
+        await fetchAnnouncements({ archivedFilter: "open", selectedId: selected.id });
+      }
     } catch (e) {
       toastError(e);
     }
@@ -603,12 +656,17 @@ export default function Informativos() {
                 <Skeleton variant="rect" height={72} style={{ borderRadius: 14 }} />
               </div>
             ) : announcements.length === 0 ? (
-              <div style={{ padding: 16, color: "rgba(15, 23, 42, 0.65)" }}>Nenhum informativo encontrado.</div>
+              <div className={classes.emptyState}>
+                <Typography style={{ fontWeight: 900, fontSize: 14 }}>Nenhuma conversa aqui</Typography>
+                <Typography style={{ marginTop: 6, fontSize: 13, color: "rgba(15,23,42,0.62)" }}>
+                  Ajuste os filtros acima ou crie um novo informativo.
+                </Typography>
+              </div>
             ) : (
               announcements.map((a) => (
                 <div
                   key={a.id}
-                  className={`${classes.listItem} ${selected?.id === a.id ? classes.listItemActive : ""}`}
+                  className={`${classes.listItemCard} ${selected?.id === a.id ? classes.listItemCardActive : ""}`}
                   onClick={() => setSelected(a)}
                 >
                   <Box display="flex" alignItems="center" justifyContent="space-between" gridGap={10}>
