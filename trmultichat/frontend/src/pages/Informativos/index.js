@@ -12,6 +12,10 @@ import Divider from "@material-ui/core/Divider";
 import Chip from "@material-ui/core/Chip";
 import Box from "@material-ui/core/Box";
 import Skeleton from "@material-ui/lab/Skeleton";
+import MenuItem from "@material-ui/core/MenuItem";
+import FormControl from "@material-ui/core/FormControl";
+import Select from "@material-ui/core/Select";
+import InputLabel from "@material-ui/core/InputLabel";
 
 import SearchOutlinedIcon from "@material-ui/icons/SearchOutlined";
 import ForumOutlinedIcon from "@material-ui/icons/ForumOutlined";
@@ -26,11 +30,14 @@ import ChatBubbleOutlineOutlinedIcon from "@material-ui/icons/ChatBubbleOutlineO
 import AccessTimeOutlinedIcon from "@material-ui/icons/AccessTimeOutlined";
 import CloseOutlinedIcon from "@material-ui/icons/CloseOutlined";
 import ZoomInOutlinedIcon from "@material-ui/icons/ZoomInOutlined";
+import DoneAllOutlinedIcon from "@material-ui/icons/DoneAllOutlined";
+import ReplayOutlinedIcon from "@material-ui/icons/ReplayOutlined";
+import FilterListOutlinedIcon from "@material-ui/icons/FilterListOutlined";
 
 import api from "../../services/api";
 import toastError from "../../errors/toastError";
 import { AuthContext } from "../../context/Auth/AuthContext";
-import { TrSectionTitle, TrButton } from "../../components/ui";
+import { TrSectionTitle, TrButton, TrCard } from "../../components/ui";
 import { socketConnection } from "../../services/socket";
 import moment from "moment";
 import AnnouncementModal from "../../components/AnnouncementModal";
@@ -42,6 +49,40 @@ import DialogTitle from "@material-ui/core/DialogTitle";
 const useStyles = makeStyles((theme) => ({
   page: {
     padding: theme.spacing(2),
+  },
+  filtersCard: {
+    borderRadius: 16,
+    border: "1px solid rgba(15, 23, 42, 0.10)",
+    boxShadow: "0 10px 30px rgba(15, 23, 42, 0.08)",
+    background: "rgba(255,255,255,0.88)",
+    backdropFilter: "blur(8px)",
+    padding: theme.spacing(1.25),
+    marginBottom: theme.spacing(2),
+  },
+  filtersRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: theme.spacing(1),
+    flexWrap: "wrap",
+  },
+  filterField: {
+    minWidth: 170,
+    "& .MuiOutlinedInput-root": {
+      borderRadius: 12,
+      backgroundColor: "#fff",
+    },
+  },
+  chipsRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    flexWrap: "wrap",
+    marginTop: theme.spacing(1),
+  },
+  chipActive: {
+    background: "rgba(59, 130, 246, 0.12)",
+    borderColor: "rgba(59, 130, 246, 0.35)",
+    fontWeight: 900,
   },
   shell: {
     borderRadius: 16,
@@ -80,6 +121,13 @@ const useStyles = makeStyles((theme) => ({
     padding: theme.spacing(2),
     borderBottom: "1px solid rgba(15, 23, 42, 0.08)",
     background: "rgba(15, 23, 42, 0.02)",
+  },
+  headerActions: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    flexWrap: "wrap",
+    justifyContent: "flex-end",
   },
   detailBody: {
     padding: theme.spacing(2),
@@ -159,6 +207,14 @@ export default function Informativos() {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewItem, setPreviewItem] = useState(null);
 
+  // Premium management filters
+  const [archivedFilter, setArchivedFilter] = useState("open"); // open | archived | all
+  const [targetUserId, setTargetUserId] = useState(""); // admin: filter by recipient
+  const [dateFrom, setDateFrom] = useState(""); // YYYY-MM-DD
+  const [dateTo, setDateTo] = useState(""); // YYYY-MM-DD
+  const [users, setUsers] = useState([]);
+  const [usersLoading, setUsersLoading] = useState(false);
+
   const canReply = useMemo(() => {
     if (!selected) return false;
     if (isAdmin) return true; // admin can always reply as internal note
@@ -170,7 +226,16 @@ export default function Informativos() {
   const fetchAnnouncements = async () => {
     setLoading(true);
     try {
-      const { data } = await api.get("/announcements/", { params: { pageNumber: 1, searchParam: search } });
+      const params = {
+        pageNumber: 1,
+        searchParam: search,
+        archived: archivedFilter === "open" ? "false" : archivedFilter === "archived" ? "true" : "all",
+      };
+      if (isAdmin && targetUserId) params.targetUserId = Number(targetUserId);
+      if (dateFrom) params.dateFrom = dateFrom;
+      if (dateTo) params.dateTo = dateTo;
+
+      const { data } = await api.get("/announcements/", { params });
       const list = Array.isArray(data?.records) ? data.records : [];
       setAnnouncements(list);
       if (!selected && list.length) setSelected(list[0]);
@@ -208,7 +273,23 @@ export default function Informativos() {
     const t = setTimeout(() => fetchAnnouncements(), 350);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search]);
+  }, [search, archivedFilter, targetUserId, dateFrom, dateTo]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    (async () => {
+      setUsersLoading(true);
+      try {
+        const { data } = await api.get("/users", { params: { searchParam: "", pageNumber: 1 } });
+        const list = Array.isArray(data?.users) ? data.users : Array.isArray(data) ? data : [];
+        setUsers(list);
+      } catch {
+        setUsers([]);
+      } finally {
+        setUsersLoading(false);
+      }
+    })();
+  }, [isAdmin]);
 
   useEffect(() => {
     if (selected?.id) fetchReplies(selected.id);
@@ -351,6 +432,16 @@ export default function Informativos() {
     }
   };
 
+  const handleToggleArchived = async (nextArchived) => {
+    if (!selected?.id) return;
+    try {
+      await api.put(`/announcements/${selected.id}`, { archived: Boolean(nextArchived) });
+      await fetchAnnouncements();
+    } catch (e) {
+      toastError(e);
+    }
+  };
+
   return (
     <div className={classes.page}>
       <Dialog open={previewOpen} onClose={() => setPreviewOpen(false)} maxWidth="md" fullWidth>
@@ -395,6 +486,87 @@ export default function Informativos() {
         subtitle="Acompanhe comunicados e converse diretamente pelo painel."
         icon={<NotificationsOutlinedIcon />}
       />
+
+      <TrCard className={classes.filtersCard} elevation={0}>
+        <div className={classes.filtersRow}>
+          <FilterListOutlinedIcon style={{ color: "rgba(15,23,42,0.55)" }} />
+          <TextField
+            className={classes.filterField}
+            variant="outlined"
+            size="small"
+            type="date"
+            label="Data inicial"
+            InputLabelProps={{ shrink: true }}
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+          />
+          <TextField
+            className={classes.filterField}
+            variant="outlined"
+            size="small"
+            type="date"
+            label="Data final"
+            InputLabelProps={{ shrink: true }}
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+          />
+
+          {isAdmin ? (
+            <FormControl variant="outlined" size="small" className={classes.filterField} disabled={usersLoading}>
+              <InputLabel id="chat-interno-target-user">Usuário</InputLabel>
+              <Select
+                labelId="chat-interno-target-user"
+                value={targetUserId}
+                onChange={(e) => setTargetUserId(String(e.target.value))}
+                label="Usuário"
+              >
+                <MenuItem value={""}>Todos</MenuItem>
+                {users.map((u) => (
+                  <MenuItem key={u.id} value={String(u.id)}>
+                    {u.name ? `${u.name} (#${u.id})` : `Usuário #${u.id}`}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          ) : null}
+
+          <TrButton
+            onClick={() => fetchAnnouncements()}
+            style={{ borderRadius: 12, fontWeight: 900, textTransform: "none" }}
+            size="small"
+          >
+            Aplicar
+          </TrButton>
+        </div>
+
+        <div className={classes.chipsRow}>
+          <Chip
+            variant="outlined"
+            clickable
+            className={archivedFilter === "open" ? classes.chipActive : ""}
+            icon={<ForumOutlinedIcon />}
+            label="Abertos"
+            onClick={() => setArchivedFilter("open")}
+          />
+          <Chip
+            variant="outlined"
+            clickable
+            className={archivedFilter === "archived" ? classes.chipActive : ""}
+            icon={<DoneAllOutlinedIcon />}
+            label="Arquivados"
+            onClick={() => setArchivedFilter("archived")}
+          />
+          {isAdmin ? (
+            <Chip
+              variant="outlined"
+              clickable
+              className={archivedFilter === "all" ? classes.chipActive : ""}
+              label="Todos"
+              onClick={() => setArchivedFilter("all")}
+            />
+          ) : null}
+        </div>
+      </TrCard>
 
       <Paper className={classes.shell} elevation={0}>
         <Grid container spacing={0}>
@@ -490,6 +662,11 @@ export default function Informativos() {
                     {isAdmin ? (
                       <Chip size="small" label={a.status ? "Ativo" : "Inativo"} />
                     ) : null}
+                    {a.archived ? (
+                      <Chip size="small" label="Arquivado" style={{ fontWeight: 900, background: "rgba(16,185,129,0.12)" }} />
+                    ) : (
+                      <Chip size="small" label="Aberto" style={{ fontWeight: 900, background: "rgba(59,130,246,0.10)" }} />
+                    )}
                   </Box>
                 </div>
               ))
@@ -511,12 +688,33 @@ export default function Informativos() {
                       <Box display="flex" alignItems="center" gridGap={8} style={{ marginTop: 10, flexWrap: "wrap" }}>
                         <Chip size="small" label={`De: ${selected.senderName || "Sistema"}`} />
                         <Chip size="small" label={`Para: ${selected.sendToAll ? "Todos" : (selected.targetUserName || `Usuário #${selected.targetUserId}`)}`} />
+                        <Chip
+                          size="small"
+                          label={selected.archived ? "Arquivado" : "Aberto"}
+                          style={{
+                            fontWeight: 900,
+                            background: selected.archived ? "rgba(16,185,129,0.12)" : "rgba(59,130,246,0.10)",
+                          }}
+                        />
                       </Box>
                     </div>
-                    <Box display="flex" alignItems="center" gridGap={8}>
+                    <div className={classes.headerActions}>
                       <Chip icon={<ForumOutlinedIcon />} label="Conversa" />
                       {isAdmin ? (
                         <>
+                          <TrButton
+                            size="small"
+                            onClick={() => handleToggleArchived(!Boolean(selected.archived))}
+                            startIcon={selected.archived ? <ReplayOutlinedIcon /> : <DoneAllOutlinedIcon />}
+                            style={{
+                              borderRadius: 12,
+                              fontWeight: 900,
+                              textTransform: "none",
+                              background: selected.archived ? "rgba(59,130,246,0.08)" : "rgba(16,185,129,0.12)",
+                            }}
+                          >
+                            {selected.archived ? "Reabrir" : "Finalizar"}
+                          </TrButton>
                           <IconButton size="small" title="Editar" onClick={() => handleOpenEdit(selected.id)}>
                             <EditOutlinedIcon />
                           </IconButton>
@@ -525,7 +723,7 @@ export default function Informativos() {
                           </IconButton>
                         </>
                       ) : null}
-                    </Box>
+                    </div>
                   </Box>
                   <Divider style={{ marginTop: 12 }} />
                   <Typography style={{ marginTop: 12, color: "rgba(15, 23, 42, 0.82)" }}>{selected.text}</Typography>

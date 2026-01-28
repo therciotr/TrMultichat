@@ -82,6 +82,47 @@ async function ensureAnnouncementsSchema() {
     );
   } catch {}
 
+  // Archive / finalize support (premium)
+  try {
+    await pgQuery(
+      `ALTER TABLE "Announcements" ADD COLUMN IF NOT EXISTS "archived" boolean NOT NULL DEFAULT false`,
+      []
+    );
+  } catch {}
+  try {
+    await pgQuery(
+      `ALTER TABLE "Announcements" ADD COLUMN IF NOT EXISTS "archivedAt" timestamp with time zone NULL`,
+      []
+    );
+  } catch {}
+  try {
+    await pgQuery(
+      `ALTER TABLE "Announcements" ADD COLUMN IF NOT EXISTS "archivedById" integer NULL`,
+      []
+    );
+  } catch {}
+
+  // FK for archivedById
+  try {
+    await pgQuery(
+      `DO $$
+       BEGIN
+         IF NOT EXISTS (
+           SELECT 1 FROM information_schema.table_constraints
+           WHERE constraint_type = 'FOREIGN KEY'
+             AND table_name = 'Announcements'
+             AND constraint_name = 'Announcements_archivedById_fkey'
+         ) THEN
+           ALTER TABLE "Announcements"
+           ADD CONSTRAINT "Announcements_archivedById_fkey"
+           FOREIGN KEY ("archivedById") REFERENCES "Users"(id)
+           ON UPDATE CASCADE ON DELETE SET NULL;
+         END IF;
+       END$$;`,
+      []
+    );
+  } catch {}
+
   // FK to Users (best-effort; ignore if constraint exists or fails)
   try {
     await pgQuery(
@@ -256,6 +297,13 @@ router.get("/", async (req, res) => {
   const requester = await getRequester(req);
   const isAdmin = isAdminLike(requester);
 
+  const archivedParamRaw = String(req.query.archived || "").toLowerCase(); // "true" | "false" | "all" | ""
+  const includeArchived = ["1", "true", "yes"].includes(String(req.query.includeArchived || "").toLowerCase());
+  const filterTargetUserId = Number(req.query.targetUserId || 0);
+  const filterSenderUserId = Number(req.query.senderUserId || 0);
+  const dateFromRaw = String(req.query.dateFrom || "").trim();
+  const dateToRaw = String(req.query.dateTo || "").trim();
+
   // Visibility:
   // - admin: all announcements in company (including inactive)
   // - user: only active announcements where sendToAll=true or targetUserId=userId
@@ -266,6 +314,52 @@ router.get("/", async (req, res) => {
     whereParts.push(`COALESCE(a.status, true) = true`);
     params.push(userId);
     whereParts.push(`(COALESCE(a."sendToAll", true) = true OR a."targetUserId" = $${params.length})`);
+  }
+
+  // Archive filter (default: show only open/unarchived)
+  const archivedWhere = (() => {
+    if (archivedParamRaw === "all") return undefined;
+    if (archivedParamRaw === "true" || archivedParamRaw === "1") return true;
+    if (archivedParamRaw === "false" || archivedParamRaw === "0") return false;
+    // default: open only for everyone, unless user explicitly asked to include archived
+    if (!isAdmin) return includeArchived ? undefined : false;
+    return false;
+  })();
+  if (archivedWhere !== undefined) {
+    params.push(Boolean(archivedWhere));
+    whereParts.push(`COALESCE(a."archived", false) = $${params.length}`);
+  }
+
+  // Admin filters: by recipient/sender
+  if (isAdmin && filterTargetUserId) {
+    params.push(filterTargetUserId);
+    whereParts.push(`a."targetUserId" = $${params.length}`);
+  }
+  if (isAdmin && filterSenderUserId) {
+    params.push(filterSenderUserId);
+    whereParts.push(`a."userId" = $${params.length}`);
+  }
+
+  // Date range filter based on activity (last reply or updated/created)
+  const parseDate = (v: string): Date | null => {
+    if (!v) return null;
+    const d = new Date(v);
+    return Number.isFinite(d.getTime()) ? d : null;
+  };
+  const dateFrom = parseDate(dateFromRaw);
+  const dateTo = parseDate(dateToRaw);
+  if (dateFrom) {
+    params.push(dateFrom.toISOString());
+    whereParts.push(`COALESCE(last."lastReplyAt", a."updatedAt", a."createdAt") >= $${params.length}`);
+  }
+  if (dateTo) {
+    // inclusive end-of-day if date-only
+    let d = dateTo;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateToRaw)) {
+      d = new Date(`${dateToRaw}T23:59:59.999Z`);
+    }
+    params.push(d.toISOString());
+    whereParts.push(`COALESCE(last."lastReplyAt", a."updatedAt", a."createdAt") <= $${params.length}`);
   }
 
   if (searchParam) {
@@ -288,6 +382,10 @@ router.get("/", async (req, res) => {
         a."targetUserId",
         tu.name as "targetUserName",
         COALESCE(a."allowReply", false) as "allowReply",
+        COALESCE(a."archived", false) as "archived",
+        a."archivedAt",
+        a."archivedById",
+        abu.name as "archivedByName",
         COALESCE(stats."repliesCount", 0)::int as "repliesCount",
         COALESCE(stats."attachmentsCount", 0)::int as "attachmentsCount",
         last."lastReplyAt" as "lastReplyAt",
@@ -298,6 +396,7 @@ router.get("/", async (req, res) => {
       FROM "Announcements" a
       LEFT JOIN "Users" tu ON tu.id = a."targetUserId"
       LEFT JOIN "Users" su ON su.id = a."userId"
+      LEFT JOIN "Users" abu ON abu.id = a."archivedById"
       LEFT JOIN LATERAL (
         SELECT
           COUNT(1)::int as "repliesCount",
@@ -350,10 +449,15 @@ router.get("/:id", async (req, res) => {
         COALESCE(a."sendToAll", true) as "sendToAll",
         a."targetUserId",
         tu.name as "targetUserName",
-        COALESCE(a."allowReply", false) as "allowReply"
+        COALESCE(a."allowReply", false) as "allowReply",
+        COALESCE(a."archived", false) as "archived",
+        a."archivedAt",
+        a."archivedById",
+        abu.name as "archivedByName"
       FROM "Announcements" a
       LEFT JOIN "Users" tu ON tu.id = a."targetUserId"
       LEFT JOIN "Users" su ON su.id = a."userId"
+      LEFT JOIN "Users" abu ON abu.id = a."archivedById"
       WHERE a.id = $1 AND a."companyId" = $2
       LIMIT 1
     `,
@@ -449,6 +553,7 @@ router.put("/:id", async (req, res) => {
   const status = body.status !== undefined ? (body.status === false ? false : true) : undefined;
   const sendToAll = body.sendToAll !== undefined ? (body.sendToAll === false ? false : true) : undefined;
   const allowReply = body.allowReply !== undefined ? Boolean(body.allowReply) : undefined;
+  const archived = body.archived !== undefined ? Boolean(body.archived) : undefined;
   const targetUserIdRaw = body.targetUserId !== undefined ? body.targetUserId : undefined;
 
   // current row
@@ -471,6 +576,9 @@ router.put("/:id", async (req, res) => {
   }
 
   const now = new Date();
+  const nextArchived = archived !== undefined ? archived : Boolean(current.archived ?? false);
+  const nextArchivedAt = nextArchived ? now : null;
+  const nextArchivedById = nextArchived ? requester.id : null;
   const updated = await pgQuery<any>(
     `
       UPDATE "Announcements"
@@ -482,11 +590,28 @@ router.put("/:id", async (req, res) => {
         "sendToAll" = COALESCE($5, "sendToAll"),
         "targetUserId" = $6,
         "allowReply" = COALESCE($7, "allowReply"),
-        "updatedAt" = $8
-      WHERE id = $9 AND "companyId" = $10
+        "archived" = $8,
+        "archivedAt" = $9,
+        "archivedById" = $10,
+        "updatedAt" = $11
+      WHERE id = $12 AND "companyId" = $13
       RETURNING id
     `,
-    [priority ?? null, title ?? null, text ?? null, status ?? null, sendToAll ?? null, nextTargetUserId, allowReply ?? null, now, id, companyId]
+    [
+      priority ?? null,
+      title ?? null,
+      text ?? null,
+      status ?? null,
+      sendToAll ?? null,
+      nextTargetUserId,
+      allowReply ?? null,
+      nextArchived,
+      nextArchivedAt,
+      nextArchivedById,
+      now,
+      id,
+      companyId
+    ]
   );
   const updatedId = Number(updated?.[0]?.id || 0);
   const full = await pgQuery<any>(
@@ -497,10 +622,15 @@ router.put("/:id", async (req, res) => {
         a."userId", su.name as "senderName",
         COALESCE(a."sendToAll", true) as "sendToAll",
         a."targetUserId", tu.name as "targetUserName",
-        COALESCE(a."allowReply", false) as "allowReply"
+        COALESCE(a."allowReply", false) as "allowReply",
+        COALESCE(a."archived", false) as "archived",
+        a."archivedAt",
+        a."archivedById",
+        abu.name as "archivedByName"
       FROM "Announcements" a
       LEFT JOIN "Users" tu ON tu.id = a."targetUserId"
       LEFT JOIN "Users" su ON su.id = a."userId"
+      LEFT JOIN "Users" abu ON abu.id = a."archivedById"
       WHERE a.id = $1 AND a."companyId" = $2
       LIMIT 1
     `,
