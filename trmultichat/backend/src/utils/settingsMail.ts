@@ -1,4 +1,5 @@
 import { getLegacyModel } from "./legacyModel";
+import { pgQuery } from "./pgClient";
 
 export type CompanyMailSettings = {
   mail_host: string | null;
@@ -22,15 +23,43 @@ export async function getCompanyMailSettings(
   companyId: number
 ): Promise<CompanyMailSettings> {
   const Setting = getLegacyModel("Setting");
+  // SQL fallback if legacy model is unavailable
   if (!Setting || typeof Setting.findAll !== "function") {
-    return {
-      mail_host: null,
-      mail_port: null,
-      mail_user: null,
-      mail_from: null,
-      mail_secure: null,
-      hasPassword: false
-    };
+    try {
+      const rows = await pgQuery<any>(
+        `SELECT key, value FROM "Settings" WHERE "companyId" = $1 AND key = ANY($2::text[])`,
+        [companyId, ["mail_host", "mail_port", "mail_user", "mail_from", "mail_secure", "mail_pass"]]
+      );
+      const map = new Map<string, string>();
+      for (const r of rows || []) {
+        map.set(String(r.key), String(r.value ?? ""));
+      }
+      const mail_host = map.get("mail_host") || null;
+      const mail_port = map.get("mail_port") ? Number(map.get("mail_port")) : null;
+      const mail_user = map.get("mail_user") || null;
+      const mail_from = map.get("mail_from") || null;
+      const mail_secure = map.has("mail_secure")
+        ? String(map.get("mail_secure")).toLowerCase() === "true"
+        : null;
+      const hasPassword = map.has("mail_pass") && !!map.get("mail_pass");
+      return {
+        mail_host,
+        mail_port: Number.isNaN(mail_port as any) ? null : mail_port,
+        mail_user,
+        mail_from,
+        mail_secure,
+        hasPassword
+      };
+    } catch {
+      return {
+        mail_host: null,
+        mail_port: null,
+        mail_user: null,
+        mail_from: null,
+        mail_secure: null,
+        hasPassword: false
+      };
+    }
   }
 
   const rows = await Setting.findAll({ where: { companyId } });
@@ -64,7 +93,38 @@ export async function saveCompanyMailSettings(
   dto: MailSettingsDto
 ): Promise<void> {
   const Setting = getLegacyModel("Setting");
-  if (!Setting || typeof Setting.findOne !== "function") return;
+  // SQL fallback if legacy model is unavailable
+  if (!Setting || typeof Setting.findOne !== "function") {
+    async function upsertSql(key: string, value: string) {
+      const updated = await pgQuery<any>(
+        `UPDATE "Settings" SET value = $1 WHERE "companyId" = $2 AND key = $3 RETURNING key`,
+        [value, companyId, key]
+      );
+      if (updated?.[0]) return;
+      await pgQuery<any>(
+        `INSERT INTO "Settings" (key, value, "companyId") VALUES ($1, $2, $3)`,
+        [key, value, companyId]
+      );
+    }
+
+    if (dto.mail_host !== undefined)
+      await upsertSql("mail_host", dto.mail_host || "");
+    if (dto.mail_port !== undefined)
+      await upsertSql(
+        "mail_port",
+        dto.mail_port != null ? String(dto.mail_port) : ""
+      );
+    if (dto.mail_user !== undefined)
+      await upsertSql("mail_user", dto.mail_user || "");
+    if (dto.mail_from !== undefined)
+      await upsertSql("mail_from", dto.mail_from || "");
+    if (dto.mail_secure !== undefined)
+      await upsertSql("mail_secure", dto.mail_secure ? "true" : "false");
+    if (dto.mail_pass !== undefined && dto.mail_pass !== "") {
+      await upsertSql("mail_pass", dto.mail_pass);
+    }
+    return;
+  }
 
   async function upsert(key: string, value: string) {
     const found = await Setting.findOne({ where: { companyId, key } });

@@ -149,6 +149,7 @@ const EmailSettings = () => {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [showPass, setShowPass] = useState(false);
+  const [lastLoadedAt, setLastLoadedAt] = useState(null);
 
   useEffect(() => {
     let mounted = true;
@@ -166,6 +167,7 @@ const EmailSettings = () => {
           mail_pass: ""
         }));
         setHasPassword(!!data.has_password);
+        setLastLoadedAt(new Date().toISOString());
       } catch {
         setError("Não foi possível carregar as configurações de e-mail.");
       }
@@ -195,10 +197,39 @@ const EmailSettings = () => {
         mail_from: form.mail_from || null,
         mail_secure: form.mail_secure
       };
-      await api.put("/settings/email", payload);
+      const resp = await api.put("/settings/email", payload);
+      const data = resp?.data || {};
+      // backend now returns the saved snapshot; fallback if it returns only { ok: true }
+      if (data && (data.mail_host !== undefined || data.mail_port !== undefined)) {
+        setForm(prev => ({
+          ...prev,
+          mail_host: data.mail_host || "",
+          mail_port: data.mail_port != null ? String(data.mail_port) : "",
+          mail_user: data.mail_user || "",
+          mail_from: data.mail_from || "",
+          mail_secure: !!data.mail_secure,
+          mail_pass: ""
+        }));
+        setHasPassword(!!data.has_password);
+        setLastLoadedAt(new Date().toISOString());
+      } else {
+        // last resort: reload
+        try {
+          const { data: fresh } = await api.get("/settings/email");
+          setForm(prev => ({
+            ...prev,
+            mail_host: fresh.mail_host || "",
+            mail_port: fresh.mail_port != null ? String(fresh.mail_port) : "",
+            mail_user: fresh.mail_user || "",
+            mail_from: fresh.mail_from || "",
+            mail_secure: !!fresh.mail_secure,
+            mail_pass: ""
+          }));
+          setHasPassword(!!fresh.has_password);
+          setLastLoadedAt(new Date().toISOString());
+        } catch {}
+      }
       setMessage("Configurações salvas com sucesso.");
-      if (form.mail_pass) setHasPassword(true);
-      setForm(prev => ({ ...prev, mail_pass: "" }));
     } catch {
       setError("Não foi possível salvar as configurações de e-mail.");
     }
@@ -217,6 +248,14 @@ const EmailSettings = () => {
 
   const secureLabel = form.mail_secure ? "TLS/SSL (Secure)" : "Sem TLS/SSL";
   const saveDisabled = saving;
+  const configuredCount = [
+    Boolean(String(form.mail_host || "").trim()),
+    Boolean(String(form.mail_port || "").trim()),
+    Boolean(String(form.mail_user || "").trim()),
+    Boolean(String(form.mail_from || "").trim()),
+    Boolean(hasPassword),
+  ].filter(Boolean).length;
+  const isFullyConfigured = configuredCount >= 5;
 
   return (
     <div className={classes.root}>
@@ -357,6 +396,74 @@ const EmailSettings = () => {
         </Grid>
       </Grid>
 
+      <Box mt={2}>
+        <Paper className={classes.card} elevation={0}>
+          <div className={classes.sectionTitle}>
+            <MailOutlineOutlinedIcon style={{ fontSize: 18, opacity: 0.8 }} />
+            Resumo da configuração
+          </div>
+          <Grid container spacing={2}>
+            <Grid item xs={12} md={6}>
+              <Typography style={{ fontSize: 12, color: "rgba(15, 23, 42, 0.62)" }}>
+                Servidor
+              </Typography>
+              <Typography style={{ fontWeight: 900 }}>
+                {form.mail_host ? `${form.mail_host}${form.mail_port ? `:${form.mail_port}` : ""}` : "—"}
+              </Typography>
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <Typography style={{ fontSize: 12, color: "rgba(15, 23, 42, 0.62)" }}>
+                Remetente (From)
+              </Typography>
+              <Typography style={{ fontWeight: 900 }}>
+                {form.mail_from || "—"}
+              </Typography>
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <Typography style={{ fontSize: 12, color: "rgba(15, 23, 42, 0.62)" }}>
+                Usuário
+              </Typography>
+              <Typography style={{ fontWeight: 900 }}>
+                {form.mail_user || "—"}
+              </Typography>
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <Typography style={{ fontSize: 12, color: "rgba(15, 23, 42, 0.62)" }}>
+                Status
+              </Typography>
+              <Box display="flex" alignItems="center" gridGap={8} style={{ flexWrap: "wrap" }}>
+                <Chip
+                  size="small"
+                  icon={isFullyConfigured ? <CheckCircleOutlineOutlinedIcon /> : <ErrorOutlineOutlinedIcon />}
+                  label={isFullyConfigured ? "Configuração completa" : `Parcial (${configuredCount}/5)`}
+                  style={{
+                    fontWeight: 1000,
+                    background: isFullyConfigured ? "rgba(16,185,129,0.12)" : "rgba(245,158,11,0.14)",
+                  }}
+                />
+                <Chip
+                  size="small"
+                  icon={<VpnKeyOutlinedIcon />}
+                  label={hasPassword ? "Senha configurada" : "Senha não configurada"}
+                  style={{
+                    fontWeight: 1000,
+                    background: hasPassword ? "rgba(16,185,129,0.10)" : "rgba(239,68,68,0.10)",
+                  }}
+                />
+                {lastLoadedAt ? (
+                  <Chip
+                    size="small"
+                    icon={<SaveOutlinedIcon />}
+                    label={`Atualizado: ${new Date(lastLoadedAt).toLocaleString()}`}
+                    style={{ fontWeight: 900, background: "rgba(15,23,42,0.06)" }}
+                  />
+                ) : null}
+              </Box>
+            </Grid>
+          </Grid>
+        </Paper>
+      </Box>
+
       {message ? (
         <div className={`${classes.banner} ${classes.bannerOk}`}>
           <CheckCircleOutlineOutlinedIcon style={{ color: "rgba(16,185,129,0.95)" }} />
@@ -377,6 +484,34 @@ const EmailSettings = () => {
       ) : null}
 
       <div className={classes.actions}>
+        <TrButton
+          className={classes.saveBtn}
+          onClick={async () => {
+            setLoading(true);
+            setMessage("");
+            setError("");
+            try {
+              const { data } = await api.get("/settings/email");
+              setForm(prev => ({
+                ...prev,
+                mail_host: data.mail_host || "",
+                mail_port: data.mail_port != null ? String(data.mail_port) : "",
+                mail_user: data.mail_user || "",
+                mail_from: data.mail_from || "",
+                mail_secure: !!data.mail_secure,
+                mail_pass: ""
+              }));
+              setHasPassword(!!data.has_password);
+              setLastLoadedAt(new Date().toISOString());
+            } catch {
+              setError("Não foi possível recarregar as configurações de e-mail.");
+            }
+            setLoading(false);
+          }}
+          disabled={saveDisabled}
+        >
+          Recarregar
+        </TrButton>
         <TrButton
           className={classes.saveBtn}
           onClick={handleSave}

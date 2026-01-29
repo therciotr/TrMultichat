@@ -210,6 +210,7 @@ router.put("/:key", async (req, res) => {
 
 router.get("/email", async (req, res) => {
   try {
+    setNoCache(res);
     const userHeader = req.headers.authorization as string;
     const tenantId = extractTenantIdFromAuth(userHeader) || 1;
     const settings = await getCompanyMailSettings(tenantId);
@@ -230,6 +231,7 @@ router.get("/email", async (req, res) => {
 
 router.put("/email", async (req, res) => {
   try {
+    setNoCache(res);
     const auth = req.headers.authorization as string;
     const tenantId = extractTenantIdFromAuth(auth) || 1;
 
@@ -264,7 +266,16 @@ router.put("/email", async (req, res) => {
       mail_from,
       mail_secure
     });
-    return res.json({ ok: true });
+    const settings = await getCompanyMailSettings(tenantId);
+    return res.json({
+      ok: true,
+      mail_host: settings.mail_host,
+      mail_port: settings.mail_port,
+      mail_user: settings.mail_user,
+      mail_from: settings.mail_from,
+      mail_secure: settings.mail_secure,
+      has_password: settings.hasPassword
+    });
   } catch (e: any) {
     return res
       .status(400)
