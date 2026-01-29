@@ -136,8 +136,10 @@ export default function Dashboard() {
   const { find } = useDashboard();
   const { user } = useContext(AuthContext);
 
-  const isAdmin = String(user?.profile || "").toLowerCase() === "admin" || Boolean(user?.admin);
+  const profile = String(user?.profile || "").toLowerCase();
+  const isAdmin = profile === "admin" || Boolean(user?.admin);
   const isSuper = Boolean(user?.super);
+  const isAdminLike = isAdmin || isSuper;
 
   const defaultScope = useMemo(() => {
     if (isSuper) return "system";
@@ -249,7 +251,7 @@ export default function Dashboard() {
       <Grid container spacing={2}>
         <Grid item xs={12}>
           <Paper className={classes.hero} elevation={0}>
-            <p className={classes.heroTitle}>Gerência (Dashboard)</p>
+            <p className={classes.heroTitle}>{isAdminLike ? "Gerência (Dashboard)" : "Meu Dashboard"}</p>
             <p className={classes.heroSub}>
               Visão: <strong>{scopeLabel}</strong>
               {companyLabel ? <> · Empresa: <strong>{companyLabel}</strong></> : null}

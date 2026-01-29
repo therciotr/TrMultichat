@@ -259,6 +259,8 @@ const MainListItems = (props) => {
   const isMasterEmail = email === "thercio@trtecnologias.com.br";
   const isSuper = Boolean(user?.super || isMasterEmail);
   const isAdmin = !!user?.admin;
+  const profile = String(user?.profile || "").toLowerCase();
+  const isAdminLike = isSuper || isAdmin || profile === "admin" || profile === "super";
 
   const fetchChats = async () => {
     try {
@@ -299,6 +301,14 @@ const MainListItems = (props) => {
               {i18n.t("Atendimento")}
             </ListSubheader>
             <>
+
+              {!isAdminLike ? (
+                <ListItemLink
+                  to="/"
+                  primary="Dashboard"
+                  icon={<DashboardOutlinedIcon />}
+                />
+              ) : null}
 
               <ListItemLink
                 to="/tickets"
