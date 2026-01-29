@@ -4,6 +4,7 @@ import env from "../../config/env";
 import { getLegacyModel } from "../../utils/legacyModel";
 import { getCompanyMailSettings, saveCompanyMailSettings } from "../../utils/settingsMail";
 import { pgQuery } from "../../utils/pgClient";
+import { deleteSettingKey } from "../../utils/settingsStore";
 import path from "path";
 
 const router = Router();
@@ -232,6 +233,67 @@ router.put("/email", async (req, res) => {
     return res
       .status(400)
       .json({ error: true, message: e?.message || "update email settings error" });
+  }
+});
+
+router.delete("/email", async (req, res) => {
+  try {
+    setNoCache(res);
+    const auth = req.headers.authorization as string;
+    const tenantId = extractTenantIdFromAuth(auth) || 1;
+
+    // ensure user is admin or super (same logic as PUT /email)
+    const parts = (auth || "").split(" ");
+    const bearer = parts.length === 2 && parts[0] === "Bearer" ? parts[1] : undefined;
+    if (bearer) {
+      try {
+        const payload = jwt.verify(bearer, env.JWT_SECRET) as any;
+        const userId = Number(payload?.userId || payload?.id || 0);
+        const profile = String(payload?.profile || "").toLowerCase();
+        const isSuperLike = Boolean(payload?.super) || profile === "super";
+        const isAdminLike = isSuperLike || Boolean(payload?.admin) || profile === "admin";
+
+        if (!isAdminLike) {
+          if (!userId) return res.status(401).json({ error: true, message: "invalid token" });
+          try {
+            const rows = await pgQuery<{ admin?: boolean; super?: boolean; profile?: string }>(
+              'SELECT admin, "super", profile FROM "Users" WHERE id = $1 LIMIT 1',
+              [userId]
+            );
+            const u = Array.isArray(rows) ? rows[0] : undefined;
+            const dbProfile = String(u?.profile || "").toLowerCase();
+            const dbAdmin = Boolean(u?.admin) || dbProfile === "admin";
+            const dbSuper = Boolean((u as any)?.super) || dbProfile === "super";
+            if (!dbAdmin && !dbSuper) {
+              return res.status(403).json({ error: true, message: "forbidden" });
+            }
+          } catch {
+            return res.status(403).json({ error: true, message: "forbidden" });
+          }
+        }
+      } catch {
+        return res.status(401).json({ error: true, message: "invalid token" });
+      }
+    }
+
+    const keys = ["mail_host", "mail_port", "mail_user", "mail_from", "mail_secure", "mail_pass"];
+    for (const k of keys) {
+      try {
+        await deleteSettingKey(tenantId, k);
+      } catch {}
+    }
+
+    return res.json({
+      ok: true,
+      mail_host: null,
+      mail_port: null,
+      mail_user: null,
+      mail_from: null,
+      mail_secure: null,
+      has_password: false
+    });
+  } catch (e: any) {
+    return res.status(400).json({ error: true, message: e?.message || "delete email settings error" });
   }
 });
 

@@ -23,6 +23,9 @@ import VisibilityOutlinedIcon from "@material-ui/icons/VisibilityOutlined";
 import VisibilityOffOutlinedIcon from "@material-ui/icons/VisibilityOffOutlined";
 import CheckCircleOutlineOutlinedIcon from "@material-ui/icons/CheckCircleOutlineOutlined";
 import ErrorOutlineOutlinedIcon from "@material-ui/icons/ErrorOutlineOutlined";
+import AddOutlinedIcon from "@material-ui/icons/AddOutlined";
+import DeleteOutlineOutlinedIcon from "@material-ui/icons/DeleteOutlineOutlined";
+import EditOutlinedIcon from "@material-ui/icons/EditOutlined";
 import api from "../../services/api";
 
 const useStyles = makeStyles((theme) => ({
@@ -189,6 +192,18 @@ const EmailSettings = () => {
   const [lastLoadedAt, setLastLoadedAt] = useState(null);
   const [editMode, setEditMode] = useState(true);
 
+  const resetToBlank = () => {
+    setForm({
+      mail_host: "",
+      mail_port: "",
+      mail_user: "",
+      mail_pass: "",
+      mail_from: "",
+      mail_secure: false
+    });
+    setHasPassword(false);
+  };
+
   useEffect(() => {
     let mounted = true;
     async function load() {
@@ -279,6 +294,26 @@ const EmailSettings = () => {
       setMessage("Configurações salvas com sucesso.");
     } catch {
       setError("Não foi possível salvar as configurações de e-mail.");
+    }
+    setSaving(false);
+  };
+
+  const handleDeleteConfig = async () => {
+    const ok = window.confirm(
+      "Excluir configuração SMTP?\n\nIsso irá remover Host/Porta/Usuário/From/Secure e a senha salva."
+    );
+    if (!ok) return;
+    setSaving(true);
+    setMessage("");
+    setError("");
+    try {
+      await api.delete("/settings/email");
+      resetToBlank();
+      setLastLoadedAt(new Date().toISOString());
+      setEditMode(true);
+      setMessage("Configuração removida com sucesso.");
+    } catch {
+      setError("Não foi possível excluir a configuração de e-mail.");
     }
     setSaving(false);
   };
@@ -570,6 +605,13 @@ const EmailSettings = () => {
               }));
               setHasPassword(!!data.has_password);
               setLastLoadedAt(new Date().toISOString());
+              const hasAnyConfig =
+                Boolean(String(data.mail_host || "").trim()) ||
+                data.mail_port != null ||
+                Boolean(String(data.mail_user || "").trim()) ||
+                Boolean(String(data.mail_from || "").trim()) ||
+                Boolean(data.has_password);
+              setEditMode(!hasAnyConfig);
             } catch {
               setError("Não foi possível recarregar as configurações de e-mail.");
             }
@@ -578,6 +620,19 @@ const EmailSettings = () => {
           disabled={saveDisabled}
         >
           Recarregar
+        </TrButton>
+        <TrButton
+          className={classes.saveBtn}
+          onClick={() => {
+            setMessage("");
+            setError("");
+            resetToBlank();
+            setEditMode(true);
+          }}
+          disabled={saveDisabled}
+          startIcon={<AddOutlinedIcon />}
+        >
+          Novo
         </TrButton>
         {!editMode ? (
           <TrButton
@@ -588,6 +643,7 @@ const EmailSettings = () => {
               setEditMode(true);
             }}
             disabled={saveDisabled}
+            startIcon={<EditOutlinedIcon />}
           >
             Editar
           </TrButton>
@@ -604,6 +660,14 @@ const EmailSettings = () => {
             Cancelar
           </TrButton>
         )}
+        <TrButton
+          className={classes.saveBtn}
+          onClick={handleDeleteConfig}
+          disabled={saveDisabled || editMode}
+          startIcon={<DeleteOutlineOutlinedIcon />}
+        >
+          Excluir
+        </TrButton>
         <TrButton
           className={classes.saveBtn}
           onClick={handleSave}
