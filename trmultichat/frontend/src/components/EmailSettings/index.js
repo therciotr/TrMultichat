@@ -10,6 +10,7 @@ import {
   IconButton,
   InputAdornment,
   Chip,
+  Tooltip,
 } from "@material-ui/core";
 import { makeStyles } from "@material-ui/core/styles";
 import { TrButton } from "../ui";
@@ -26,6 +27,7 @@ import ErrorOutlineOutlinedIcon from "@material-ui/icons/ErrorOutlineOutlined";
 import AddOutlinedIcon from "@material-ui/icons/AddOutlined";
 import DeleteOutlineOutlinedIcon from "@material-ui/icons/DeleteOutlineOutlined";
 import EditOutlinedIcon from "@material-ui/icons/EditOutlined";
+import StarBorderOutlinedIcon from "@material-ui/icons/StarBorderOutlined";
 import api from "../../services/api";
 
 const useStyles = makeStyles((theme) => ({
@@ -114,6 +116,137 @@ const useStyles = makeStyles((theme) => ({
     color: "rgba(15, 23, 42, 0.90)",
     marginTop: 2,
     wordBreak: "break-word",
+  },
+  profileCard: {
+    borderRadius: 18,
+    border: "1px solid rgba(15, 23, 42, 0.10)",
+    boxShadow: "0 16px 40px rgba(15, 23, 42, 0.07)",
+    background:
+      "linear-gradient(180deg, rgba(255,255,255,0.96), rgba(255,255,255,1))",
+    position: "relative",
+    overflow: "hidden",
+  },
+  profileCardActive: {
+    borderColor: "rgba(59, 130, 246, 0.28)",
+    boxShadow: "0 18px 44px rgba(59, 130, 246, 0.12)",
+  },
+  profileCardDefault: {
+    borderColor: "rgba(16, 185, 129, 0.28)",
+    boxShadow: "0 18px 44px rgba(16, 185, 129, 0.10)",
+  },
+  profileGlow: {
+    position: "absolute",
+    inset: -80,
+    background:
+      "radial-gradient(circle at 12% 10%, rgba(59,130,246,0.18), transparent 40%), radial-gradient(circle at 85% 35%, rgba(14,116,144,0.14), transparent 42%), radial-gradient(circle at 18% 90%, rgba(16,185,129,0.14), transparent 45%)",
+    pointerEvents: "none",
+    filter: "blur(10px)",
+  },
+  profileInner: {
+    padding: theme.spacing(1.75),
+    position: "relative",
+    zIndex: 1,
+  },
+  profileHeader: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: theme.spacing(1.25),
+  },
+  profileBadgeIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    display: "grid",
+    placeItems: "center",
+    background: "rgba(59, 130, 246, 0.10)",
+    border: "1px solid rgba(59, 130, 246, 0.16)",
+    color: "rgba(14, 116, 144, 1)",
+    flexShrink: 0,
+  },
+  profileTitle: {
+    fontSize: 14,
+    fontWeight: 1000,
+    color: "rgba(15, 23, 42, 0.92)",
+    lineHeight: 1.15,
+    margin: 0,
+  },
+  profileSub: {
+    marginTop: 3,
+    fontSize: 12,
+    color: "rgba(15, 23, 42, 0.64)",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    maxWidth: 520,
+  },
+  profileLines: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr",
+    gap: theme.spacing(1),
+    [theme.breakpoints.down("sm")]: {
+      gridTemplateColumns: "1fr",
+    },
+  },
+  line: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    padding: theme.spacing(0.9, 1),
+    borderRadius: 14,
+    border: "1px solid rgba(15, 23, 42, 0.08)",
+    background: "rgba(15, 23, 42, 0.02)",
+  },
+  lineIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 12,
+    display: "grid",
+    placeItems: "center",
+    background: "rgba(15, 23, 42, 0.04)",
+    color: "rgba(15, 23, 42, 0.75)",
+    flexShrink: 0,
+  },
+  lineLabel: {
+    fontSize: 11,
+    fontWeight: 1000,
+    color: "rgba(15, 23, 42, 0.55)",
+    margin: 0,
+  },
+  lineValue: {
+    fontSize: 12.5,
+    fontWeight: 1000,
+    color: "rgba(15, 23, 42, 0.90)",
+    marginTop: 2,
+    wordBreak: "break-word",
+  },
+  profileFooter: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    justifyContent: "space-between",
+    marginTop: theme.spacing(1.25),
+    flexWrap: "wrap",
+  },
+  pillRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    flexWrap: "wrap",
+  },
+  actionsRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    flexWrap: "wrap",
+    justifyContent: "flex-end",
+  },
+  actionIconBtn: {
+    borderRadius: 12,
+    minWidth: 40,
+    padding: theme.spacing(0.9, 1.1),
+    fontWeight: 1000,
+    textTransform: "none",
   },
   sectionTitle: {
     fontWeight: 1000,
@@ -416,129 +549,172 @@ const EmailSettings = () => {
             const hostLabel = p?.host ? `${p.host}${p?.port ? `:${p.port}` : ""}` : "—";
             const fromLabel = p?.from || "—";
             const userLabel = p?.user || "—";
+            const isActive = Number(activeProfileId || 0) === Number(id || 0);
             return (
               <Grid item xs={12} md={6} key={id || title}>
-                <Paper className={classes.card} elevation={0}>
-                  <Box display="flex" alignItems="center">
-                    <div>
-                      <div style={{ fontWeight: 1000, fontSize: 14, color: "rgba(15,23,42,0.92)" }}>
-                        {title}
+                <Paper
+                  className={[
+                    classes.profileCard,
+                    isActive ? classes.profileCardActive : "",
+                    isDef ? classes.profileCardDefault : "",
+                  ].join(" ")}
+                  elevation={0}
+                >
+                  <div className={classes.profileGlow} />
+                  <div className={classes.profileInner}>
+                    <div className={classes.profileHeader}>
+                      <div className={classes.profileBadgeIcon}>
+                        <MailOutlineOutlinedIcon style={{ fontSize: 20 }} />
                       </div>
-                      <div style={{ fontSize: 12, color: "rgba(15, 23, 42, 0.62)", marginTop: 2 }}>
-                        {hostLabel}
+                      <div style={{ minWidth: 0 }}>
+                        <p className={classes.profileTitle}>{title}</p>
+                        <div className={classes.profileSub}>{hostLabel}</div>
+                      </div>
+                      <Box flex={1} />
+                      {isDef ? (
+                        <Chip
+                          size="small"
+                          icon={<CheckCircleOutlineOutlinedIcon />}
+                          label="Padrão"
+                          style={{
+                            fontWeight: 1000,
+                            background: "rgba(16,185,129,0.12)",
+                          }}
+                        />
+                      ) : null}
+                    </div>
+
+                    <div className={classes.profileLines}>
+                      <div className={classes.line}>
+                        <div className={classes.lineIcon}>
+                          <AlternateEmailOutlinedIcon style={{ fontSize: 18 }} />
+                        </div>
+                        <div style={{ minWidth: 0 }}>
+                          <p className={classes.lineLabel}>Usuário</p>
+                          <div className={classes.lineValue}>{userLabel}</div>
+                        </div>
+                      </div>
+
+                      <div className={classes.line}>
+                        <div className={classes.lineIcon}>
+                          <MailOutlineOutlinedIcon style={{ fontSize: 18 }} />
+                        </div>
+                        <div style={{ minWidth: 0 }}>
+                          <p className={classes.lineLabel}>Remetente (From)</p>
+                          <div className={classes.lineValue}>{fromLabel}</div>
+                        </div>
+                      </div>
+
+                      <div className={classes.line}>
+                        <div className={classes.lineIcon}>
+                          <SecurityOutlinedIcon style={{ fontSize: 18 }} />
+                        </div>
+                        <div style={{ minWidth: 0 }}>
+                          <p className={classes.lineLabel}>Segurança</p>
+                          <div className={classes.lineValue}>{p?.secure ? "TLS/SSL" : "Sem TLS/SSL"}</div>
+                        </div>
+                      </div>
+
+                      <div className={classes.line}>
+                        <div className={classes.lineIcon}>
+                          <VpnKeyOutlinedIcon style={{ fontSize: 18 }} />
+                        </div>
+                        <div style={{ minWidth: 0 }}>
+                          <p className={classes.lineLabel}>Senha</p>
+                          <div className={classes.lineValue}>
+                            {p?.has_password ? "Configurada" : "Não configurada"}
+                          </div>
+                        </div>
                       </div>
                     </div>
-                    <Box flex={1} />
-                    {isDef ? (
-                      <Chip
-                        size="small"
-                        label="Padrão"
-                        style={{ fontWeight: 1000, background: "rgba(16,185,129,0.12)" }}
-                      />
-                    ) : null}
-                  </Box>
 
-                  <Box mt={1}>
-                    <Grid container spacing={1}>
-                      <Grid item xs={12} sm={6}>
-                        <Typography style={{ fontSize: 12, color: "rgba(15, 23, 42, 0.62)" }}>
-                          Usuário
-                        </Typography>
-                        <Typography style={{ fontWeight: 900 }}>{userLabel}</Typography>
-                      </Grid>
-                      <Grid item xs={12} sm={6}>
-                        <Typography style={{ fontSize: 12, color: "rgba(15, 23, 42, 0.62)" }}>
-                          Remetente (From)
-                        </Typography>
-                        <Typography style={{ fontWeight: 900 }}>{fromLabel}</Typography>
-                      </Grid>
-                      <Grid item xs={12}>
-                        <Box display="flex" alignItems="center" gridGap={8} style={{ flexWrap: "wrap" }}>
+                    <div className={classes.profileFooter}>
+                      <div className={classes.pillRow}>
+                        {p?.updatedAt ? (
                           <Chip
                             size="small"
-                            icon={<SecurityOutlinedIcon />}
-                            label={p?.secure ? "TLS/SSL" : "Sem TLS/SSL"}
-                            style={{
-                              fontWeight: 1000,
-                              background: p?.secure ? "rgba(16,185,129,0.10)" : "rgba(15,23,42,0.06)",
-                            }}
+                            icon={<SaveOutlinedIcon />}
+                            label={`Atualizado: ${new Date(p.updatedAt).toLocaleString()}`}
+                            style={{ fontWeight: 900, background: "rgba(15,23,42,0.06)" }}
                           />
+                        ) : null}
+                        {isActive ? (
                           <Chip
                             size="small"
-                            icon={<VpnKeyOutlinedIcon />}
-                            label={p?.has_password ? "Senha configurada" : "Senha não configurada"}
-                            style={{
-                              fontWeight: 1000,
-                              background: p?.has_password ? "rgba(16,185,129,0.10)" : "rgba(239,68,68,0.10)",
-                            }}
+                            label="Selecionado"
+                            style={{ fontWeight: 1000, background: "rgba(59,130,246,0.10)" }}
                           />
-                          {p?.updatedAt ? (
-                            <Chip
-                              size="small"
-                              icon={<SaveOutlinedIcon />}
-                              label={`Atualizado: ${new Date(p.updatedAt).toLocaleString()}`}
-                              style={{ fontWeight: 900, background: "rgba(15,23,42,0.06)" }}
-                            />
-                          ) : null}
-                        </Box>
-                      </Grid>
-                    </Grid>
-                  </Box>
+                        ) : null}
+                      </div>
 
-                  <Box mt={2} display="flex" alignItems="center" gridGap={8} style={{ flexWrap: "wrap" }}>
-                    {!isDef ? (
-                      <TrButton
-                        className={classes.saveBtn}
-                        disabled={saveDisabled}
-                        onClick={async () => {
-                          setSaving(true);
-                          setMessage("");
-                          setError("");
-                          try {
-                            await api.post(`/settings/email/profiles/${id}/default`);
-                            const { data } = await api.get("/settings/email/profiles");
-                            const list = Array.isArray(data?.profiles) ? data.profiles : [];
-                            setProfiles(list);
-                            const def = list.find((x) => !!x?.isDefault) || list[0];
-                            setActiveProfileId(def?.id ? Number(def.id) : null);
-                            applyProfileToForm(def);
-                            setEditMode(false);
-                            setLastLoadedAt(new Date().toISOString());
-                            setMessage("Perfil definido como padrão.");
-                          } catch {
-                            setError("Não foi possível definir como padrão.");
-                          }
-                          setSaving(false);
-                        }}
-                      >
-                        Definir padrão
-                      </TrButton>
-                    ) : null}
+                      <div className={classes.actionsRow}>
+                        {!isDef ? (
+                          <Tooltip title="Definir como perfil padrão do sistema" arrow>
+                            <span>
+                              <TrButton
+                                className={classes.actionIconBtn}
+                                disabled={saveDisabled}
+                                startIcon={<StarBorderOutlinedIcon />}
+                                onClick={async () => {
+                                  setSaving(true);
+                                  setMessage("");
+                                  setError("");
+                                  try {
+                                    await api.post(`/settings/email/profiles/${id}/default`);
+                                    const { data } = await api.get("/settings/email/profiles");
+                                    const list = Array.isArray(data?.profiles) ? data.profiles : [];
+                                    setProfiles(list);
+                                    const def = list.find((x) => !!x?.isDefault) || list[0];
+                                    setActiveProfileId(def?.id ? Number(def.id) : null);
+                                    applyProfileToForm(def);
+                                    setEditMode(false);
+                                    setMessage("Perfil definido como padrão.");
+                                  } catch {
+                                    setError("Não foi possível definir como padrão.");
+                                  }
+                                  setSaving(false);
+                                }}
+                              >
+                                Padrão
+                              </TrButton>
+                            </span>
+                          </Tooltip>
+                        ) : null}
 
-                    <TrButton
-                      className={classes.saveBtn}
-                      disabled={saveDisabled}
-                      startIcon={<EditOutlinedIcon />}
-                      onClick={() => {
-                        setMessage("");
-                        setError("");
-                        setActiveProfileId(id);
-                        applyProfileToForm(p);
-                        setEditMode(true);
-                      }}
-                    >
-                      Editar
-                    </TrButton>
+                        <Tooltip title="Editar perfil" arrow>
+                          <span>
+                            <TrButton
+                              className={classes.actionIconBtn}
+                              disabled={saveDisabled}
+                              startIcon={<EditOutlinedIcon />}
+                              onClick={() => {
+                                setMessage("");
+                                setError("");
+                                setActiveProfileId(id);
+                                applyProfileToForm(p);
+                                setEditMode(true);
+                              }}
+                            >
+                              Editar
+                            </TrButton>
+                          </span>
+                        </Tooltip>
 
-                    <TrButton
-                      className={classes.saveBtn}
-                      disabled={saveDisabled}
-                      startIcon={<DeleteOutlineOutlinedIcon />}
-                      onClick={() => handleDeleteProfile(id)}
-                    >
-                      Excluir
-                    </TrButton>
-                  </Box>
+                        <Tooltip title="Excluir perfil" arrow>
+                          <span>
+                            <TrButton
+                              className={classes.actionIconBtn}
+                              disabled={saveDisabled}
+                              startIcon={<DeleteOutlineOutlinedIcon />}
+                              onClick={() => handleDeleteProfile(id)}
+                            >
+                              Excluir
+                            </TrButton>
+                          </span>
+                        </Tooltip>
+                      </div>
+                    </div>
+                  </div>
                 </Paper>
               </Grid>
             );
