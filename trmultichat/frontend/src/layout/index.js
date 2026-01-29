@@ -1,6 +1,6 @@
 import React, { useState, useContext, useEffect } from "react";
 import clsx from "clsx";
-import moment from "moment";
+import { toast } from "react-toastify";
 import {
   makeStyles,
   Drawer,
@@ -34,6 +34,7 @@ import toastError from "../errors/toastError";
 
 import logo from "../assets/logo-tr.png";
 import { socketConnection } from "../services/socket";
+import api from "../services/api";
 import ChatPopover from "../pages/Chat/ChatPopover";
 import AudioUnlock from "../components/AudioUnlock";
 
@@ -187,6 +188,7 @@ const LoggedInLayout = ({ children, themeToggle }) => {
   const [drawerVariant, setDrawerVariant] = useState("permanent");
   // const [dueDate, setDueDate] = useState("");
   const { user } = useContext(AuthContext);
+  const currentUserId = Number(user?.id || 0);
 
   const theme = useTheme();
   const { branding } = useThemeBranding();
@@ -286,6 +288,44 @@ const LoggedInLayout = ({ children, themeToggle }) => {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Agenda premium: polling de lembretes (gera alerta + pode enviar no Chat - Interno)
+  useEffect(() => {
+    let mounted = true;
+    let timer;
+
+    const tick = async () => {
+      try {
+        if (!currentUserId) return;
+        const { data } = await api.get("/agenda/reminders/due");
+        const arr = Array.isArray(data?.records) ? data.records : [];
+        if (!mounted || !arr.length) return;
+        for (const r of arr) {
+          const when = r?.startAt ? new Date(r.startAt).toLocaleString("pt-BR") : "";
+          const msg = `⏰ Lembrete: ${r?.title || "Evento"}${when ? ` • ${when}` : ""}`;
+          toast.info(msg, {
+            autoClose: 9000,
+            onClick: () => {
+              try {
+                const href = String(r?.link || "/agenda");
+                window.location.href = href;
+              } catch {}
+            },
+          });
+        }
+      } catch (_) {
+        // silent (no spam)
+      }
+    };
+
+    // initial + interval
+    tick();
+    timer = setInterval(tick, 30000);
+    return () => {
+      mounted = false;
+      if (timer) clearInterval(timer);
+    };
+  }, [currentUserId]);
 
   const handleMenu = (event) => {
     setAnchorEl(event.currentTarget);

@@ -30,6 +30,9 @@ import PersonOutlineOutlinedIcon from "@material-ui/icons/PersonOutlineOutlined"
 import ViewWeekOutlinedIcon from "@material-ui/icons/ViewWeekOutlined";
 import ViewModuleOutlinedIcon from "@material-ui/icons/ViewModuleOutlined";
 import ListAltOutlinedIcon from "@material-ui/icons/ListAltOutlined";
+import AttachFileOutlinedIcon from "@material-ui/icons/AttachFileOutlined";
+import CloudUploadOutlinedIcon from "@material-ui/icons/CloudUploadOutlined";
+import ChatBubbleOutlineOutlinedIcon from "@material-ui/icons/ChatBubbleOutlineOutlined";
 
 import MainContainer from "../../components/MainContainer";
 import MainHeader from "../../components/MainHeader";
@@ -156,6 +159,39 @@ const useStyles = makeStyles((theme) => ({
     flexWrap: "wrap",
     marginTop: theme.spacing(1.5),
   },
+  sectionLabel: {
+    fontWeight: 1000,
+    fontSize: 12,
+    color: "rgba(15,23,42,0.72)",
+    marginTop: theme.spacing(1),
+    marginBottom: theme.spacing(0.75),
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+  },
+  hint: {
+    fontSize: 12,
+    opacity: 0.72,
+    marginTop: 6,
+  },
+  attachmentItem: {
+    borderRadius: 14,
+    border: "1px solid rgba(15,23,42,0.10)",
+    padding: theme.spacing(1, 1.25),
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: theme.spacing(1),
+    background: "rgba(255,255,255,0.92)",
+  },
+  attachmentName: {
+    fontSize: 12,
+    fontWeight: 900,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    maxWidth: 360,
+  },
 }));
 
 const DEFAULT_COLORS = [
@@ -165,6 +201,22 @@ const DEFAULT_COLORS = [
   { label: "Laranja", value: "#F97316" },
   { label: "Vermelho", value: "#EF4444" },
   { label: "Cinza", value: "#334155" },
+];
+
+const REMINDER_PRESETS = [
+  { label: "Sem lembrete", minutes: 0 },
+  { label: "5 minutos antes", minutes: 5 },
+  { label: "10 minutos antes", minutes: 10 },
+  { label: "30 minutos antes", minutes: 30 },
+  { label: "1 hora antes", minutes: 60 },
+  { label: "1 dia antes", minutes: 24 * 60 },
+];
+
+const RECURRENCE_TYPES = [
+  { label: "Não repetir", value: "none" },
+  { label: "Diário", value: "daily" },
+  { label: "Semanal", value: "weekly" },
+  { label: "Mensal", value: "monthly" },
 ];
 
 function toInputDateTimeValue(date) {
@@ -216,9 +268,12 @@ export default function Agenda() {
   const [modalOpen, setModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [attachments, setAttachments] = useState([]);
 
   const [form, setForm] = useState({
-    id: "",
+    id: "", // occurrence id (UI)
+    seriesId: "", // base event id (API)
     title: "",
     description: "",
     location: "",
@@ -226,6 +281,11 @@ export default function Agenda() {
     allDay: false,
     startAt: new Date(),
     endAt: new Date(Date.now() + 60 * 60 * 1000),
+    recurrenceType: "none",
+    recurrenceInterval: 1,
+    recurrenceUntil: null,
+    reminderMinutes: 0,
+    notifyInChat: true,
   });
 
   const canPickUser = isAdminLike;
@@ -242,6 +302,26 @@ export default function Agenda() {
       extendedProps: r,
     }));
   }, [records]);
+
+  const getSeriesIdFromAnyId = (id) => {
+    if (!id) return "";
+    const s = String(id);
+    const idx = s.indexOf("__");
+    return idx > 0 ? s.slice(0, idx) : s;
+  };
+
+  const loadAttachments = async (seriesId) => {
+    if (!seriesId) {
+      setAttachments([]);
+      return;
+    }
+    try {
+      const { data } = await api.get(`/agenda/events/${seriesId}/attachments`);
+      setAttachments(Array.isArray(data?.records) ? data.records : []);
+    } catch (err) {
+      setAttachments([]);
+    }
+  };
 
   const loadUsers = async () => {
     if (!canPickUser) return;
@@ -291,6 +371,7 @@ export default function Agenda() {
   const openCreate = (startAt, endAt, allDay = false) => {
     setForm({
       id: "",
+      seriesId: "",
       title: "",
       description: "",
       location: "",
@@ -298,13 +379,22 @@ export default function Agenda() {
       allDay,
       startAt: startAt || new Date(),
       endAt: endAt || new Date(Date.now() + 60 * 60 * 1000),
+      recurrenceType: "none",
+      recurrenceInterval: 1,
+      recurrenceUntil: null,
+      reminderMinutes: 0,
+      notifyInChat: true,
     });
+    setAttachments([]);
     setModalOpen(true);
   };
 
   const openEdit = (record) => {
+    const seriesId = record.seriesId || getSeriesIdFromAnyId(record.id);
+    const reminder = Array.isArray(record.reminders) && record.reminders[0] ? record.reminders[0] : null;
     setForm({
       id: record.id,
+      seriesId,
       title: record.title || "",
       description: record.description || "",
       location: record.location || "",
@@ -312,13 +402,23 @@ export default function Agenda() {
       allDay: Boolean(record.allDay),
       startAt: new Date(record.startAt),
       endAt: new Date(record.endAt),
+      recurrenceType: String(record.recurrenceType || "none"),
+      recurrenceInterval: Number(record.recurrenceInterval || 1) || 1,
+      recurrenceUntil: record.recurrenceUntil ? new Date(record.recurrenceUntil) : null,
+      reminderMinutes: reminder ? Number(reminder.minutesBefore || 0) : 0,
+      notifyInChat: reminder ? Boolean(reminder.notifyInChat) : true,
     });
+    loadAttachments(seriesId);
     setModalOpen(true);
   };
 
   const handleSave = async () => {
     setSaving(true);
     try {
+      const reminders =
+        Number(form.reminderMinutes || 0) > 0
+          ? [{ minutesBefore: Number(form.reminderMinutes || 0), notifyInChat: Boolean(form.notifyInChat) }]
+          : [];
       const payload = {
         title: form.title,
         description: form.description,
@@ -327,12 +427,21 @@ export default function Agenda() {
         allDay: form.allDay,
         startAt: new Date(form.startAt).toISOString(),
         endAt: new Date(form.endAt).toISOString(),
+        recurrenceType: String(form.recurrenceType || "none"),
+        recurrenceInterval: Number(form.recurrenceInterval || 1) || 1,
+        recurrenceUntil: form.recurrenceType && String(form.recurrenceType) !== "none" && form.recurrenceUntil ? new Date(form.recurrenceUntil).toISOString() : null,
+        reminders,
         ...(canPickUser ? { userId: selectedUserId } : {}),
       };
-      if (form.id) {
-        await api.put(`/agenda/events/${form.id}`, payload);
+      if (form.seriesId) {
+        await api.put(`/agenda/events/${form.seriesId}`, payload);
       } else {
-        await api.post("/agenda/events", payload);
+        const { data } = await api.post("/agenda/events", payload);
+        const createdSeriesId = data?.id || "";
+        if (createdSeriesId) {
+          setForm((f) => ({ ...f, seriesId: createdSeriesId }));
+          await loadAttachments(createdSeriesId);
+        }
       }
       setModalOpen(false);
       await loadEventsForRange();
@@ -343,16 +452,42 @@ export default function Agenda() {
   };
 
   const handleDelete = async () => {
-    if (!form.id) return;
+    if (!form.seriesId) return;
     setDeleting(true);
     try {
-      await api.delete(`/agenda/events/${form.id}`);
+      await api.delete(`/agenda/events/${form.seriesId}`);
       setModalOpen(false);
       await loadEventsForRange();
     } catch (err) {
       toastError(err);
     }
     setDeleting(false);
+  };
+
+  const handleUploadAttachment = async (file) => {
+    if (!file || !form.seriesId) return;
+    setUploading(true);
+    try {
+      const data = new FormData();
+      data.append("file", file);
+      await api.post(`/agenda/events/${form.seriesId}/attachments`, data, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      await loadAttachments(form.seriesId);
+    } catch (err) {
+      toastError(err);
+    }
+    setUploading(false);
+  };
+
+  const handleDeleteAttachment = async (attachmentId) => {
+    if (!attachmentId || !form.seriesId) return;
+    try {
+      await api.delete(`/agenda/events/${form.seriesId}/attachments/${attachmentId}`);
+      await loadAttachments(form.seriesId);
+    } catch (err) {
+      toastError(err);
+    }
   };
 
   const viewLabel = (v) => {
@@ -496,7 +631,10 @@ export default function Agenda() {
             }}
             eventDrop={async (arg) => {
               try {
-                await api.put(`/agenda/events/${arg.event.id}`, {
+                const seriesId = arg.event.extendedProps?.seriesId || getSeriesIdFromAnyId(arg.event.id);
+                const reminder = Array.isArray(arg.event.extendedProps?.reminders) && arg.event.extendedProps.reminders[0] ? arg.event.extendedProps.reminders[0] : null;
+                const reminders = reminder ? [{ minutesBefore: Number(reminder.minutesBefore || 0), notifyInChat: Boolean(reminder.notifyInChat) }] : [];
+                await api.put(`/agenda/events/${seriesId}`, {
                   title: arg.event.title,
                   description: arg.event.extendedProps?.description || "",
                   location: arg.event.extendedProps?.location || "",
@@ -504,6 +642,10 @@ export default function Agenda() {
                   allDay: arg.event.allDay,
                   startAt: arg.event.start?.toISOString(),
                   endAt: (arg.event.end || arg.event.start)?.toISOString(),
+                  recurrenceType: String(arg.event.extendedProps?.recurrenceType || "none"),
+                  recurrenceInterval: Number(arg.event.extendedProps?.recurrenceInterval || 1) || 1,
+                  recurrenceUntil: arg.event.extendedProps?.recurrenceUntil || null,
+                  reminders,
                   ...(canPickUser ? { userId: selectedUserId } : {}),
                 });
               } catch (err) {
@@ -513,7 +655,10 @@ export default function Agenda() {
             }}
             eventResize={async (arg) => {
               try {
-                await api.put(`/agenda/events/${arg.event.id}`, {
+                const seriesId = arg.event.extendedProps?.seriesId || getSeriesIdFromAnyId(arg.event.id);
+                const reminder = Array.isArray(arg.event.extendedProps?.reminders) && arg.event.extendedProps.reminders[0] ? arg.event.extendedProps.reminders[0] : null;
+                const reminders = reminder ? [{ minutesBefore: Number(reminder.minutesBefore || 0), notifyInChat: Boolean(reminder.notifyInChat) }] : [];
+                await api.put(`/agenda/events/${seriesId}`, {
                   title: arg.event.title,
                   description: arg.event.extendedProps?.description || "",
                   location: arg.event.extendedProps?.location || "",
@@ -521,6 +666,10 @@ export default function Agenda() {
                   allDay: arg.event.allDay,
                   startAt: arg.event.start?.toISOString(),
                   endAt: (arg.event.end || arg.event.start)?.toISOString(),
+                  recurrenceType: String(arg.event.extendedProps?.recurrenceType || "none"),
+                  recurrenceInterval: Number(arg.event.extendedProps?.recurrenceInterval || 1) || 1,
+                  recurrenceUntil: arg.event.extendedProps?.recurrenceUntil || null,
+                  reminders,
                   ...(canPickUser ? { userId: selectedUserId } : {}),
                 });
               } catch (err) {
@@ -608,6 +757,115 @@ export default function Agenda() {
             </Grid>
 
             <Grid item xs={12}>
+              <div className={classes.sectionLabel}>
+                <EventOutlinedIcon style={{ fontSize: 16, opacity: 0.75 }} />
+                Recorrência
+              </div>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                className={classes.field}
+                select
+                label="Repetir"
+                variant="outlined"
+                size="small"
+                fullWidth
+                value={String(form.recurrenceType || "none")}
+                onChange={(e) => setForm((f) => ({ ...f, recurrenceType: e.target.value }))}
+              >
+                {RECURRENCE_TYPES.map((t) => (
+                  <MenuItem key={t.value} value={t.value}>
+                    {t.label}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                className={classes.field}
+                label="Intervalo"
+                variant="outlined"
+                size="small"
+                fullWidth
+                type="number"
+                inputProps={{ min: 1, max: 365 }}
+                disabled={String(form.recurrenceType || "none") === "none"}
+                value={Number(form.recurrenceInterval || 1)}
+                onChange={(e) => setForm((f) => ({ ...f, recurrenceInterval: Number(e.target.value || 1) }))}
+                helperText={
+                  String(form.recurrenceType || "none") === "none"
+                    ? "Sem repetição"
+                    : `A cada ${Number(form.recurrenceInterval || 1)} ${String(form.recurrenceType) === "daily" ? "dia(s)" : String(form.recurrenceType) === "weekly" ? "semana(s)" : "mês(es)"}`
+                }
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                className={classes.field}
+                label="Repetir até (opcional)"
+                type="date"
+                variant="outlined"
+                size="small"
+                fullWidth
+                disabled={String(form.recurrenceType || "none") === "none"}
+                value={form.recurrenceUntil ? toInputDateValue(form.recurrenceUntil) : ""}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    recurrenceUntil: e.target.value ? new Date(`${e.target.value}T23:59`) : null,
+                  }))
+                }
+                InputLabelProps={{ shrink: true }}
+              />
+            </Grid>
+
+            <Grid item xs={12}>
+              <div className={classes.sectionLabel}>
+                <EventOutlinedIcon style={{ fontSize: 16, opacity: 0.75 }} />
+                Lembrete
+              </div>
+            </Grid>
+            <Grid item xs={12} sm={7}>
+              <TextField
+                className={classes.field}
+                select
+                label="Avisar"
+                variant="outlined"
+                size="small"
+                fullWidth
+                value={Number(form.reminderMinutes || 0)}
+                onChange={(e) => setForm((f) => ({ ...f, reminderMinutes: Number(e.target.value || 0) }))}
+              >
+                {REMINDER_PRESETS.map((p) => (
+                  <MenuItem key={p.minutes} value={p.minutes}>
+                    {p.label}
+                  </MenuItem>
+                ))}
+              </TextField>
+              <div className={classes.hint}>
+                O lembrete aparece como alerta e também pode mandar um aviso no <strong>Chat - Interno</strong>.
+              </div>
+            </Grid>
+            <Grid item xs={12} sm={5}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={Boolean(form.notifyInChat)}
+                    onChange={(e) => setForm((f) => ({ ...f, notifyInChat: e.target.checked }))}
+                    color="primary"
+                    disabled={Number(form.reminderMinutes || 0) <= 0}
+                  />
+                }
+                label={
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                    <ChatBubbleOutlineOutlinedIcon style={{ fontSize: 18, opacity: 0.8 }} />
+                    Notificar no Chat
+                  </span>
+                }
+              />
+            </Grid>
+
+            <Grid item xs={12}>
               <FormControlLabel
                 control={
                   <Switch
@@ -688,6 +946,54 @@ export default function Agenda() {
                 </Grid>
               </>
             )}
+
+            <Grid item xs={12}>
+              <div className={classes.sectionLabel}>
+                <AttachFileOutlinedIcon style={{ fontSize: 16, opacity: 0.75 }} />
+                Anexos
+              </div>
+              <TrButton
+                variant="outlined"
+                startIcon={<CloudUploadOutlinedIcon />}
+                component="label"
+                disabled={!form.seriesId || uploading}
+              >
+                {uploading ? "Enviando..." : "Enviar anexo"}
+                <input
+                  type="file"
+                  hidden
+                  onChange={(e) => handleUploadAttachment(e.target.files?.[0])}
+                />
+              </TrButton>
+              <div className={classes.hint}>
+                {form.seriesId ? "Arquivos ficam salvos no evento." : "Salve o evento primeiro para anexar arquivos."}
+              </div>
+              <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+                {(attachments || []).length ? (
+                  (attachments || []).map((a) => (
+                    <div key={a.id} className={classes.attachmentItem}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                        <AttachFileOutlinedIcon style={{ fontSize: 18, opacity: 0.8 }} />
+                        <a
+                          href={`/${String(a.filePath || "")}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={classes.attachmentName}
+                          title={a.fileName}
+                        >
+                          {a.fileName}
+                        </a>
+                      </div>
+                      <TrButton variant="outlined" onClick={() => handleDeleteAttachment(a.id)}>
+                        Remover
+                      </TrButton>
+                    </div>
+                  ))
+                ) : (
+                  <div className={classes.hint}>Nenhum anexo.</div>
+                )}
+              </div>
+            </Grid>
           </Grid>
 
           <div className={classes.actionsRow}>
