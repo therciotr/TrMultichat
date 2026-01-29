@@ -116,6 +116,86 @@ function ensureLegacyDbBooted() {
   } catch {}
 }
 
+async function ensureMailProfilesSchema() {
+  // Multi-profile SMTP support (company-scoped)
+  await pgQuery(
+    `
+    CREATE TABLE IF NOT EXISTS "MailSettingsProfiles" (
+      id SERIAL PRIMARY KEY,
+      "companyId" integer NOT NULL,
+      name text NOT NULL DEFAULT '',
+      host text,
+      port integer,
+      "user" text,
+      "from" text,
+      secure boolean,
+      pass text,
+      "isDefault" boolean NOT NULL DEFAULT false,
+      "createdAt" timestamptz NOT NULL DEFAULT now(),
+      "updatedAt" timestamptz NOT NULL DEFAULT now()
+    )
+  `
+  );
+  await pgQuery(`ALTER TABLE "MailSettingsProfiles" ADD COLUMN IF NOT EXISTS "companyId" integer`);
+  await pgQuery(`ALTER TABLE "MailSettingsProfiles" ADD COLUMN IF NOT EXISTS name text`);
+  await pgQuery(`ALTER TABLE "MailSettingsProfiles" ADD COLUMN IF NOT EXISTS host text`);
+  await pgQuery(`ALTER TABLE "MailSettingsProfiles" ADD COLUMN IF NOT EXISTS port integer`);
+  await pgQuery(`ALTER TABLE "MailSettingsProfiles" ADD COLUMN IF NOT EXISTS "user" text`);
+  await pgQuery(`ALTER TABLE "MailSettingsProfiles" ADD COLUMN IF NOT EXISTS "from" text`);
+  await pgQuery(`ALTER TABLE "MailSettingsProfiles" ADD COLUMN IF NOT EXISTS secure boolean`);
+  await pgQuery(`ALTER TABLE "MailSettingsProfiles" ADD COLUMN IF NOT EXISTS pass text`);
+  await pgQuery(`ALTER TABLE "MailSettingsProfiles" ADD COLUMN IF NOT EXISTS "isDefault" boolean`);
+  await pgQuery(`ALTER TABLE "MailSettingsProfiles" ADD COLUMN IF NOT EXISTS "createdAt" timestamptz`);
+  await pgQuery(`ALTER TABLE "MailSettingsProfiles" ADD COLUMN IF NOT EXISTS "updatedAt" timestamptz`);
+  await pgQuery(`CREATE INDEX IF NOT EXISTS "MailSettingsProfiles_companyId_idx" ON "MailSettingsProfiles" ("companyId")`);
+}
+
+async function ensureAdminFromAuth(auth: string): Promise<{ ok: true; tenantId: number } | { ok: false; status: number; message: string }> {
+  const tenantId = extractTenantIdFromAuth(auth) || 1;
+  const parts = (auth || "").split(" ");
+  const bearer = parts.length === 2 && parts[0] === "Bearer" ? parts[1] : undefined;
+  if (!bearer) return { ok: true, tenantId };
+  try {
+    const payload = jwt.verify(bearer, env.JWT_SECRET) as any;
+    const userId = Number(payload?.userId || payload?.id || 0);
+    const profile = String(payload?.profile || "").toLowerCase();
+    const isSuperLike = Boolean(payload?.super) || profile === "super";
+    const isAdminLike = isSuperLike || Boolean(payload?.admin) || profile === "admin";
+    if (isAdminLike) return { ok: true, tenantId };
+    if (!userId) return { ok: false, status: 401, message: "invalid token" };
+    try {
+      const rows = await pgQuery<{ admin?: boolean; super?: boolean; profile?: string }>(
+        'SELECT admin, "super", profile FROM "Users" WHERE id = $1 LIMIT 1',
+        [userId]
+      );
+      const u = Array.isArray(rows) ? rows[0] : undefined;
+      const dbProfile = String(u?.profile || "").toLowerCase();
+      const dbAdmin = Boolean(u?.admin) || dbProfile === "admin";
+      const dbSuper = Boolean((u as any)?.super) || dbProfile === "super";
+      if (!dbAdmin && !dbSuper) return { ok: false, status: 403, message: "forbidden" };
+      return { ok: true, tenantId };
+    } catch {
+      return { ok: false, status: 403, message: "forbidden" };
+    }
+  } catch {
+    return { ok: false, status: 401, message: "invalid token" };
+  }
+}
+
+async function syncDefaultProfileToLegacy(companyId: number, profile: any) {
+  // Keep backwards compatibility with old single-config keys used by mailer/settingsMail
+  try {
+    await saveCompanyMailSettings(companyId, {
+      mail_host: profile?.host ?? null,
+      mail_port: profile?.port ?? null,
+      mail_user: profile?.user ?? null,
+      mail_from: profile?.from ?? null,
+      mail_secure: profile?.secure ?? null,
+      mail_pass: profile?.pass ?? ""
+    } as any);
+  } catch {}
+}
+
 router.get("/", async (req, res) => {
   setNoCache(res);
   const tenantId = extractTenantIdFromAuth(req.headers.authorization as string) || 1;
@@ -151,6 +231,34 @@ router.get("/email", async (req, res) => {
     setNoCache(res);
     const userHeader = req.headers.authorization as string;
     const tenantId = extractTenantIdFromAuth(userHeader) || 1;
+    // Prefer default profile (multi-profile SMTP)
+    try {
+      await ensureMailProfilesSchema();
+      const rows = await pgQuery<any>(
+        `
+        SELECT id, name, host, port, "user", "from", secure,
+               (CASE WHEN COALESCE(pass,'') <> '' THEN true ELSE false END) as "has_password",
+               COALESCE("isDefault", false) as "isDefault"
+        FROM "MailSettingsProfiles"
+        WHERE "companyId" = $1 AND COALESCE("isDefault", false) = true
+        ORDER BY "updatedAt" DESC
+        LIMIT 1
+      `,
+        [tenantId]
+      );
+      const p = Array.isArray(rows) ? rows[0] : undefined;
+      if (p && p.host) {
+        return res.json({
+          mail_host: p.host ?? null,
+          mail_port: p.port ?? null,
+          mail_user: p.user ?? null,
+          mail_from: p.from ?? null,
+          mail_secure: typeof p.secure === "boolean" ? p.secure : null,
+          has_password: Boolean(p.has_password)
+        });
+      }
+    } catch {}
+
     const settings = await getCompanyMailSettings(tenantId);
     return res.json({
       mail_host: settings.mail_host,
@@ -171,54 +279,61 @@ router.put("/email", async (req, res) => {
   try {
     setNoCache(res);
     const auth = req.headers.authorization as string;
-    const tenantId = extractTenantIdFromAuth(auth) || 1;
-
-    // ensure user is admin or super
-    const parts = (auth || "").split(" ");
-    const bearer = parts.length === 2 && parts[0] === "Bearer" ? parts[1] : undefined;
-    if (bearer) {
-      try {
-        const payload = jwt.verify(bearer, env.JWT_SECRET) as any;
-        const userId = Number(payload?.userId || payload?.id || 0);
-        const profile = String(payload?.profile || "").toLowerCase();
-        const isSuperLike = Boolean(payload?.super) || profile === "super";
-        const isAdminLike = isSuperLike || Boolean(payload?.admin) || profile === "admin";
-
-        // If token doesn't include admin/super flags, check user in Postgres
-        if (!isAdminLike) {
-          if (!userId) return res.status(401).json({ error: true, message: "invalid token" });
-          try {
-            const rows = await pgQuery<{ admin?: boolean; super?: boolean; profile?: string }>(
-              'SELECT admin, "super", profile FROM "Users" WHERE id = $1 LIMIT 1',
-              [userId]
-            );
-            const u = Array.isArray(rows) ? rows[0] : undefined;
-            const dbProfile = String(u?.profile || "").toLowerCase();
-            const dbAdmin = Boolean(u?.admin) || dbProfile === "admin";
-            const dbSuper = Boolean((u as any)?.super) || dbProfile === "super";
-            if (!dbAdmin && !dbSuper) {
-              return res.status(403).json({ error: true, message: "forbidden" });
-            }
-          } catch {
-            // As last resort, keep safe: forbid if we can't validate role.
-            return res.status(403).json({ error: true, message: "forbidden" });
-          }
-        }
-      } catch {
-        return res.status(401).json({ error: true, message: "invalid token" });
-      }
+    const adminCheck = await ensureAdminFromAuth(auth);
+    if (!adminCheck.ok) {
+      const err = adminCheck as any;
+      return res.status(Number(err.status || 403)).json({ error: true, message: String(err.message || "forbidden") });
     }
+    const tenantId = (adminCheck as any).tenantId as number;
 
     const { mail_host, mail_port, mail_user, mail_pass, mail_from, mail_secure } = req.body || {};
 
-    await saveCompanyMailSettings(tenantId, {
-      mail_host,
-      mail_port,
-      mail_user,
-      mail_pass,
-      mail_from,
-      mail_secure
-    });
+    // Keep legacy single-config behavior, but ALSO ensure there is a default profile.
+    try {
+      await ensureMailProfilesSchema();
+      const existingDefault = await pgQuery<any>(
+        `SELECT id FROM "MailSettingsProfiles" WHERE "companyId" = $1 AND COALESCE("isDefault", false) = true ORDER BY "updatedAt" DESC LIMIT 1`,
+        [tenantId]
+      );
+      const defaultId = existingDefault?.[0]?.id ? Number(existingDefault[0].id) : 0;
+      const name = String(req.body?.name || mail_user || "SMTP").trim() || "SMTP";
+
+      if (defaultId > 0) {
+        // update default profile
+        const params: any[] = [];
+        const sets: string[] = [];
+        if (mail_host !== undefined) { params.push(mail_host); sets.push(`host = $${params.length}`); }
+        if (mail_port !== undefined) { params.push(mail_port); sets.push(`port = $${params.length}`); }
+        if (mail_user !== undefined) { params.push(mail_user); sets.push(`"user" = $${params.length}`); }
+        if (mail_from !== undefined) { params.push(mail_from); sets.push(`"from" = $${params.length}`); }
+        if (mail_secure !== undefined) { params.push(mail_secure); sets.push(`secure = $${params.length}`); }
+        if (mail_pass !== undefined && mail_pass !== "") { params.push(mail_pass); sets.push(`pass = $${params.length}`); }
+        if (sets.length) {
+          params.push(defaultId);
+          await pgQuery<any>(`UPDATE "MailSettingsProfiles" SET ${sets.join(", ")}, "updatedAt" = now() WHERE id = $${params.length}`, params);
+        }
+      } else {
+        // create default profile
+        await pgQuery<any>(
+          `
+          INSERT INTO "MailSettingsProfiles"
+            ("companyId", name, host, port, "user", "from", secure, pass, "isDefault", "createdAt", "updatedAt")
+          VALUES
+            ($1, $2, $3, $4, $5, $6, $7, $8, true, now(), now())
+        `,
+          [tenantId, name, mail_host ?? null, mail_port ?? null, mail_user ?? null, mail_from ?? null, mail_secure ?? null, mail_pass ?? ""]
+        );
+      }
+
+      const def = await pgQuery<any>(
+        `SELECT * FROM "MailSettingsProfiles" WHERE "companyId" = $1 AND COALESCE("isDefault", false) = true ORDER BY "updatedAt" DESC LIMIT 1`,
+        [tenantId]
+      );
+      await syncDefaultProfileToLegacy(tenantId, def?.[0]);
+    } catch {
+      await saveCompanyMailSettings(tenantId, { mail_host, mail_port, mail_user, mail_pass, mail_from, mail_secure });
+    }
+
     const settings = await getCompanyMailSettings(tenantId);
     return res.json({
       ok: true,
@@ -240,41 +355,12 @@ router.delete("/email", async (req, res) => {
   try {
     setNoCache(res);
     const auth = req.headers.authorization as string;
-    const tenantId = extractTenantIdFromAuth(auth) || 1;
-
-    // ensure user is admin or super (same logic as PUT /email)
-    const parts = (auth || "").split(" ");
-    const bearer = parts.length === 2 && parts[0] === "Bearer" ? parts[1] : undefined;
-    if (bearer) {
-      try {
-        const payload = jwt.verify(bearer, env.JWT_SECRET) as any;
-        const userId = Number(payload?.userId || payload?.id || 0);
-        const profile = String(payload?.profile || "").toLowerCase();
-        const isSuperLike = Boolean(payload?.super) || profile === "super";
-        const isAdminLike = isSuperLike || Boolean(payload?.admin) || profile === "admin";
-
-        if (!isAdminLike) {
-          if (!userId) return res.status(401).json({ error: true, message: "invalid token" });
-          try {
-            const rows = await pgQuery<{ admin?: boolean; super?: boolean; profile?: string }>(
-              'SELECT admin, "super", profile FROM "Users" WHERE id = $1 LIMIT 1',
-              [userId]
-            );
-            const u = Array.isArray(rows) ? rows[0] : undefined;
-            const dbProfile = String(u?.profile || "").toLowerCase();
-            const dbAdmin = Boolean(u?.admin) || dbProfile === "admin";
-            const dbSuper = Boolean((u as any)?.super) || dbProfile === "super";
-            if (!dbAdmin && !dbSuper) {
-              return res.status(403).json({ error: true, message: "forbidden" });
-            }
-          } catch {
-            return res.status(403).json({ error: true, message: "forbidden" });
-          }
-        }
-      } catch {
-        return res.status(401).json({ error: true, message: "invalid token" });
-      }
+    const adminCheck = await ensureAdminFromAuth(auth);
+    if (!adminCheck.ok) {
+      const err = adminCheck as any;
+      return res.status(Number(err.status || 403)).json({ error: true, message: String(err.message || "forbidden") });
     }
+    const tenantId = (adminCheck as any).tenantId as number;
 
     const keys = ["mail_host", "mail_port", "mail_user", "mail_from", "mail_secure", "mail_pass"];
     for (const k of keys) {
@@ -294,6 +380,244 @@ router.delete("/email", async (req, res) => {
     });
   } catch (e: any) {
     return res.status(400).json({ error: true, message: e?.message || "delete email settings error" });
+  }
+});
+
+// Multi-profile SMTP endpoints
+router.get("/email/profiles", async (req, res) => {
+  try {
+    setNoCache(res);
+    const auth = req.headers.authorization as string;
+    const tenantId = extractTenantIdFromAuth(auth) || 1;
+    await ensureMailProfilesSchema();
+
+    // Seed first profile from legacy settings if table is empty (best-effort)
+    const cnt = await pgQuery<any>(`SELECT COUNT(*)::int as c FROM "MailSettingsProfiles" WHERE "companyId" = $1`, [tenantId]);
+    const c = Number(cnt?.[0]?.c || 0);
+    if (!c) {
+      const legacy = await getCompanyMailSettings(tenantId);
+      if (legacy?.mail_host || legacy?.mail_user || legacy?.mail_from) {
+        let pass = "";
+        try {
+          // we don't have getCompanyMailPassword here; legacy.hasPassword indicates it exists
+          pass = "";
+        } catch {}
+        await pgQuery<any>(
+          `
+          INSERT INTO "MailSettingsProfiles"
+            ("companyId", name, host, port, "user", "from", secure, pass, "isDefault", "createdAt", "updatedAt")
+          VALUES
+            ($1, $2, $3, $4, $5, $6, $7, $8, true, now(), now())
+        `,
+          [
+            tenantId,
+            String(legacy.mail_user || "SMTP Padrão"),
+            legacy.mail_host ?? null,
+            legacy.mail_port ?? null,
+            legacy.mail_user ?? null,
+            legacy.mail_from ?? null,
+            legacy.mail_secure ?? null,
+            pass
+          ]
+        );
+      }
+    }
+
+    const rows = await pgQuery<any>(
+      `
+      SELECT
+        id,
+        "companyId",
+        COALESCE(name, '') as name,
+        host,
+        port,
+        "user",
+        "from",
+        secure,
+        COALESCE("isDefault", false) as "isDefault",
+        (CASE WHEN COALESCE(pass,'') <> '' THEN true ELSE false END) as "has_password",
+        "updatedAt"
+      FROM "MailSettingsProfiles"
+      WHERE "companyId" = $1
+      ORDER BY COALESCE("isDefault", false) DESC, "updatedAt" DESC, id DESC
+    `,
+      [tenantId]
+    );
+    return res.json({ ok: true, profiles: rows || [] });
+  } catch (e: any) {
+    return res.status(400).json({ error: true, message: e?.message || "get email profiles error" });
+  }
+});
+
+router.post("/email/profiles", async (req, res) => {
+  try {
+    setNoCache(res);
+    const auth = req.headers.authorization as string;
+    const adminCheck = await ensureAdminFromAuth(auth);
+    if (!adminCheck.ok) {
+      const err = adminCheck as any;
+      return res.status(Number(err.status || 403)).json({ error: true, message: String(err.message || "forbidden") });
+    }
+    const tenantId = (adminCheck as any).tenantId as number;
+    await ensureMailProfilesSchema();
+
+    const body: any = req.body || {};
+    const name = String(body?.name || body?.mail_user || "SMTP").trim() || "SMTP";
+    const host = body?.mail_host ?? null;
+    const port = body?.mail_port ?? null;
+    const user = body?.mail_user ?? null;
+    const from = body?.mail_from ?? null;
+    const secure = body?.mail_secure ?? null;
+    const pass = body?.mail_pass ?? "";
+    const makeDefault = Boolean(body?.isDefault);
+
+    if (makeDefault) {
+      await pgQuery(`UPDATE "MailSettingsProfiles" SET "isDefault" = false WHERE "companyId" = $1`, [tenantId]);
+    }
+
+    const inserted = await pgQuery<any>(
+      `
+      INSERT INTO "MailSettingsProfiles"
+        ("companyId", name, host, port, "user", "from", secure, pass, "isDefault", "createdAt", "updatedAt")
+      VALUES
+        ($1, $2, $3, $4, $5, $6, $7, $8, $9, now(), now())
+      RETURNING id
+    `,
+      [tenantId, name, host, port, user, from, secure, pass, makeDefault]
+    );
+    const id = Number(inserted?.[0]?.id || 0);
+
+    if (makeDefault && id) {
+      const p = await pgQuery<any>(`SELECT * FROM "MailSettingsProfiles" WHERE id = $1 LIMIT 1`, [id]);
+      await syncDefaultProfileToLegacy(tenantId, p?.[0]);
+    }
+
+    return res.json({ ok: true, id });
+  } catch (e: any) {
+    return res.status(400).json({ error: true, message: e?.message || "create email profile error" });
+  }
+});
+
+router.put("/email/profiles/:id", async (req, res) => {
+  try {
+    setNoCache(res);
+    const auth = req.headers.authorization as string;
+    const adminCheck = await ensureAdminFromAuth(auth);
+    if (!adminCheck.ok) {
+      const err = adminCheck as any;
+      return res.status(Number(err.status || 403)).json({ error: true, message: String(err.message || "forbidden") });
+    }
+    const tenantId = (adminCheck as any).tenantId as number;
+    await ensureMailProfilesSchema();
+
+    const id = Number(req.params.id || 0);
+    if (!id) return res.status(400).json({ error: true, message: "invalid id" });
+
+    const body: any = req.body || {};
+    const sets: string[] = [];
+    const params: any[] = [];
+    if (body.name !== undefined) { params.push(String(body.name || "")); sets.push(`name = $${params.length}`); }
+    if (body.mail_host !== undefined) { params.push(body.mail_host); sets.push(`host = $${params.length}`); }
+    if (body.mail_port !== undefined) { params.push(body.mail_port); sets.push(`port = $${params.length}`); }
+    if (body.mail_user !== undefined) { params.push(body.mail_user); sets.push(`"user" = $${params.length}`); }
+    if (body.mail_from !== undefined) { params.push(body.mail_from); sets.push(`"from" = $${params.length}`); }
+    if (body.mail_secure !== undefined) { params.push(body.mail_secure); sets.push(`secure = $${params.length}`); }
+    if (body.mail_pass !== undefined && body.mail_pass !== "") { params.push(body.mail_pass); sets.push(`pass = $${params.length}`); }
+    if (body.isDefault !== undefined) {
+      const makeDefault = Boolean(body.isDefault);
+      if (makeDefault) {
+        await pgQuery(`UPDATE "MailSettingsProfiles" SET "isDefault" = false WHERE "companyId" = $1`, [tenantId]);
+      }
+      params.push(makeDefault);
+      sets.push(`"isDefault" = $${params.length}`);
+    }
+    if (!sets.length) return res.json({ ok: true });
+
+    params.push(id);
+    params.push(tenantId);
+    await pgQuery<any>(
+      `UPDATE "MailSettingsProfiles" SET ${sets.join(", ")}, "updatedAt" = now() WHERE id = $${params.length - 1} AND "companyId" = $${params.length}`,
+      params
+    );
+
+    // If this profile is default, sync to legacy keys
+    const p = await pgQuery<any>(`SELECT * FROM "MailSettingsProfiles" WHERE id = $1 AND "companyId" = $2 LIMIT 1`, [id, tenantId]);
+    const prof = p?.[0];
+    if (prof && Boolean(prof.isDefault)) {
+      await syncDefaultProfileToLegacy(tenantId, prof);
+    }
+
+    return res.json({ ok: true });
+  } catch (e: any) {
+    return res.status(400).json({ error: true, message: e?.message || "update email profile error" });
+  }
+});
+
+router.post("/email/profiles/:id/default", async (req, res) => {
+  try {
+    setNoCache(res);
+    const auth = req.headers.authorization as string;
+    const adminCheck = await ensureAdminFromAuth(auth);
+    if (!adminCheck.ok) {
+      const err = adminCheck as any;
+      return res.status(Number(err.status || 403)).json({ error: true, message: String(err.message || "forbidden") });
+    }
+    const tenantId = (adminCheck as any).tenantId as number;
+    await ensureMailProfilesSchema();
+
+    const id = Number(req.params.id || 0);
+    if (!id) return res.status(400).json({ error: true, message: "invalid id" });
+    await pgQuery(`UPDATE "MailSettingsProfiles" SET "isDefault" = false WHERE "companyId" = $1`, [tenantId]);
+    await pgQuery(`UPDATE "MailSettingsProfiles" SET "isDefault" = true, "updatedAt" = now() WHERE id = $1 AND "companyId" = $2`, [id, tenantId]);
+    const p = await pgQuery<any>(`SELECT * FROM "MailSettingsProfiles" WHERE id = $1 AND "companyId" = $2 LIMIT 1`, [id, tenantId]);
+    await syncDefaultProfileToLegacy(tenantId, p?.[0]);
+    return res.json({ ok: true });
+  } catch (e: any) {
+    return res.status(400).json({ error: true, message: e?.message || "set default email profile error" });
+  }
+});
+
+router.delete("/email/profiles/:id", async (req, res) => {
+  try {
+    setNoCache(res);
+    const auth = req.headers.authorization as string;
+    const adminCheck = await ensureAdminFromAuth(auth);
+    if (!adminCheck.ok) {
+      const err = adminCheck as any;
+      return res.status(Number(err.status || 403)).json({ error: true, message: String(err.message || "forbidden") });
+    }
+    const tenantId = (adminCheck as any).tenantId as number;
+    await ensureMailProfilesSchema();
+
+    const id = Number(req.params.id || 0);
+    if (!id) return res.status(400).json({ error: true, message: "invalid id" });
+
+    const was = await pgQuery<any>(`SELECT COALESCE("isDefault", false) as "isDefault" FROM "MailSettingsProfiles" WHERE id = $1 AND "companyId" = $2 LIMIT 1`, [id, tenantId]);
+    const wasDefault = Boolean(was?.[0]?.isDefault);
+    await pgQuery(`DELETE FROM "MailSettingsProfiles" WHERE id = $1 AND "companyId" = $2`, [id, tenantId]);
+
+    // If deleted default, pick newest as new default and sync legacy; otherwise leave legacy as-is.
+    if (wasDefault) {
+      const next = await pgQuery<any>(
+        `SELECT * FROM "MailSettingsProfiles" WHERE "companyId" = $1 ORDER BY "updatedAt" DESC, id DESC LIMIT 1`,
+        [tenantId]
+      );
+      if (next?.[0]) {
+        await pgQuery(`UPDATE "MailSettingsProfiles" SET "isDefault" = false WHERE "companyId" = $1`, [tenantId]);
+        await pgQuery(`UPDATE "MailSettingsProfiles" SET "isDefault" = true, "updatedAt" = now() WHERE id = $1`, [next[0].id]);
+        await syncDefaultProfileToLegacy(tenantId, next[0]);
+      } else {
+        // no profiles left -> clear legacy keys
+        const keys = ["mail_host", "mail_port", "mail_user", "mail_from", "mail_secure", "mail_pass"];
+        for (const k of keys) {
+          try { await deleteSettingKey(tenantId, k); } catch {}
+        }
+      }
+    }
+
+    return res.json({ ok: true });
+  } catch (e: any) {
+    return res.status(400).json({ error: true, message: e?.message || "delete email profile error" });
   }
 });
 
