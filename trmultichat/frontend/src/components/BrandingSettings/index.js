@@ -365,6 +365,16 @@ const PREMIUM_PALETTES = [
   },
 ];
 
+const FONT_OPTIONS = [
+  { id: "inter", label: "Inter (recomendado)", value: "Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif" },
+  { id: "system", label: "System UI (nativo)", value: "system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif" },
+  { id: "roboto", label: "Roboto", value: "Roboto, system-ui, -apple-system, Segoe UI, Arial, sans-serif" },
+  { id: "poppins", label: "Poppins", value: "Poppins, Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif" },
+  { id: "montserrat", label: "Montserrat", value: "Montserrat, Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif" },
+  { id: "nunito", label: "Nunito", value: "Nunito, Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif" },
+  { id: "opensans", label: "Open Sans", value: "\"Open Sans\", Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif" },
+];
+
 export default function BrandingSettings({ currentUser }) {
   const classes = useStyles();
   const { list: listCompanies } = useCompanies();
@@ -498,123 +508,129 @@ export default function BrandingSettings({ currentUser }) {
 
       <Grid container spacing={2}>
         <Grid item xs={12} md={7}>
-          <Paper className={classes.card} elevation={0}>
-            <div className={classes.sectionTitle}>
-              <BusinessOutlinedIcon style={{ fontSize: 18, opacity: 0.8 }} />
-              Empresa e identidade
-            </div>
+          <Grid container spacing={2}>
+            <Grid item xs={12} md={6}>
+              <Paper className={classes.card} elevation={0}>
+                <div className={classes.sectionTitle}>
+                  <BusinessOutlinedIcon style={{ fontSize: 18, opacity: 0.8 }} />
+                  Identidade
+                </div>
 
-            <Grid container spacing={2}>
-              {canPickCompany ? (
-                <Grid item xs={12}>
-                  <FormControl fullWidth variant="outlined" size="small" className={classes.field}>
-                    <InputLabel id="companyId-label">Empresa</InputLabel>
-                    <Select
-                      labelId="companyId-label"
-                      label="Empresa"
-                      value={companyId}
-                      onChange={(e) => setCompanyId(Number(e.target.value))}
+                <Grid container spacing={2}>
+                  {canPickCompany ? (
+                    <Grid item xs={12}>
+                      <FormControl fullWidth variant="outlined" size="small" className={classes.field}>
+                        <InputLabel id="companyId-label">Empresa</InputLabel>
+                        <Select
+                          labelId="companyId-label"
+                          label="Empresa"
+                          value={companyId}
+                          onChange={(e) => setCompanyId(Number(e.target.value))}
+                        >
+                          {(companies || []).map((c) => (
+                            <MenuItem key={c.id} value={Number(c.id)}>
+                              {c.name || `Empresa #${c.id}`}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                    </Grid>
+                  ) : null}
+
+                  <Grid item xs={12}>
+                    <TextField
+                      className={classes.field}
+                      label="Título do painel"
+                      fullWidth
+                      variant="outlined"
+                      size="small"
+                      value={form.appTitle}
+                      onChange={(e) => setForm((f) => ({ ...f, appTitle: e.target.value }))}
+                      InputProps={{
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            <TitleOutlinedIcon style={{ fontSize: 18, opacity: 0.7 }} />
+                          </InputAdornment>
+                        ),
+                      }}
+                    />
+                  </Grid>
+
+                  <Grid item xs={12}>
+                    <TextField
+                      className={classes.field}
+                      select
+                      label="Fonte"
+                      fullWidth
+                      variant="outlined"
+                      size="small"
+                      value={form.fontFamily}
+                      onChange={(e) => setForm((f) => ({ ...f, fontFamily: e.target.value }))}
+                      helperText="Selecione uma fonte compatível com o sistema."
                     >
-                      {(companies || []).map((c) => (
-                        <MenuItem key={c.id} value={Number(c.id)}>
-                          {c.name || `Empresa #${c.id}`}
+                      {FONT_OPTIONS.map((opt) => (
+                        <MenuItem key={opt.id} value={opt.value} style={{ fontFamily: opt.value }}>
+                          {opt.label}
                         </MenuItem>
                       ))}
-                    </Select>
-                  </FormControl>
+                    </TextField>
+                  </Grid>
+
+                  <Grid item xs={12} sm={6}>
+                    <TrButton variant="outlined" startIcon={<CloudUploadOutlinedIcon />} component="label" fullWidth>
+                      Enviar logo
+                      <input
+                        type="file"
+                        hidden
+                        accept="image/png,image/svg+xml,image/jpeg"
+                        onChange={(e) => handleUpload(e.target.files?.[0], "logoUrl")}
+                      />
+                    </TrButton>
+                    <div className={classes.uploadHint}>
+                      <div>
+                        <strong>Logo:</strong> 240×64px
+                      </div>
+                      <div>
+                        <strong>Ext.:</strong> .png / .svg / .jpg
+                      </div>
+                    </div>
+                  </Grid>
+
+                  <Grid item xs={12} sm={6}>
+                    <TrButton variant="outlined" startIcon={<CloudUploadOutlinedIcon />} component="label" fullWidth>
+                      Enviar favicon
+                      <input type="file" hidden accept=".ico,image/png" onChange={(e) => handleUpload(e.target.files?.[0], "faviconUrl")} />
+                    </TrButton>
+                    <div className={classes.uploadHint}>
+                      <div>
+                        <strong>Favicon:</strong> 32×32px
+                      </div>
+                      <div>
+                        <strong>Ext.:</strong> .ico / .png
+                      </div>
+                    </div>
+                  </Grid>
+
+                  {(form.logoUrl || form.faviconUrl) && (
+                    <Grid item xs={12}>
+                      <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                        {form.logoUrl ? <img alt="logo" src={form.logoUrl} className={classes.logoPreview} /> : null}
+                        {form.faviconUrl ? (
+                          <div style={{ fontSize: 12, opacity: 0.78, wordBreak: "break-word" }}>{String(form.faviconUrl)}</div>
+                        ) : null}
+                      </div>
+                    </Grid>
+                  )}
                 </Grid>
-              ) : null}
-
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  className={classes.field}
-                  label="Título do painel"
-                  fullWidth
-                  variant="outlined"
-                  size="small"
-                  value={form.appTitle}
-                  onChange={(e) => setForm((f) => ({ ...f, appTitle: e.target.value }))}
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <TitleOutlinedIcon style={{ fontSize: 18, opacity: 0.7 }} />
-                      </InputAdornment>
-                    ),
-                  }}
-                />
-              </Grid>
-
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  className={classes.field}
-                  label="Fonte"
-                  fullWidth
-                  variant="outlined"
-                  size="small"
-                  value={form.fontFamily}
-                  onChange={(e) => setForm((f) => ({ ...f, fontFamily: e.target.value }))}
-                  helperText="Ex.: Inter, sans-serif"
-                />
-              </Grid>
-
-              <Grid item xs={12} sm={6}>
-                <TrButton variant="outlined" startIcon={<CloudUploadOutlinedIcon />} component="label">
-                  Enviar logo
-                  <input
-                    type="file"
-                    hidden
-                    accept="image/png,image/svg+xml,image/jpeg"
-                    onChange={(e) => handleUpload(e.target.files?.[0], "logoUrl")}
-                  />
-                </TrButton>
-                <div className={classes.uploadHint}>
-                  <div>
-                    <strong>Logo (tamanho exato):</strong> 240×64px
-                  </div>
-                  <div>
-                    <strong>Extensões:</strong> .png / .svg / .jpg
-                  </div>
-                </div>
-                {form.logoUrl ? (
-                  <div style={{ marginTop: 8 }}>
-                    <img alt="logo" src={form.logoUrl} className={classes.logoPreview} />
-                  </div>
-                ) : null}
-              </Grid>
-
-              <Grid item xs={12} sm={6}>
-                <TrButton variant="outlined" startIcon={<CloudUploadOutlinedIcon />} component="label">
-                  Enviar favicon
-                  <input
-                    type="file"
-                    hidden
-                    accept=".ico,image/png"
-                    onChange={(e) => handleUpload(e.target.files?.[0], "faviconUrl")}
-                  />
-                </TrButton>
-                <div className={classes.uploadHint}>
-                  <div>
-                    <strong>Favicon (tamanho exato):</strong> 32×32px
-                  </div>
-                  <div>
-                    <strong>Extensões:</strong> .ico / .png
-                  </div>
-                </div>
-                {form.faviconUrl ? (
-                  <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>
-                    {String(form.faviconUrl)}
-                  </div>
-                ) : null}
-              </Grid>
+              </Paper>
             </Grid>
-          </Paper>
 
-          <Box mt={2}>
-            <Paper className={classes.card} elevation={0}>
-              <div className={classes.sectionTitle}>
-                <ColorLensOutlinedIcon style={{ fontSize: 18, opacity: 0.8 }} />
-                Cores e layout
-              </div>
+            <Grid item xs={12} md={6}>
+              <Paper className={classes.card} elevation={0}>
+                <div className={classes.sectionTitle}>
+                  <ColorLensOutlinedIcon style={{ fontSize: 18, opacity: 0.8 }} />
+                  Cores e layout
+                </div>
 
               <div className={classes.paletteRow}>
                 <Typography style={{ fontWeight: 1000, fontSize: 12, color: "rgba(15,23,42,0.70)", marginRight: 6 }}>
@@ -763,7 +779,7 @@ export default function BrandingSettings({ currentUser }) {
 
                 <Grid item xs={12} sm={6}>
                   {form.backgroundType === "image" ? (
-                    <TrButton variant="outlined" startIcon={<ImageOutlinedIcon />} component="label">
+                    <TrButton variant="outlined" startIcon={<ImageOutlinedIcon />} component="label" fullWidth>
                       Enviar imagem de fundo
                       <input
                         type="file"
@@ -833,8 +849,9 @@ export default function BrandingSettings({ currentUser }) {
                   {saving ? "Salvando..." : "Salvar identidade"}
                 </TrButton>
               </div>
-            </Paper>
-          </Box>
+              </Paper>
+            </Grid>
+          </Grid>
         </Grid>
 
         <Grid item xs={12} md={5}>
