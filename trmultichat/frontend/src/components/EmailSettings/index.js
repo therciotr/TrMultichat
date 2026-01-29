@@ -303,13 +303,14 @@ const EmailSettings = () => {
         isDefault: !!form.isDefault
       };
       // Create or update profile
+      let createdId = null;
       if (activeProfileId) {
         await api.put(`/settings/email/profiles/${activeProfileId}`, payload);
         setMessage("Perfil SMTP atualizado com sucesso.");
       } else {
         const resp = await api.post(`/settings/email/profiles`, payload);
-        const newId = Number(resp?.data?.id || 0) || null;
-        setActiveProfileId(newId);
+        createdId = Number(resp?.data?.id || 0) || null;
+        setActiveProfileId(createdId);
         setMessage("Perfil SMTP criado com sucesso.");
       }
       // Refresh list
@@ -317,9 +318,8 @@ const EmailSettings = () => {
         const { data } = await api.get("/settings/email/profiles");
         const list = Array.isArray(data?.profiles) ? data.profiles : [];
         setProfiles(list);
-        const current = activeProfileId
-          ? list.find((x) => Number(x?.id) === Number(activeProfileId))
-          : (list.find((x) => Number(x?.id) === Number(resp?.data?.id)) || null);
+        const targetId = activeProfileId || createdId;
+        const current = targetId ? list.find((x) => Number(x?.id) === Number(targetId)) : null;
         const def = list.find((x) => !!x?.isDefault) || list[0];
         applyProfileToForm(current || def);
         setLastLoadedAt(new Date().toISOString());
