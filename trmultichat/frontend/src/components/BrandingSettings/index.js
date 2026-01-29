@@ -192,6 +192,16 @@ const useStyles = makeStyles((theme) => ({
     fontWeight: 1000,
     borderRadius: 999,
   },
+  uploadHint: {
+    marginTop: 8,
+    fontSize: 12,
+    opacity: 0.78,
+    lineHeight: 1.35,
+    borderRadius: 14,
+    padding: theme.spacing(1, 1.25),
+    background: "rgba(15, 23, 42, 0.04)",
+    border: "1px solid rgba(15, 23, 42, 0.08)",
+  },
 }));
 
 const normalizeBranding = (b) => ({
@@ -263,6 +273,43 @@ function smartTextForBg(bgHex) {
   const cBlack = contrastRatio(bgHex, black);
   const cWhite = contrastRatio(bgHex, white);
   return cWhite >= cBlack ? white : black;
+}
+
+function clamp01(n) {
+  const x = Number(n);
+  if (Number.isNaN(x)) return 0;
+  return Math.max(0, Math.min(1, x));
+}
+
+function rgbToHex({ r, g, b }) {
+  const toHex = (v) => {
+    const h = Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0");
+    return h;
+  };
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+}
+
+function mixHex(a, b, t) {
+  const A = hexToRgb(a);
+  const B = hexToRgb(b);
+  if (!A || !B) return a;
+  const tt = clamp01(t);
+  return rgbToHex({
+    r: A.r + (B.r - A.r) * tt,
+    g: A.g + (B.g - A.g) * tt,
+    b: A.b + (B.b - A.b) * tt,
+  });
+}
+
+function adjustForWhiteText(baseHex, minRatio = 4.5) {
+  // Darken towards black until contrast with white meets minRatio
+  const white = "#FFFFFF";
+  if (contrastRatio(baseHex, white) >= minRatio) return baseHex;
+  for (let t = 0.08; t <= 1; t += 0.08) {
+    const darker = mixHex(baseHex, "#000000", t);
+    if (contrastRatio(darker, white) >= minRatio) return darker;
+  }
+  return baseHex;
 }
 
 const PREMIUM_PALETTES = [
@@ -413,6 +460,24 @@ export default function BrandingSettings({ currentUser }) {
   const contrastOkPrimary = contrastPrimaryWhite >= 4.5;
   const contrastOkButton = contrastButtonWhite >= 4.5;
 
+  const handleAutoFixContrast = () => {
+    setForm((f) => {
+      const next = { ...f };
+      // Ensure readable text on background
+      if (contrastRatio(next.backgroundColor, next.textColor) < 4.5) {
+        next.textColor = smartTextForBg(next.backgroundColor);
+      }
+      // Ensure white text is readable on primary/button (common UI)
+      if (contrastRatio(next.primaryColor, "#FFFFFF") < 4.5) {
+        next.primaryColor = adjustForWhiteText(next.primaryColor, 4.5);
+      }
+      if (contrastRatio(next.buttonColor, "#FFFFFF") < 4.5) {
+        next.buttonColor = adjustForWhiteText(next.buttonColor, 4.5);
+      }
+      return next;
+    });
+  };
+
   return (
     <div className={classes.root}>
       <Paper className={classes.hero} elevation={0}>
@@ -495,8 +560,21 @@ export default function BrandingSettings({ currentUser }) {
               <Grid item xs={12} sm={6}>
                 <TrButton variant="outlined" startIcon={<CloudUploadOutlinedIcon />} component="label">
                   Enviar logo
-                  <input type="file" hidden accept="image/*" onChange={(e) => handleUpload(e.target.files?.[0], "logoUrl")} />
+                  <input
+                    type="file"
+                    hidden
+                    accept="image/png,image/svg+xml,image/jpeg"
+                    onChange={(e) => handleUpload(e.target.files?.[0], "logoUrl")}
+                  />
                 </TrButton>
+                <div className={classes.uploadHint}>
+                  <div>
+                    <strong>Logo (tamanho exato):</strong> 240×64px
+                  </div>
+                  <div>
+                    <strong>Extensões:</strong> .png / .svg / .jpg
+                  </div>
+                </div>
                 {form.logoUrl ? (
                   <div style={{ marginTop: 8 }}>
                     <img alt="logo" src={form.logoUrl} className={classes.logoPreview} />
@@ -507,8 +585,21 @@ export default function BrandingSettings({ currentUser }) {
               <Grid item xs={12} sm={6}>
                 <TrButton variant="outlined" startIcon={<CloudUploadOutlinedIcon />} component="label">
                   Enviar favicon
-                  <input type="file" hidden accept="image/*,.ico" onChange={(e) => handleUpload(e.target.files?.[0], "faviconUrl")} />
+                  <input
+                    type="file"
+                    hidden
+                    accept=".ico,image/png"
+                    onChange={(e) => handleUpload(e.target.files?.[0], "faviconUrl")}
+                  />
                 </TrButton>
+                <div className={classes.uploadHint}>
+                  <div>
+                    <strong>Favicon (tamanho exato):</strong> 32×32px
+                  </div>
+                  <div>
+                    <strong>Extensões:</strong> .ico / .png
+                  </div>
+                </div>
                 {form.faviconUrl ? (
                   <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>
                     {String(form.faviconUrl)}
@@ -591,6 +682,15 @@ export default function BrandingSettings({ currentUser }) {
                     label="Sugerir cor do texto"
                     onClick={() => setForm((f) => ({ ...f, textColor: smartTextForBg(f.backgroundColor) }))}
                     style={{ fontWeight: 1000, background: "rgba(59,130,246,0.12)" }}
+                  />
+                ) : null}
+                {!contrastOkBgText || !contrastOkPrimary || !contrastOkButton ? (
+                  <Chip
+                    size="small"
+                    clickable
+                    label="Auto-ajustar contraste"
+                    onClick={handleAutoFixContrast}
+                    style={{ fontWeight: 1000, background: "rgba(16,185,129,0.14)" }}
                   />
                 ) : null}
               </div>
