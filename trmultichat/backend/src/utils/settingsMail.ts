@@ -1,6 +1,54 @@
 import { getLegacyModel } from "./legacyModel";
 import { pgQuery } from "./pgClient";
 
+function quoteIdent(name: string): string {
+  const safe = String(name).replace(/"/g, '""');
+  return `"${safe}"`;
+}
+
+async function resolveSettingsTable(): Promise<string> {
+  try {
+    const rows = await pgQuery<{ table_name: string }>(
+      `
+      SELECT table_name
+      FROM information_schema.tables
+      WHERE table_schema = 'public'
+        AND (table_name ILIKE 'settings' OR table_name ILIKE 'Settings')
+      LIMIT 1
+    `
+    );
+    const name = rows?.[0]?.table_name;
+    if (name) return quoteIdent(name);
+  } catch {}
+  return quoteIdent("Settings");
+}
+
+async function resolveColumnsMap(tableIdentQuoted: string): Promise<Map<string, string>> {
+  try {
+    const rawName = tableIdentQuoted.replace(/^"+|"+$/g, "").replace(/""/g, '"');
+    const cols = await pgQuery<{ column_name: string }>(
+      `
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = $1
+    `,
+      [rawName]
+    );
+    return new Map((cols || []).map((c) => [String(c.column_name || "").toLowerCase(), c.column_name]));
+  } catch {
+    return new Map();
+  }
+}
+
+function pickColumn(cols: Map<string, string>, candidates: string[]): string | null {
+  for (const c of candidates) {
+    const found = cols.get(String(c).toLowerCase());
+    if (found) return found;
+  }
+  return null;
+}
+
 export type CompanyMailSettings = {
   mail_host: string | null;
   mail_port: number | null;
@@ -26,9 +74,21 @@ export async function getCompanyMailSettings(
   // SQL fallback if legacy model is unavailable
   if (!Setting || typeof Setting.findAll !== "function") {
     try {
+      const t = await resolveSettingsTable();
+      const cols = await resolveColumnsMap(t);
+      const colCompanyId = pickColumn(cols, ["companyId", "company_id", "tenantId", "tenant_id"]);
+      const colKey = pickColumn(cols, ["key"]);
+      const colValue = pickColumn(cols, ["value"]);
+      if (!colKey || !colValue) throw new Error("settings columns not found");
+
+      const keys = ["mail_host", "mail_port", "mail_user", "mail_from", "mail_secure", "mail_pass"];
+      const where = colCompanyId
+        ? `WHERE ${quoteIdent(colCompanyId)} = $1 AND ${quoteIdent(colKey)} = ANY($2::text[])`
+        : `WHERE ${quoteIdent(colKey)} = ANY($1::text[])`;
+      const params = colCompanyId ? [companyId, keys] : [keys];
       const rows = await pgQuery<any>(
-        `SELECT key, value FROM "Settings" WHERE "companyId" = $1 AND key = ANY($2::text[])`,
-        [companyId, ["mail_host", "mail_port", "mail_user", "mail_from", "mail_secure", "mail_pass"]]
+        `SELECT ${quoteIdent(colKey)} as key, ${quoteIdent(colValue)} as value FROM ${t} ${where}`,
+        params
       );
       const map = new Map<string, string>();
       for (const r of rows || []) {
@@ -95,15 +155,36 @@ export async function saveCompanyMailSettings(
   const Setting = getLegacyModel("Setting");
   // SQL fallback if legacy model is unavailable
   if (!Setting || typeof Setting.findOne !== "function") {
+    const t = await resolveSettingsTable();
+    const cols = await resolveColumnsMap(t);
+    const colCompanyId = pickColumn(cols, ["companyId", "company_id", "tenantId", "tenant_id"]);
+    const colKey = pickColumn(cols, ["key"]);
+    const colValue = pickColumn(cols, ["value"]);
+    if (!colKey || !colValue) return;
+
     async function upsertSql(key: string, value: string) {
+      if (colCompanyId) {
+        const updated = await pgQuery<any>(
+          `UPDATE ${t} SET ${quoteIdent(colValue)} = $1 WHERE ${quoteIdent(colCompanyId)} = $2 AND ${quoteIdent(colKey)} = $3 RETURNING ${quoteIdent(colKey)} as key`,
+          [value, companyId, key]
+        );
+        if (updated?.[0]) return;
+        await pgQuery<any>(
+          `INSERT INTO ${t} (${quoteIdent(colKey)}, ${quoteIdent(colValue)}, ${quoteIdent(colCompanyId)}) VALUES ($1, $2, $3)`,
+          [key, value, companyId]
+        );
+        return;
+      }
+
+      // no company column: best-effort (global)
       const updated = await pgQuery<any>(
-        `UPDATE "Settings" SET value = $1 WHERE "companyId" = $2 AND key = $3 RETURNING key`,
-        [value, companyId, key]
+        `UPDATE ${t} SET ${quoteIdent(colValue)} = $1 WHERE ${quoteIdent(colKey)} = $2 RETURNING ${quoteIdent(colKey)} as key`,
+        [value, key]
       );
       if (updated?.[0]) return;
       await pgQuery<any>(
-        `INSERT INTO "Settings" (key, value, "companyId") VALUES ($1, $2, $3)`,
-        [key, value, companyId]
+        `INSERT INTO ${t} (${quoteIdent(colKey)}, ${quoteIdent(colValue)}) VALUES ($1, $2)`,
+        [key, value]
       );
     }
 
