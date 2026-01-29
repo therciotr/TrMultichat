@@ -46,6 +46,7 @@ import HelpsAdmin from "../pages/Admin/Helps";
 import { ThemeProvider } from "../context/ThemeContext";
 import ForgotPassword from "../pages/ForgotPassword";
 import ResetPassword from "../pages/ResetPassword";
+import Agenda from "../pages/Agenda";
 
 const Routes = () => {
   const [showCampaigns, setShowCampaigns] = useState(false);
@@ -182,6 +183,7 @@ const Routes = () => {
                   isPrivate
                 />
                 <Route exact path="/chats/:id?" component={Chat} isPrivate />
+                <Route exact path="/agenda" component={Agenda} isPrivate />
                 {showCampaigns && (
                   <>
                     <Route

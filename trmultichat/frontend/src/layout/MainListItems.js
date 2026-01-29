@@ -333,6 +333,11 @@ const MainListItems = (props) => {
                 icon={<BorderColorIcon />}
               />
               <ListItemLink
+                to="/agenda"
+                primary="Agenda"
+                icon={<EventIcon />}
+              />
+              <ListItemLink
                 to="/contacts"
                 primary={i18n.t("mainDrawer.listItems.contacts")}
                 icon={<ContactPhoneOutlinedIcon />}
