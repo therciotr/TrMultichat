@@ -1,5 +1,5 @@
 import nodemailer from "nodemailer";
-import { getCompanyMailSettings } from "./settingsMail";
+import { getCompanyMailPassword, getCompanyMailSettings } from "./settingsMail";
 import { getLegacyModel } from "./legacyModel";
 
 type MailConfig = {
@@ -73,14 +73,22 @@ export async function resolveMailConfig(
           : (process.env.MAIL_SECURE || "").toLowerCase() === "true" ||
             (!process.env.MAIL_SECURE && port === 465);
 
-      const Setting = getLegacyModel("Setting");
-      let pass: string | undefined;
-      if (Setting && typeof Setting.findOne === "function") {
-        const found = await Setting.findOne({
-          where: { companyId, key: "mail_pass" }
-        });
-        const plain = found?.get ? found.get({ plain: true }) : found;
-        pass = plain?.value || undefined;
+      let pass: string | undefined = undefined;
+      try {
+        pass = await getCompanyMailPassword(companyId);
+      } catch {}
+      // legacy fallback (best-effort)
+      if (!pass) {
+        try {
+          const Setting = getLegacyModel("Setting");
+          if (Setting && typeof Setting.findOne === "function") {
+            const found = await Setting.findOne({
+              where: { companyId, key: "mail_pass" }
+            });
+            const plain = found?.get ? found.get({ plain: true }) : found;
+            pass = plain?.value || undefined;
+          }
+        } catch {}
       }
 
       // eslint-disable-next-line no-console
