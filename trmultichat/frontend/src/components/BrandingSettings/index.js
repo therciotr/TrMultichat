@@ -114,12 +114,58 @@ const useStyles = makeStyles((theme) => ({
     display: "grid",
     gap: theme.spacing(1.25),
   },
+  previewShell: {
+    display: "grid",
+    gridTemplateColumns: "180px 1fr",
+    gap: theme.spacing(1.25),
+    [theme.breakpoints.down("xs")]: {
+      gridTemplateColumns: "1fr",
+    },
+  },
+  previewSidebar: {
+    borderRadius: 16,
+    padding: theme.spacing(1.25),
+    color: "#fff",
+    border: "1px solid rgba(255,255,255,0.14)",
+    boxShadow: "0 10px 24px rgba(15,23,42,0.12)",
+  },
+  previewMenuItem: {
+    height: 34,
+    borderRadius: 12,
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    padding: "0 10px",
+    fontSize: 12,
+    fontWeight: 900,
+    background: "rgba(255,255,255,0.08)",
+    border: "1px solid rgba(255,255,255,0.10)",
+    marginTop: 8,
+  },
+  previewDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 99,
+    background: "rgba(255,255,255,0.85)",
+    opacity: 0.9,
+  },
+  previewContent: {
+    display: "grid",
+    gap: theme.spacing(1.25),
+  },
   previewCard: {
     borderRadius: 16,
     border: "1px solid rgba(15, 23, 42, 0.10)",
     background: "rgba(255,255,255,0.92)",
     padding: theme.spacing(1.4),
     boxShadow: "0 10px 24px rgba(15,23,42,0.08)",
+  },
+  previewLoginCard: {
+    borderRadius: 16,
+    border: "1px solid rgba(15, 23, 42, 0.10)",
+    background: "rgba(255,255,255,0.94)",
+    padding: theme.spacing(1.4),
+    boxShadow: "0 12px 28px rgba(15,23,42,0.10)",
   },
   logoPreview: {
     height: 26,
@@ -134,6 +180,17 @@ const useStyles = makeStyles((theme) => ({
     justifyContent: "flex-end",
     marginTop: theme.spacing(2),
     flexWrap: "wrap",
+  },
+  paletteRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    flexWrap: "wrap",
+    marginBottom: theme.spacing(1.25),
+  },
+  paletteChip: {
+    fontWeight: 1000,
+    borderRadius: 999,
   },
 }));
 
@@ -153,6 +210,113 @@ const normalizeBranding = (b) => ({
   sidebarVariant: b?.sidebarVariant || "gradient",
   loginBackgroundType: b?.loginBackgroundType || "image",
 });
+
+function normalizeHex(hex) {
+  const h = String(hex || "").trim();
+  if (!h) return "";
+  if (h[0] !== "#") return `#${h}`;
+  return h;
+}
+
+function hexToRgb(hex) {
+  const h = normalizeHex(hex).replace("#", "");
+  if (h.length === 3) {
+    const r = parseInt(h[0] + h[0], 16);
+    const g = parseInt(h[1] + h[1], 16);
+    const b = parseInt(h[2] + h[2], 16);
+    return { r, g, b };
+  }
+  if (h.length === 6) {
+    const r = parseInt(h.slice(0, 2), 16);
+    const g = parseInt(h.slice(2, 4), 16);
+    const b = parseInt(h.slice(4, 6), 16);
+    return { r, g, b };
+  }
+  return null;
+}
+
+function relLuminance(hex) {
+  const rgb = hexToRgb(hex);
+  if (!rgb) return 0;
+  const toLin = (c) => {
+    const s = c / 255;
+    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+  };
+  const r = toLin(rgb.r);
+  const g = toLin(rgb.g);
+  const b = toLin(rgb.b);
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+function contrastRatio(a, b) {
+  const L1 = relLuminance(a);
+  const L2 = relLuminance(b);
+  const hi = Math.max(L1, L2);
+  const lo = Math.min(L1, L2);
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+function smartTextForBg(bgHex) {
+  // Choose between near-black and white
+  const black = "#111827";
+  const white = "#FFFFFF";
+  const cBlack = contrastRatio(bgHex, black);
+  const cWhite = contrastRatio(bgHex, white);
+  return cWhite >= cBlack ? white : black;
+}
+
+const PREMIUM_PALETTES = [
+  {
+    id: "emerald",
+    name: "Emerald Premium",
+    primaryColor: "#0B4C46",
+    secondaryColor: "#2BA9A5",
+    buttonColor: "#2BA9A5",
+    backgroundColor: "#F4F7F7",
+    textColor: "#0F172A",
+    sidebarVariant: "gradient",
+  },
+  {
+    id: "royal",
+    name: "Royal Blue",
+    primaryColor: "#0B2A5B",
+    secondaryColor: "#2563EB",
+    buttonColor: "#2563EB",
+    backgroundColor: "#F5F7FF",
+    textColor: "#0F172A",
+    sidebarVariant: "gradient",
+  },
+  {
+    id: "midnight",
+    name: "Midnight Dark",
+    primaryColor: "#0B1220",
+    secondaryColor: "#334155",
+    buttonColor: "#3B82F6",
+    backgroundColor: "#0B1220",
+    textColor: "#E5E7EB",
+    sidebarVariant: "solid",
+  },
+  {
+    id: "luxury",
+    name: "Luxury Black/Gold",
+    primaryColor: "#0B0B0F",
+    secondaryColor: "#D4AF37",
+    buttonColor: "#D4AF37",
+    backgroundColor: "#0F1115",
+    textColor: "#F8FAFC",
+    sidebarVariant: "solid",
+  },
+  {
+    id: "sunset",
+    name: "Sunset Coral",
+    primaryColor: "#7C2D12",
+    secondaryColor: "#F97316",
+    buttonColor: "#F97316",
+    backgroundColor: "#FFF7ED",
+    textColor: "#0F172A",
+    sidebarVariant: "gradient",
+  },
+];
 
 export default function BrandingSettings({ currentUser }) {
   const classes = useStyles();
@@ -227,6 +391,12 @@ export default function BrandingSettings({ currentUser }) {
     return { background: form.backgroundColor };
   }, [form.backgroundColor, form.backgroundImage, form.backgroundType]);
 
+  const sidebarBg = useMemo(() => {
+    const solid = `linear-gradient(180deg, ${form.primaryColor} 0%, ${form.primaryColor} 100%)`;
+    const gradient = `linear-gradient(180deg, ${form.primaryColor} 0%, rgba(0,0,0,0.25) 100%)`;
+    return String(form.sidebarVariant || "gradient") === "solid" ? solid : gradient;
+  }, [form.primaryColor, form.sidebarVariant]);
+
   const topBarStyle = useMemo(
     () => ({
       background: `linear-gradient(135deg, ${form.primaryColor}, ${form.secondaryColor})`,
@@ -234,6 +404,14 @@ export default function BrandingSettings({ currentUser }) {
     }),
     [form.fontFamily, form.primaryColor, form.secondaryColor]
   );
+
+  const contrastBgText = useMemo(() => contrastRatio(form.backgroundColor, form.textColor), [form.backgroundColor, form.textColor]);
+  const contrastPrimaryWhite = useMemo(() => contrastRatio(form.primaryColor, "#FFFFFF"), [form.primaryColor]);
+  const contrastButtonWhite = useMemo(() => contrastRatio(form.buttonColor, "#FFFFFF"), [form.buttonColor]);
+
+  const contrastOkBgText = contrastBgText >= 4.5;
+  const contrastOkPrimary = contrastPrimaryWhite >= 4.5;
+  const contrastOkButton = contrastButtonWhite >= 4.5;
 
   return (
     <div className={classes.root}>
@@ -346,6 +524,77 @@ export default function BrandingSettings({ currentUser }) {
                 <ColorLensOutlinedIcon style={{ fontSize: 18, opacity: 0.8 }} />
                 Cores e layout
               </div>
+
+              <div className={classes.paletteRow}>
+                <Typography style={{ fontWeight: 1000, fontSize: 12, color: "rgba(15,23,42,0.70)", marginRight: 6 }}>
+                  Paletas premium
+                </Typography>
+                {PREMIUM_PALETTES.map((p) => (
+                  <Chip
+                    key={p.id}
+                    className={classes.paletteChip}
+                    size="small"
+                    clickable
+                    label={p.name}
+                    onClick={() => {
+                      setForm((f) => ({
+                        ...f,
+                        primaryColor: p.primaryColor,
+                        secondaryColor: p.secondaryColor,
+                        buttonColor: p.buttonColor,
+                        backgroundType: "color",
+                        backgroundColor: p.backgroundColor,
+                        textColor: p.textColor,
+                        sidebarVariant: p.sidebarVariant,
+                      }));
+                    }}
+                    style={{
+                      background: `linear-gradient(135deg, ${p.primaryColor}, ${p.secondaryColor})`,
+                      color: "#fff",
+                    }}
+                  />
+                ))}
+              </div>
+
+              <div className={classes.paletteRow} style={{ marginTop: 2 }}>
+                <Typography style={{ fontWeight: 1000, fontSize: 12, color: "rgba(15,23,42,0.70)", marginRight: 6 }}>
+                  Contraste (acessibilidade)
+                </Typography>
+                <Chip
+                  size="small"
+                  label={`Texto x Fundo: ${contrastBgText.toFixed(2)}${contrastOkBgText ? " ✓" : " ⚠"}`}
+                  style={{
+                    fontWeight: 1000,
+                    background: contrastOkBgText ? "rgba(16,185,129,0.12)" : "rgba(245,158,11,0.14)",
+                  }}
+                />
+                <Chip
+                  size="small"
+                  label={`AppBar x Branco: ${contrastPrimaryWhite.toFixed(2)}${contrastOkPrimary ? " ✓" : " ⚠"}`}
+                  style={{
+                    fontWeight: 1000,
+                    background: contrastOkPrimary ? "rgba(16,185,129,0.12)" : "rgba(245,158,11,0.14)",
+                  }}
+                />
+                <Chip
+                  size="small"
+                  label={`Botão x Branco: ${contrastButtonWhite.toFixed(2)}${contrastOkButton ? " ✓" : " ⚠"}`}
+                  style={{
+                    fontWeight: 1000,
+                    background: contrastOkButton ? "rgba(16,185,129,0.12)" : "rgba(245,158,11,0.14)",
+                  }}
+                />
+                {!contrastOkBgText ? (
+                  <Chip
+                    size="small"
+                    clickable
+                    label="Sugerir cor do texto"
+                    onClick={() => setForm((f) => ({ ...f, textColor: smartTextForBg(f.backgroundColor) }))}
+                    style={{ fontWeight: 1000, background: "rgba(59,130,246,0.12)" }}
+                  />
+                ) : null}
+              </div>
+
               <Grid container spacing={2}>
                 <Grid item xs={12} sm={6}>
                   <TextField
@@ -497,26 +746,68 @@ export default function BrandingSettings({ currentUser }) {
               <Chip size="small" label={loading ? "Carregando..." : "Pré-visualização"} style={{ fontWeight: 900 }} />
             </div>
             <div className={classes.previewBody} style={{ ...bgStyle, fontFamily: form.fontFamily }}>
-              <div className={classes.previewCard} style={{ borderRadius: Number(form.borderRadius || 12) }}>
-                <div style={{ fontWeight: 1000, color: form.primaryColor }}>Cards & textos</div>
-                <div style={{ marginTop: 6, fontSize: 12, color: form.textColor, opacity: 0.85 }}>
-                  Exemplo de conteúdo usando as cores e tipografia definidas.
+              <div className={classes.previewShell}>
+                <div className={classes.previewSidebar} style={{ background: sidebarBg, borderRadius: Number(form.borderRadius || 12) }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <div style={{ width: 34, height: 34, borderRadius: 12, background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.14)" }} />
+                    <div style={{ fontWeight: 1000, fontSize: 12, opacity: 0.95 }}>Menu</div>
+                  </div>
+                  <div className={classes.previewMenuItem}>
+                    <span className={classes.previewDot} /> Atendimento
+                  </div>
+                  <div className={classes.previewMenuItem} style={{ opacity: 0.92 }}>
+                    <span className={classes.previewDot} style={{ opacity: 0.7 }} /> Chat - Interno
+                  </div>
+                  <div className={classes.previewMenuItem} style={{ opacity: 0.86 }}>
+                    <span className={classes.previewDot} style={{ opacity: 0.6 }} /> Configurações
+                  </div>
                 </div>
-                <div style={{ marginTop: 10 }}>
-                  <button
-                    style={{
-                      border: "none",
-                      borderRadius: Number(form.borderRadius || 12),
-                      padding: "10px 12px",
-                      width: "100%",
-                      cursor: "pointer",
-                      color: "#fff",
-                      fontWeight: 800,
-                      background: `linear-gradient(135deg, ${form.buttonColor}, ${form.secondaryColor})`,
-                    }}
-                  >
-                    Botão principal
-                  </button>
+
+                <div className={classes.previewContent}>
+                  <div className={classes.previewCard} style={{ borderRadius: Number(form.borderRadius || 12) }}>
+                    <div style={{ fontWeight: 1000, color: form.primaryColor }}>Cards & textos</div>
+                    <div style={{ marginTop: 6, fontSize: 12, color: form.textColor, opacity: 0.88 }}>
+                      Exemplo de conteúdo usando as cores e tipografia definidas.
+                    </div>
+                    <div style={{ marginTop: 10 }}>
+                      <button
+                        style={{
+                          border: "none",
+                          borderRadius: Number(form.borderRadius || 12),
+                          padding: "10px 12px",
+                          width: "100%",
+                          cursor: "pointer",
+                          color: "#fff",
+                          fontWeight: 800,
+                          background: `linear-gradient(135deg, ${form.buttonColor}, ${form.secondaryColor})`,
+                        }}
+                      >
+                        Botão principal
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className={classes.previewLoginCard} style={{ borderRadius: Number(form.borderRadius || 12) }}>
+                    <div style={{ fontWeight: 1000, color: form.primaryColor }}>Tela de login (preview)</div>
+                    <div style={{ marginTop: 6, display: "grid", gap: 8 }}>
+                      <div style={{ height: 34, borderRadius: 12, border: "1px solid rgba(15,23,42,0.10)", background: "#fff" }} />
+                      <div style={{ height: 34, borderRadius: 12, border: "1px solid rgba(15,23,42,0.10)", background: "#fff" }} />
+                      <button
+                        style={{
+                          border: "none",
+                          borderRadius: Number(form.borderRadius || 12),
+                          padding: "10px 12px",
+                          width: "100%",
+                          cursor: "pointer",
+                          color: "#fff",
+                          fontWeight: 900,
+                          background: `linear-gradient(135deg, ${form.primaryColor}, ${form.secondaryColor})`,
+                        }}
+                      >
+                        Entrar
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
