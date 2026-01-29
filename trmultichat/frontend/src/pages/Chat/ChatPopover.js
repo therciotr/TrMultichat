@@ -125,7 +125,7 @@ function SlideUp(props) {
   return <Slide {...props} direction="up" />;
 }
 
-export default function ChatPopover() {
+export default function ChatPopover({ volume }) {
   const { user } = useContext(AuthContext);
   const history = useHistory();
   const location = useLocation();
@@ -136,10 +136,12 @@ export default function ChatPopover() {
   const isAdminLike = Boolean(user?.super) || profile === "admin" || profile === "super";
 
   const [unreadCount, setUnreadCount] = useState(0);
-  const [play] = useSound(notifySound);
+  const volumeNum = Math.max(0, Math.min(1, Number(volume ?? 1)));
+  const [play] = useSound(notifySound, { volume: volumeNum });
   const soundAlertRef = useRef();
   const pathnameRef = useRef(pathname || "");
   const lastToastAtRef = useRef(0);
+  const lastSoundAtRef = useRef(0);
   const [snackOpen, setSnackOpen] = useState(false);
   const [snackTitle, setSnackTitle] = useState("Chat - Interno");
   const [snackFrom, setSnackFrom] = useState("Sistema");
@@ -211,6 +213,13 @@ export default function ChatPopover() {
     setSnackOpen(true);
   }, []);
 
+  const maybeSound = useCallback(() => {
+    const now = Date.now();
+    if (now - (Number(lastSoundAtRef.current) || 0) < 2500) return;
+    lastSoundAtRef.current = now;
+    try { soundAlertRef.current && soundAlertRef.current(); } catch {}
+  }, []);
+
   useEffect(() => {
     const companyId = localStorage.getItem("companyId");
     const userId = Number(myUserId || 0);
@@ -256,16 +265,20 @@ export default function ChatPopover() {
         } catch {}
         bumpUnread({ storageKey });
         maybeToast();
-        // toca som se foi resposta de outro usuário (ex.: admin recebeu resposta do usuário, ou vice-versa)
-        if (data?.action === "reply" && Number(data?.reply?.userId || 0) !== userId) {
-          try { soundAlertRef.current(); } catch {}
+        // som: qualquer mensagem/reply nova que NÃO foi enviada por mim
+        const senderId =
+          data?.action === "reply"
+            ? Number(data?.reply?.userId || 0)
+            : Number(data?.record?.userId || 0);
+        if (senderId && senderId !== userId) {
+          maybeSound();
         }
       }
     });
     return () => {
       socket.disconnect();
     };
-  }, [myUserId, bumpUnread, isVisibleToMeFromPayload, maybeToast, formatRecipient, formatSender]);
+  }, [myUserId, bumpUnread, isVisibleToMeFromPayload, maybeToast, formatRecipient, formatSender, maybeSound]);
 
   // Fallback robusto: polling (caso o socket falhe no navegador/rede do usuário)
   useEffect(() => {
@@ -327,6 +340,11 @@ export default function ChatPopover() {
           setSnackPreview(preview);
           bumpUnread({ storageKey });
           maybeToast();
+          // som no fallback (se não fui eu que mandei)
+          const senderId = Number(newestRec?.lastReplyUserId || newestRec?.userId || 0);
+          if (senderId && senderId !== userId) {
+            maybeSound();
+          }
           try { localStorage.setItem(lastSeenKey, new Date(newest).toISOString()); } catch {}
         }
       } catch (_) {}
@@ -343,7 +361,7 @@ export default function ChatPopover() {
       cancelled = true;
       if (timer) clearInterval(timer);
     };
-  }, [myUserId, bumpUnread, maybeToast]);
+  }, [myUserId, bumpUnread, maybeToast, maybeSound]);
 
   useEffect(() => {
     const companyId = localStorage.getItem("companyId");

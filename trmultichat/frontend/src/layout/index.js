@@ -1,4 +1,4 @@
-import React, { useState, useContext, useEffect } from "react";
+import React, { useState, useContext, useEffect, useRef } from "react";
 import clsx from "clsx";
 import { toast } from "react-toastify";
 import {
@@ -37,6 +37,8 @@ import { socketConnection } from "../services/socket";
 import api from "../services/api";
 import ChatPopover from "../pages/Chat/ChatPopover";
 import AudioUnlock from "../components/AudioUnlock";
+import useSound from "use-sound";
+import alertSound from "../assets/sound.mp3";
 
 import { useDate } from "../hooks/useDate";
 
@@ -195,7 +197,10 @@ const LoggedInLayout = ({ children, themeToggle }) => {
   const { colorMode } = useContext(ColorModeContext);
   const greaterThenSm = useMediaQuery(theme.breakpoints.up("sm"));
 
-  const [volume, setVolume] = useState(localStorage.getItem("volume") || 1);
+  const [volume, setVolume] = useState(Number(localStorage.getItem("volume") || 1));
+  const volumeNum = Number(volume || 0);
+  const [playNotify] = useSound(alertSound, { volume: Math.max(0, Math.min(1, volumeNum)) });
+  const notifyRef = useRef();
 
   const { dateToClient } = useDate();
 
@@ -291,6 +296,10 @@ const LoggedInLayout = ({ children, themeToggle }) => {
 
   // Agenda premium: polling de lembretes (gera alerta + pode enviar no Chat - Interno)
   useEffect(() => {
+    notifyRef.current = playNotify;
+  }, [playNotify]);
+
+  useEffect(() => {
     let mounted = true;
     let timer;
 
@@ -300,6 +309,8 @@ const LoggedInLayout = ({ children, themeToggle }) => {
         const { data } = await api.get("/agenda/reminders/due");
         const arr = Array.isArray(data?.records) ? data.records : [];
         if (!mounted || !arr.length) return;
+        // toca 1 som por ciclo (evita spam)
+        try { notifyRef.current && notifyRef.current(); } catch {}
         for (const r of arr) {
           const when = r?.startAt ? new Date(r.startAt).toLocaleString("pt-BR") : "";
           const msg = `⏰ Lembrete: ${r?.title || "Evento"}${when ? ` • ${when}` : ""}`;
@@ -459,9 +470,9 @@ const LoggedInLayout = ({ children, themeToggle }) => {
             <CachedIcon style={{ color: "white" }} />
           </IconButton>
 
-          {user.id && <NotificationsPopOver volume={volume} />}
+          {user.id && <NotificationsPopOver volume={Number(volumeNum || 1)} />}
 
-          <ChatPopover />
+          <ChatPopover volume={Number(volumeNum || 1)} />
 
           <div>
             <IconButton
