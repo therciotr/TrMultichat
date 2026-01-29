@@ -75,6 +75,43 @@ const useStyles = makeStyles((theme) => ({
     padding: theme.spacing(2),
     height: "100%",
   },
+  miniCard: {
+    borderRadius: 16,
+    border: "1px solid rgba(15, 23, 42, 0.10)",
+    boxShadow: "0 10px 22px rgba(15, 23, 42, 0.05)",
+    backgroundColor: "#fff",
+    padding: theme.spacing(1.5),
+    height: "100%",
+  },
+  miniRow: {
+    display: "flex",
+    alignItems: "flex-start",
+    gap: 10,
+  },
+  miniIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    display: "grid",
+    placeItems: "center",
+    background: "rgba(59, 130, 246, 0.10)",
+    border: "1px solid rgba(59, 130, 246, 0.14)",
+    color: "rgba(14, 116, 144, 1)",
+    flexShrink: 0,
+  },
+  miniLabel: {
+    fontSize: 11,
+    fontWeight: 1000,
+    color: "rgba(15, 23, 42, 0.55)",
+    margin: 0,
+  },
+  miniValue: {
+    fontSize: 13,
+    fontWeight: 1000,
+    color: "rgba(15, 23, 42, 0.90)",
+    marginTop: 2,
+    wordBreak: "break-word",
+  },
   sectionTitle: {
     fontWeight: 1000,
     fontSize: 13,
@@ -150,6 +187,7 @@ const EmailSettings = () => {
   const [error, setError] = useState("");
   const [showPass, setShowPass] = useState(false);
   const [lastLoadedAt, setLastLoadedAt] = useState(null);
+  const [editMode, setEditMode] = useState(true);
 
   useEffect(() => {
     let mounted = true;
@@ -168,6 +206,13 @@ const EmailSettings = () => {
         }));
         setHasPassword(!!data.has_password);
         setLastLoadedAt(new Date().toISOString());
+        const hasAnyConfig =
+          Boolean(String(data.mail_host || "").trim()) ||
+          data.mail_port != null ||
+          Boolean(String(data.mail_user || "").trim()) ||
+          Boolean(String(data.mail_from || "").trim()) ||
+          Boolean(data.has_password);
+        setEditMode(!hasAnyConfig);
       } catch {
         setError("Não foi possível carregar as configurações de e-mail.");
       }
@@ -212,6 +257,7 @@ const EmailSettings = () => {
         }));
         setHasPassword(!!data.has_password);
         setLastLoadedAt(new Date().toISOString());
+        setEditMode(false);
       } else {
         // last resort: reload
         try {
@@ -227,6 +273,7 @@ const EmailSettings = () => {
           }));
           setHasPassword(!!fresh.has_password);
           setLastLoadedAt(new Date().toISOString());
+          setEditMode(false);
         } catch {}
       }
       setMessage("Configurações salvas com sucesso.");
@@ -285,184 +332,204 @@ const EmailSettings = () => {
 
       <Grid container spacing={2}>
         <Grid item xs={12} md={6}>
-          <Paper className={classes.card} elevation={0}>
-            <div className={classes.sectionTitle}>
-              <DnsOutlinedIcon style={{ fontSize: 18, opacity: 0.8 }} />
-              Servidor
+          <Paper className={classes.miniCard} elevation={0}>
+            <div className={classes.miniRow}>
+              <div className={classes.miniIcon}>
+                <DnsOutlinedIcon style={{ fontSize: 18 }} />
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <p className={classes.miniLabel}>Servidor (Host/Porta)</p>
+                <div className={classes.miniValue}>
+                  {form.mail_host ? `${form.mail_host}${form.mail_port ? `:${form.mail_port}` : ""}` : "—"}
+                </div>
+              </div>
             </div>
-            <Grid container spacing={2}>
-              <Grid item xs={12} sm={8}>
-                <TextField
-                  className={classes.field}
-                  label="Host SMTP"
-                  fullWidth
-                  variant="outlined"
-                  size="small"
-                  value={form.mail_host}
-                  onChange={handleChange("mail_host")}
-                />
-              </Grid>
-              <Grid item xs={12} sm={4}>
-                <TextField
-                  className={classes.field}
-                  label="Porta"
-                  fullWidth
-                  variant="outlined"
-                  size="small"
-                  value={form.mail_port}
-                  onChange={handleChange("mail_port")}
-                />
-              </Grid>
-              <Grid item xs={12}>
-                <FormControlLabel
-                  control={
-                    <Switch
-                      checked={Boolean(form.mail_secure)}
-                      onChange={handleChange("mail_secure")}
-                      color="primary"
-                    />
-                  }
-                  label="Usar TLS/SSL (Secure)"
-                />
-              </Grid>
-            </Grid>
           </Paper>
         </Grid>
-
         <Grid item xs={12} md={6}>
-          <Paper className={classes.card} elevation={0}>
-            <div className={classes.sectionTitle}>
-              <VpnKeyOutlinedIcon style={{ fontSize: 18, opacity: 0.8 }} />
-              Credenciais
+          <Paper className={classes.miniCard} elevation={0}>
+            <div className={classes.miniRow}>
+              <div className={classes.miniIcon}>
+                <AlternateEmailOutlinedIcon style={{ fontSize: 18 }} />
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <p className={classes.miniLabel}>Usuário (SMTP)</p>
+                <div className={classes.miniValue}>{form.mail_user || "—"}</div>
+              </div>
             </div>
-            <Grid container spacing={2}>
-              <Grid item xs={12}>
-                <TextField
-                  className={classes.field}
-                  label="Usuário"
-                  fullWidth
-                  variant="outlined"
-                  size="small"
-                  value={form.mail_user}
-                  onChange={handleChange("mail_user")}
-                />
-              </Grid>
-              <Grid item xs={12}>
-                <TextField
-                  className={classes.field}
-                  label="Senha SMTP"
-                  type={showPass ? "text" : "password"}
-                  fullWidth
-                  variant="outlined"
-                  size="small"
-                  value={form.mail_pass}
-                  onChange={handleChange("mail_pass")}
-                  helperText={hasPassword ? "Senha já configurada. Deixe em branco para manter." : ""}
-                  InputProps={{
-                    endAdornment: (
-                      <InputAdornment position="end">
-                        <IconButton
-                          size="small"
-                          onClick={() => setShowPass((v) => !v)}
-                          aria-label={showPass ? "Ocultar senha" : "Mostrar senha"}
-                        >
-                          {showPass ? <VisibilityOffOutlinedIcon /> : <VisibilityOutlinedIcon />}
-                        </IconButton>
-                      </InputAdornment>
-                    ),
-                  }}
-                />
-              </Grid>
-              <Grid item xs={12}>
-                <TextField
-                  className={classes.field}
-                  label="Remetente (From)"
-                  fullWidth
-                  variant="outlined"
-                  size="small"
-                  value={form.mail_from}
-                  onChange={handleChange("mail_from")}
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <AlternateEmailOutlinedIcon style={{ fontSize: 18, opacity: 0.7 }} />
-                      </InputAdornment>
-                    ),
-                  }}
-                />
-              </Grid>
-            </Grid>
+          </Paper>
+        </Grid>
+        <Grid item xs={12} md={6}>
+          <Paper className={classes.miniCard} elevation={0}>
+            <div className={classes.miniRow}>
+              <div className={classes.miniIcon}>
+                <MailOutlineOutlinedIcon style={{ fontSize: 18 }} />
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <p className={classes.miniLabel}>Remetente (From)</p>
+                <div className={classes.miniValue}>{form.mail_from || "—"}</div>
+              </div>
+            </div>
+          </Paper>
+        </Grid>
+        <Grid item xs={12} md={6}>
+          <Paper className={classes.miniCard} elevation={0}>
+            <div className={classes.miniRow}>
+              <div className={classes.miniIcon}>
+                <SecurityOutlinedIcon style={{ fontSize: 18 }} />
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <p className={classes.miniLabel}>Status</p>
+                <Box display="flex" alignItems="center" gridGap={8} style={{ flexWrap: "wrap" }}>
+                  <Chip
+                    size="small"
+                    icon={isFullyConfigured ? <CheckCircleOutlineOutlinedIcon /> : <ErrorOutlineOutlinedIcon />}
+                    label={isFullyConfigured ? "Configuração completa" : `Parcial (${configuredCount}/5)`}
+                    style={{
+                      fontWeight: 1000,
+                      background: isFullyConfigured ? "rgba(16,185,129,0.12)" : "rgba(245,158,11,0.14)",
+                    }}
+                  />
+                  <Chip
+                    size="small"
+                    icon={<VpnKeyOutlinedIcon />}
+                    label={hasPassword ? "Senha configurada" : "Senha não configurada"}
+                    style={{
+                      fontWeight: 1000,
+                      background: hasPassword ? "rgba(16,185,129,0.10)" : "rgba(239,68,68,0.10)",
+                    }}
+                  />
+                  {lastLoadedAt ? (
+                    <Chip
+                      size="small"
+                      icon={<SaveOutlinedIcon />}
+                      label={`Atualizado: ${new Date(lastLoadedAt).toLocaleString()}`}
+                      style={{ fontWeight: 900, background: "rgba(15,23,42,0.06)" }}
+                    />
+                  ) : null}
+                </Box>
+              </div>
+            </div>
           </Paper>
         </Grid>
       </Grid>
 
-      <Box mt={2}>
-        <Paper className={classes.card} elevation={0}>
-          <div className={classes.sectionTitle}>
-            <MailOutlineOutlinedIcon style={{ fontSize: 18, opacity: 0.8 }} />
-            Resumo da configuração
-          </div>
+      {editMode ? (
+        <Box mt={2}>
           <Grid container spacing={2}>
             <Grid item xs={12} md={6}>
-              <Typography style={{ fontSize: 12, color: "rgba(15, 23, 42, 0.62)" }}>
-                Servidor
-              </Typography>
-              <Typography style={{ fontWeight: 900 }}>
-                {form.mail_host ? `${form.mail_host}${form.mail_port ? `:${form.mail_port}` : ""}` : "—"}
-              </Typography>
+              <Paper className={classes.card} elevation={0}>
+                <div className={classes.sectionTitle}>
+                  <DnsOutlinedIcon style={{ fontSize: 18, opacity: 0.8 }} />
+                  Servidor
+                </div>
+                <Grid container spacing={2}>
+                  <Grid item xs={12} sm={8}>
+                    <TextField
+                      className={classes.field}
+                      label="Host SMTP"
+                      fullWidth
+                      variant="outlined"
+                      size="small"
+                      value={form.mail_host}
+                      onChange={handleChange("mail_host")}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={4}>
+                    <TextField
+                      className={classes.field}
+                      label="Porta"
+                      fullWidth
+                      variant="outlined"
+                      size="small"
+                      value={form.mail_port}
+                      onChange={handleChange("mail_port")}
+                    />
+                  </Grid>
+                  <Grid item xs={12}>
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          checked={Boolean(form.mail_secure)}
+                          onChange={handleChange("mail_secure")}
+                          color="primary"
+                        />
+                      }
+                      label="Usar TLS/SSL (Secure)"
+                    />
+                  </Grid>
+                </Grid>
+              </Paper>
             </Grid>
+
             <Grid item xs={12} md={6}>
-              <Typography style={{ fontSize: 12, color: "rgba(15, 23, 42, 0.62)" }}>
-                Remetente (From)
-              </Typography>
-              <Typography style={{ fontWeight: 900 }}>
-                {form.mail_from || "—"}
-              </Typography>
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <Typography style={{ fontSize: 12, color: "rgba(15, 23, 42, 0.62)" }}>
-                Usuário
-              </Typography>
-              <Typography style={{ fontWeight: 900 }}>
-                {form.mail_user || "—"}
-              </Typography>
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <Typography style={{ fontSize: 12, color: "rgba(15, 23, 42, 0.62)" }}>
-                Status
-              </Typography>
-              <Box display="flex" alignItems="center" gridGap={8} style={{ flexWrap: "wrap" }}>
-                <Chip
-                  size="small"
-                  icon={isFullyConfigured ? <CheckCircleOutlineOutlinedIcon /> : <ErrorOutlineOutlinedIcon />}
-                  label={isFullyConfigured ? "Configuração completa" : `Parcial (${configuredCount}/5)`}
-                  style={{
-                    fontWeight: 1000,
-                    background: isFullyConfigured ? "rgba(16,185,129,0.12)" : "rgba(245,158,11,0.14)",
-                  }}
-                />
-                <Chip
-                  size="small"
-                  icon={<VpnKeyOutlinedIcon />}
-                  label={hasPassword ? "Senha configurada" : "Senha não configurada"}
-                  style={{
-                    fontWeight: 1000,
-                    background: hasPassword ? "rgba(16,185,129,0.10)" : "rgba(239,68,68,0.10)",
-                  }}
-                />
-                {lastLoadedAt ? (
-                  <Chip
-                    size="small"
-                    icon={<SaveOutlinedIcon />}
-                    label={`Atualizado: ${new Date(lastLoadedAt).toLocaleString()}`}
-                    style={{ fontWeight: 900, background: "rgba(15,23,42,0.06)" }}
-                  />
-                ) : null}
-              </Box>
+              <Paper className={classes.card} elevation={0}>
+                <div className={classes.sectionTitle}>
+                  <VpnKeyOutlinedIcon style={{ fontSize: 18, opacity: 0.8 }} />
+                  Credenciais
+                </div>
+                <Grid container spacing={2}>
+                  <Grid item xs={12}>
+                    <TextField
+                      className={classes.field}
+                      label="Usuário"
+                      fullWidth
+                      variant="outlined"
+                      size="small"
+                      value={form.mail_user}
+                      onChange={handleChange("mail_user")}
+                    />
+                  </Grid>
+                  <Grid item xs={12}>
+                    <TextField
+                      className={classes.field}
+                      label="Senha SMTP"
+                      type={showPass ? "text" : "password"}
+                      fullWidth
+                      variant="outlined"
+                      size="small"
+                      value={form.mail_pass}
+                      onChange={handleChange("mail_pass")}
+                      helperText={hasPassword ? "Senha já configurada. Deixe em branco para manter." : ""}
+                      InputProps={{
+                        endAdornment: (
+                          <InputAdornment position="end">
+                            <IconButton
+                              size="small"
+                              onClick={() => setShowPass((v) => !v)}
+                              aria-label={showPass ? "Ocultar senha" : "Mostrar senha"}
+                            >
+                              {showPass ? <VisibilityOffOutlinedIcon /> : <VisibilityOutlinedIcon />}
+                            </IconButton>
+                          </InputAdornment>
+                        ),
+                      }}
+                    />
+                  </Grid>
+                  <Grid item xs={12}>
+                    <TextField
+                      className={classes.field}
+                      label="Remetente (From)"
+                      fullWidth
+                      variant="outlined"
+                      size="small"
+                      value={form.mail_from}
+                      onChange={handleChange("mail_from")}
+                      InputProps={{
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            <AlternateEmailOutlinedIcon style={{ fontSize: 18, opacity: 0.7 }} />
+                          </InputAdornment>
+                        ),
+                      }}
+                    />
+                  </Grid>
+                </Grid>
+              </Paper>
             </Grid>
           </Grid>
-        </Paper>
-      </Box>
+        </Box>
+      ) : null}
 
       {message ? (
         <div className={`${classes.banner} ${classes.bannerOk}`}>
@@ -512,10 +579,35 @@ const EmailSettings = () => {
         >
           Recarregar
         </TrButton>
+        {!editMode ? (
+          <TrButton
+            className={classes.saveBtn}
+            onClick={() => {
+              setMessage("");
+              setError("");
+              setEditMode(true);
+            }}
+            disabled={saveDisabled}
+          >
+            Editar
+          </TrButton>
+        ) : (
+          <TrButton
+            className={classes.saveBtn}
+            onClick={() => {
+              setMessage("");
+              setError("");
+              setEditMode(false);
+            }}
+            disabled={saveDisabled}
+          >
+            Cancelar
+          </TrButton>
+        )}
         <TrButton
           className={classes.saveBtn}
           onClick={handleSave}
-          disabled={saveDisabled}
+          disabled={saveDisabled || !editMode}
           startIcon={<SaveOutlinedIcon />}
         >
           {saving ? "Salvando..." : "Salvar alterações"}

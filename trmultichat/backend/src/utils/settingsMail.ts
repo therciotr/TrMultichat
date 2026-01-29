@@ -1,4 +1,5 @@
 import { pgQuery } from "./pgClient";
+import { getSettingValue, setSettingValue } from "./settingsStore";
 
 function quoteIdent(name: string): string {
   const safe = String(name).replace(/"/g, '""');
@@ -12,7 +13,10 @@ async function resolveSettingsTable(): Promise<string> {
       SELECT table_name
       FROM information_schema.tables
       WHERE table_schema = 'public'
-        AND (table_name ILIKE 'settings' OR table_name ILIKE 'Settings')
+        AND (
+          table_name ILIKE 'settings' OR table_name ILIKE 'Settings' OR
+          table_name ILIKE 'setting' OR table_name ILIKE 'Setting'
+        )
       LIMIT 1
     `
     );
@@ -73,9 +77,15 @@ export async function getCompanyMailPassword(companyId: number): Promise<string 
     const t = await resolveSettingsTable();
     const cols = await resolveColumnsMap(t);
     const colCompanyId = pickColumn(cols, ["companyId", "company_id", "tenantId", "tenant_id"]);
-    const colKey = pickColumn(cols, ["key"]);
-    const colValue = pickColumn(cols, ["value"]);
-    if (!colKey || !colValue) return undefined;
+    const colKey = pickColumn(cols, ["key", "settingKey", "setting_key", "name"]);
+    const colValue = pickColumn(cols, ["value", "settingValue", "setting_value", "val"]);
+    if (!colKey || !colValue) {
+      try {
+        const v = await getSettingValue(companyId, "mail_pass");
+        return v ? String(v) : undefined;
+      } catch {}
+      return undefined;
+    }
 
     const where = colCompanyId
       ? `WHERE ${quoteIdent(colCompanyId)} = $1 AND ${quoteIdent(colKey)} = $2 LIMIT 1`
@@ -88,6 +98,10 @@ export async function getCompanyMailPassword(companyId: number): Promise<string 
     const pass = rows?.[0]?.value ? String(rows[0].value) : "";
     return pass ? pass : undefined;
   } catch {
+    try {
+      const v = await getSettingValue(companyId, "mail_pass");
+      return v ? String(v) : undefined;
+    } catch {}
     return undefined;
   }
 }
@@ -99,16 +113,26 @@ export async function getCompanyMailSettings(
     const t = await resolveSettingsTable();
     const cols = await resolveColumnsMap(t);
     const colCompanyId = pickColumn(cols, ["companyId", "company_id", "tenantId", "tenant_id"]);
-    const colKey = pickColumn(cols, ["key"]);
-    const colValue = pickColumn(cols, ["value"]);
+    const colKey = pickColumn(cols, ["key", "settingKey", "setting_key", "name"]);
+    const colValue = pickColumn(cols, ["value", "settingValue", "setting_value", "val"]);
     if (!colKey || !colValue) {
+      // Fallback to settingsStore (covers legacy schemas / quoted tables)
+      const mail_host = (await getSettingValue(companyId, "mail_host")) || null;
+      const mail_port_raw = await getSettingValue(companyId, "mail_port");
+      const mail_port = mail_port_raw ? Number(mail_port_raw) : null;
+      const mail_user = (await getSettingValue(companyId, "mail_user")) || null;
+      const mail_from = (await getSettingValue(companyId, "mail_from")) || null;
+      const mail_secure_raw = await getSettingValue(companyId, "mail_secure");
+      const mail_secure = mail_secure_raw != null ? String(mail_secure_raw).toLowerCase() === "true" : null;
+      const pass = await getSettingValue(companyId, "mail_pass");
+      const hasPassword = !!pass;
       return {
-        mail_host: null,
-        mail_port: null,
-        mail_user: null,
-        mail_from: null,
-        mail_secure: null,
-        hasPassword: false
+        mail_host,
+        mail_port: Number.isNaN(mail_port as any) ? null : mail_port,
+        mail_user,
+        mail_from,
+        mail_secure,
+        hasPassword
       };
     }
 
@@ -143,6 +167,26 @@ export async function getCompanyMailSettings(
       hasPassword
     };
   } catch {
+    // last fallback
+    try {
+      const mail_host = (await getSettingValue(companyId, "mail_host")) || null;
+      const mail_port_raw = await getSettingValue(companyId, "mail_port");
+      const mail_port = mail_port_raw ? Number(mail_port_raw) : null;
+      const mail_user = (await getSettingValue(companyId, "mail_user")) || null;
+      const mail_from = (await getSettingValue(companyId, "mail_from")) || null;
+      const mail_secure_raw = await getSettingValue(companyId, "mail_secure");
+      const mail_secure = mail_secure_raw != null ? String(mail_secure_raw).toLowerCase() === "true" : null;
+      const pass = await getSettingValue(companyId, "mail_pass");
+      const hasPassword = !!pass;
+      return {
+        mail_host,
+        mail_port: Number.isNaN(mail_port as any) ? null : mail_port,
+        mail_user,
+        mail_from,
+        mail_secure,
+        hasPassword
+      };
+    } catch {}
     return {
       mail_host: null,
       mail_port: null,
@@ -162,19 +206,42 @@ export async function saveCompanyMailSettings(
     const t = await resolveSettingsTable();
     const cols = await resolveColumnsMap(t);
     const colCompanyId = pickColumn(cols, ["companyId", "company_id", "tenantId", "tenant_id"]);
-    const colKey = pickColumn(cols, ["key"]);
-    const colValue = pickColumn(cols, ["value"]);
-    if (!colKey || !colValue) return;
+    const colKey = pickColumn(cols, ["key", "settingKey", "setting_key", "name"]);
+    const colValue = pickColumn(cols, ["value", "settingValue", "setting_value", "val"]);
+    const colCreatedAt = pickColumn(cols, ["createdAt", "created_at", "createdat"]);
+    const colUpdatedAt = pickColumn(cols, ["updatedAt", "updated_at", "updatedat"]);
+    if (!colKey || !colValue) {
+      // Fallback to settingsStore for common schemas
+      if (dto.mail_host !== undefined) await setSettingValue(companyId, "mail_host", dto.mail_host || "");
+      if (dto.mail_port !== undefined) await setSettingValue(companyId, "mail_port", dto.mail_port != null ? String(dto.mail_port) : "");
+      if (dto.mail_user !== undefined) await setSettingValue(companyId, "mail_user", dto.mail_user || "");
+      if (dto.mail_from !== undefined) await setSettingValue(companyId, "mail_from", dto.mail_from || "");
+      if (dto.mail_secure !== undefined) await setSettingValue(companyId, "mail_secure", dto.mail_secure ? "true" : "false");
+      if (dto.mail_pass !== undefined && dto.mail_pass !== "") await setSettingValue(companyId, "mail_pass", dto.mail_pass);
+      return;
+    }
 
     async function upsertSql(key: string, value: string) {
       if (colCompanyId) {
         const updated = await pgQuery<any>(
-          `UPDATE ${t} SET ${quoteIdent(colValue)} = $1 WHERE ${quoteIdent(colCompanyId)} = $2 AND ${quoteIdent(colKey)} = $3 RETURNING ${quoteIdent(colKey)} as key`,
+          `UPDATE ${t} SET ${quoteIdent(colValue)} = $1${
+            colUpdatedAt ? `, ${quoteIdent(colUpdatedAt)} = now()` : ""
+          } WHERE ${quoteIdent(colCompanyId)} = $2 AND ${quoteIdent(colKey)} = $3 RETURNING ${quoteIdent(colKey)} as key`,
           [value, companyId, key]
         );
         if (updated?.[0]) return;
+        const insertCols = [quoteIdent(colKey), quoteIdent(colValue), quoteIdent(colCompanyId)];
+        const insertVals = ["$1", "$2", "$3"];
+        if (colCreatedAt) {
+          insertCols.push(quoteIdent(colCreatedAt));
+          insertVals.push("now()");
+        }
+        if (colUpdatedAt) {
+          insertCols.push(quoteIdent(colUpdatedAt));
+          insertVals.push("now()");
+        }
         await pgQuery<any>(
-          `INSERT INTO ${t} (${quoteIdent(colKey)}, ${quoteIdent(colValue)}, ${quoteIdent(colCompanyId)}) VALUES ($1, $2, $3)`,
+          `INSERT INTO ${t} (${insertCols.join(", ")}) VALUES (${insertVals.join(", ")})`,
           [key, value, companyId]
         );
         return;
@@ -182,12 +249,24 @@ export async function saveCompanyMailSettings(
 
       // no company column: best-effort (global)
       const updated = await pgQuery<any>(
-        `UPDATE ${t} SET ${quoteIdent(colValue)} = $1 WHERE ${quoteIdent(colKey)} = $2 RETURNING ${quoteIdent(colKey)} as key`,
+        `UPDATE ${t} SET ${quoteIdent(colValue)} = $1${
+          colUpdatedAt ? `, ${quoteIdent(colUpdatedAt)} = now()` : ""
+        } WHERE ${quoteIdent(colKey)} = $2 RETURNING ${quoteIdent(colKey)} as key`,
         [value, key]
       );
       if (updated?.[0]) return;
+      const insertCols = [quoteIdent(colKey), quoteIdent(colValue)];
+      const insertVals = ["$1", "$2"];
+      if (colCreatedAt) {
+        insertCols.push(quoteIdent(colCreatedAt));
+        insertVals.push("now()");
+      }
+      if (colUpdatedAt) {
+        insertCols.push(quoteIdent(colUpdatedAt));
+        insertVals.push("now()");
+      }
       await pgQuery<any>(
-        `INSERT INTO ${t} (${quoteIdent(colKey)}, ${quoteIdent(colValue)}) VALUES ($1, $2)`,
+        `INSERT INTO ${t} (${insertCols.join(", ")}) VALUES (${insertVals.join(", ")})`,
         [key, value]
       );
     }
@@ -202,6 +281,14 @@ export async function saveCompanyMailSettings(
       await upsertSql("mail_pass", dto.mail_pass);
     }
   } catch {
-    // ignore; caller handles errors upstream
+    // Fallback to settingsStore as last resort
+    try {
+      if (dto.mail_host !== undefined) await setSettingValue(companyId, "mail_host", dto.mail_host || "");
+      if (dto.mail_port !== undefined) await setSettingValue(companyId, "mail_port", dto.mail_port != null ? String(dto.mail_port) : "");
+      if (dto.mail_user !== undefined) await setSettingValue(companyId, "mail_user", dto.mail_user || "");
+      if (dto.mail_from !== undefined) await setSettingValue(companyId, "mail_from", dto.mail_from || "");
+      if (dto.mail_secure !== undefined) await setSettingValue(companyId, "mail_secure", dto.mail_secure ? "true" : "false");
+      if (dto.mail_pass !== undefined && dto.mail_pass !== "") await setSettingValue(companyId, "mail_pass", dto.mail_pass);
+    } catch {}
   }
 }
