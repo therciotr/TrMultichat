@@ -145,69 +145,6 @@ router.get("/", async (req, res) => {
   }
 });
 
-router.put("/:key", async (req, res) => {
-  const key = String(req.params.key);
-  const value = String((req.body && req.body.value) ?? "");
-  const tenantId = extractTenantIdFromAuth(req.headers.authorization as string) || 1;
-  try {
-    ensureLegacyDbBooted();
-    const Setting = getLegacyModel("Setting");
-    if (Setting && typeof Setting.findOne === "function") {
-      try {
-        let row = await Setting.findOne({ where: { companyId: tenantId, key } });
-        if (row) {
-          await row.update({ value });
-        } else if (typeof Setting.create === "function") {
-          row = await Setting.create({ key, value, companyId: tenantId });
-        }
-        const json = row?.toJSON ? row.toJSON() : row;
-        return res.json({ key: json?.key ?? key, value: json?.value ?? value });
-      } catch (e: any) {
-        // If legacy model is not initialized / DB not available, fall back to SQL.
-      }
-    }
-
-    // SQL fallback upsert
-    const t = await resolveSettingsTable();
-    const cols = await resolveColumnsMap(t);
-    const colCompanyId = pickColumn(cols, ["companyId", "company_id", "tenantId", "tenant_id"]);
-    const colKey = pickColumn(cols, ["key"]);
-    const colValue = pickColumn(cols, ["value"]);
-    if (!colKey || !colValue) return res.status(501).json({ error: true, message: "settings not available" });
-
-    if (colCompanyId) {
-      // Try update first
-      const updated = await pgQuery<any>(
-        `UPDATE ${t} SET ${quoteIdent(colValue)} = $1 WHERE ${quoteIdent(colCompanyId)} = $2 AND ${quoteIdent(colKey)} = $3 RETURNING ${quoteIdent(colKey)} as key, ${quoteIdent(colValue)} as value`,
-        [value, tenantId, key]
-      );
-      if (updated?.[0]) return res.json({ key: updated[0].key, value: String(updated[0].value ?? "") });
-      // Insert
-      const inserted = await pgQuery<any>(
-        `INSERT INTO ${t} (${quoteIdent(colKey)}, ${quoteIdent(colValue)}, ${quoteIdent(colCompanyId)}) VALUES ($1, $2, $3) RETURNING ${quoteIdent(colKey)} as key, ${quoteIdent(colValue)} as value`,
-        [key, value, tenantId]
-      );
-      if (inserted?.[0]) return res.json({ key: inserted[0].key, value: String(inserted[0].value ?? "") });
-      return res.json({ key, value });
-    }
-
-    // No company column: update by key only
-    const updated = await pgQuery<any>(
-      `UPDATE ${t} SET ${quoteIdent(colValue)} = $1 WHERE ${quoteIdent(colKey)} = $2 RETURNING ${quoteIdent(colKey)} as key, ${quoteIdent(colValue)} as value`,
-      [value, key]
-    );
-    if (updated?.[0]) return res.json({ key: updated[0].key, value: String(updated[0].value ?? "") });
-    const inserted = await pgQuery<any>(
-      `INSERT INTO ${t} (${quoteIdent(colKey)}, ${quoteIdent(colValue)}) VALUES ($1, $2) RETURNING ${quoteIdent(colKey)} as key, ${quoteIdent(colValue)} as value`,
-      [key, value]
-    );
-    if (inserted?.[0]) return res.json({ key: inserted[0].key, value: String(inserted[0].value ?? "") });
-    return res.json({ key, value });
-  } catch (e: any) {
-    return res.status(400).json({ error: true, message: e?.message || "settings error" });
-  }
-});
-
 router.get("/email", async (req, res) => {
   try {
     setNoCache(res);
@@ -280,6 +217,71 @@ router.put("/email", async (req, res) => {
     return res
       .status(400)
       .json({ error: true, message: e?.message || "update email settings error" });
+  }
+});
+
+// IMPORTANT: keep this generic setter AFTER the specific routes (like /email),
+// otherwise Express will match /:key first and shadow them.
+router.put("/:key", async (req, res) => {
+  const key = String(req.params.key);
+  const value = String((req.body && req.body.value) ?? "");
+  const tenantId = extractTenantIdFromAuth(req.headers.authorization as string) || 1;
+  try {
+    ensureLegacyDbBooted();
+    const Setting = getLegacyModel("Setting");
+    if (Setting && typeof Setting.findOne === "function") {
+      try {
+        let row = await Setting.findOne({ where: { companyId: tenantId, key } });
+        if (row) {
+          await row.update({ value });
+        } else if (typeof Setting.create === "function") {
+          row = await Setting.create({ key, value, companyId: tenantId });
+        }
+        const json = row?.toJSON ? row.toJSON() : row;
+        return res.json({ key: json?.key ?? key, value: json?.value ?? value });
+      } catch (e: any) {
+        // If legacy model is not initialized / DB not available, fall back to SQL.
+      }
+    }
+
+    // SQL fallback upsert
+    const t = await resolveSettingsTable();
+    const cols = await resolveColumnsMap(t);
+    const colCompanyId = pickColumn(cols, ["companyId", "company_id", "tenantId", "tenant_id"]);
+    const colKey = pickColumn(cols, ["key"]);
+    const colValue = pickColumn(cols, ["value"]);
+    if (!colKey || !colValue) return res.status(501).json({ error: true, message: "settings not available" });
+
+    if (colCompanyId) {
+      // Try update first
+      const updated = await pgQuery<any>(
+        `UPDATE ${t} SET ${quoteIdent(colValue)} = $1 WHERE ${quoteIdent(colCompanyId)} = $2 AND ${quoteIdent(colKey)} = $3 RETURNING ${quoteIdent(colKey)} as key, ${quoteIdent(colValue)} as value`,
+        [value, tenantId, key]
+      );
+      if (updated?.[0]) return res.json({ key: updated[0].key, value: String(updated[0].value ?? "") });
+      // Insert
+      const inserted = await pgQuery<any>(
+        `INSERT INTO ${t} (${quoteIdent(colKey)}, ${quoteIdent(colValue)}, ${quoteIdent(colCompanyId)}) VALUES ($1, $2, $3) RETURNING ${quoteIdent(colKey)} as key, ${quoteIdent(colValue)} as value`,
+        [key, value, tenantId]
+      );
+      if (inserted?.[0]) return res.json({ key: inserted[0].key, value: String(inserted[0].value ?? "") });
+      return res.json({ key, value });
+    }
+
+    // No company column: update by key only
+    const updated = await pgQuery<any>(
+      `UPDATE ${t} SET ${quoteIdent(colValue)} = $1 WHERE ${quoteIdent(colKey)} = $2 RETURNING ${quoteIdent(colKey)} as key, ${quoteIdent(colValue)} as value`,
+      [value, key]
+    );
+    if (updated?.[0]) return res.json({ key: updated[0].key, value: String(updated[0].value ?? "") });
+    const inserted = await pgQuery<any>(
+      `INSERT INTO ${t} (${quoteIdent(colKey)}, ${quoteIdent(colValue)}) VALUES ($1, $2) RETURNING ${quoteIdent(colKey)} as key, ${quoteIdent(colValue)} as value`,
+      [key, value]
+    );
+    if (inserted?.[0]) return res.json({ key: inserted[0].key, value: String(inserted[0].value ?? "") });
+    return res.json({ key, value });
+  } catch (e: any) {
+    return res.status(400).json({ error: true, message: e?.message || "settings error" });
   }
 });
 
