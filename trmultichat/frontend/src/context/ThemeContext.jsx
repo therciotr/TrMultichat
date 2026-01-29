@@ -3,6 +3,8 @@ import api from "../services/api";
 import { createMuiTheme, ThemeProvider as MuiThemeProvider } from "@material-ui/core/styles";
 
 const defaultBranding = {
+  appTitle: "TR Multichat",
+  faviconUrl: "/favicon.ico",
   primaryColor: "#0B4C46",
   secondaryColor: "#2BA9A5",
   buttonColor: "#2BA9A5",
@@ -101,6 +103,37 @@ export const ThemeProvider = ({ children }) => {
     } catch (_) {}
   };
 
+  const applyMeta = (b) => {
+    try {
+      const title = String(b.appTitle || defaultBranding.appTitle || "").trim();
+      if (title) document.title = title;
+
+      const fav = b.faviconUrl ? toAbsoluteUrl(b.faviconUrl) : null;
+      if (fav) {
+        const links = Array.from(document.querySelectorAll('link[rel="icon"], link[rel="shortcut icon"]'));
+        if (links.length) {
+          links.forEach((l) => l.setAttribute("href", fav));
+        } else {
+          const link = document.createElement("link");
+          link.setAttribute("rel", "icon");
+          link.setAttribute("href", fav);
+          document.head.appendChild(link);
+        }
+      }
+
+      const themeColor = String(b.primaryColor || "").trim();
+      if (themeColor) {
+        let meta = document.querySelector('meta[name="theme-color"]');
+        if (!meta) {
+          meta = document.createElement("meta");
+          meta.setAttribute("name", "theme-color");
+          document.head.appendChild(meta);
+        }
+        meta.setAttribute("content", themeColor);
+      }
+    } catch (_) {}
+  };
+
   const toAbsoluteUrl = (url) => {
     try {
       if (!url) return url;
@@ -126,11 +159,13 @@ export const ThemeProvider = ({ children }) => {
       setBranding(normalized);
       applyBackground(normalized);
       applyCssVars(normalized);
+      applyMeta(normalized);
       setMuiTheme(buildMuiTheme(normalized));
     } catch (_) {
       setBranding(defaultBranding);
       applyBackground(defaultBranding);
       applyCssVars(defaultBranding);
+      applyMeta(defaultBranding);
       setMuiTheme(buildMuiTheme(defaultBranding));
     }
   };
@@ -146,6 +181,7 @@ export const ThemeProvider = ({ children }) => {
     setBranding(normalized);
     applyBackground(normalized);
     applyCssVars(normalized);
+    applyMeta(normalized);
     setMuiTheme(buildMuiTheme(normalized));
     return data;
   };

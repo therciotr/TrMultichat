@@ -10,6 +10,7 @@ import TabPanel from "../../components/TabPanel";
 import SchedulesForm from "../../components/SchedulesForm";
 import Options from "../../components/Settings/Options";
 import EmailSettings from "../../components/EmailSettings";
+import BrandingSettings from "../../components/BrandingSettings";
 
 import { i18n } from "../../translate/i18n.js";
 import { toast } from "react-toastify";
@@ -114,7 +115,7 @@ const SettingsCustom = () => {
         history.replace("/admin/helps");
         return;
       }
-      if (q === "options" || q === "email" || q === "schedules") {
+      if (q === "options" || q === "email" || q === "schedules" || q === "branding") {
         setTab(q);
       } else {
         setTab("options");
@@ -186,6 +187,9 @@ const SettingsCustom = () => {
         >
           <Tab label="Opções" value={"options"} />
           <Tab label="E-mail / SMTP" value={"email"} />
+          {(Boolean(currentUser?.admin) || Boolean(currentUser?.super) || String(currentUser?.profile || "").toLowerCase() === "admin" || String(currentUser?.profile || "").toLowerCase() === "super") ? (
+            <Tab label="Identidade visual" value={"branding"} />
+          ) : null}
           {schedulesEnabled && <Tab label="Horários" value={"schedules"} />}
         </Tabs>
         <Paper className={classes.paper} elevation={0}>
@@ -210,6 +214,9 @@ const SettingsCustom = () => {
           </TabPanel>
           <TabPanel className={classes.container} value={tab} name={"email"}>
             <EmailSettings />
+          </TabPanel>
+          <TabPanel className={classes.container} value={tab} name={"branding"}>
+            <BrandingSettings currentUser={currentUser} />
           </TabPanel>
         </Paper>
       </Paper>

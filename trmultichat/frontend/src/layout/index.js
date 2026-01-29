@@ -332,6 +332,7 @@ const LoggedInLayout = ({ children, themeToggle }) => {
     return <BackdropLoading />;
   }
 
+  const resolvedLogo = branding?.logoUrl || logo;
   return (
     <div className={classes.root}>
       <Drawer
@@ -347,7 +348,7 @@ const LoggedInLayout = ({ children, themeToggle }) => {
         PaperProps={{ style: { background: (branding?.sidebarVariant === 'solid' ? 'var(--tr-primary)' : 'linear-gradient(180deg, var(--tr-primary) 0%, rgba(0,0,0,0.25) 100%)'), color: '#fff' } }}
       >
         <div className={classes.toolbarIcon}>
-          <img src={logo} className={classes.logo} alt="logo" />
+          <img src={resolvedLogo} className={classes.logo} alt="logo" />
           <IconButton onClick={() => setDrawerOpen(!drawerOpen)}>
             <ChevronLeftIcon />
           </IconButton>
