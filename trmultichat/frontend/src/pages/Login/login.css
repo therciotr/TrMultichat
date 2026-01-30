@@ -14,15 +14,16 @@
   position: relative;
 }
 
-/* tech overlay */
+/* soft overlay (no grid) */
 .loginRoot::before {
   content: "";
   position: absolute;
   inset: 0;
-  background:
-    repeating-linear-gradient( 90deg, rgba(255,255,255,0.05) 0px, rgba(255,255,255,0.05) 1px, transparent 1px, transparent 26px ),
-    repeating-linear-gradient( 0deg, rgba(255,255,255,0.035) 0px, rgba(255,255,255,0.035) 1px, transparent 1px, transparent 26px );
   pointer-events: none;
+  background:
+    radial-gradient(900px 520px at 20% 20%, rgba(var(--tr-secondary-rgb, 43,169,165), 0.10) 0%, transparent 60%),
+    radial-gradient(820px 520px at 85% 18%, rgba(var(--tr-primary-rgb, 11,76,70), 0.08) 0%, transparent 62%);
+  opacity: 1;
 }
 
 /* Dark mode: neutralize the green and add deep overlay for premium look */
@@ -37,7 +38,6 @@
     );
 }
 
-/* Light mode: keep it cleaner (less grid, more white-space feel) */
 [data-tr-mode="light"] .loginRoot {
   /* Add visible (but soft) brand presence in light mode */
   background:
@@ -62,12 +62,6 @@
       rgba(var(--tr-primary-rgb, 11,76,70), 0.06) 55%,
       var(--tr-bg) 100%
     );
-}
-
-[data-tr-mode="light"] .loginRoot::before {
-  background:
-    repeating-linear-gradient( 90deg, rgba(15,23,42,0.05) 0px, rgba(15,23,42,0.05) 1px, transparent 1px, transparent 28px ),
-    repeating-linear-gradient( 0deg, rgba(15,23,42,0.03) 0px, rgba(15,23,42,0.03) 1px, transparent 1px, transparent 28px );
 }
 
 /* Subtle vignette for depth (both modes) */
