@@ -7,6 +7,7 @@ import InputLabel from "@material-ui/core/InputLabel";
 import Select from "@material-ui/core/Select";
 import FormHelperText from "@material-ui/core/FormHelperText";
 import TextField from "@material-ui/core/TextField";
+import Slider from "@material-ui/core/Slider";
 import useSettings from "../../hooks/useSettings";
 import { toast } from 'react-toastify';
 import { makeStyles } from "@material-ui/core/styles";
@@ -28,6 +29,7 @@ import VisibilityOffOutlinedIcon from "@material-ui/icons/VisibilityOffOutlined"
 import EmojiObjectsIcon from "@material-ui/icons/EmojiObjects";
 import CodeIcon from "@material-ui/icons/Code";
 import PlayArrowIcon from "@material-ui/icons/PlayArrow";
+import AccessTimeOutlinedIcon from "@material-ui/icons/AccessTimeOutlined";
 
 //import 'react-toastify/dist/ReactToastify.css';
  
@@ -133,6 +135,8 @@ export default function Options(props) {
   const [callType, setCallType] = useState("enabled");
   const [chatbotType, setChatbotType] = useState("");
   const [CheckMsgIsGroup, setCheckMsgIsGroupType] = useState("enabled");
+  const [idleLogoutEnabled, setIdleLogoutEnabled] = useState(false);
+  const [idleLogoutMinutes, setIdleLogoutMinutes] = useState(30);
 
   const [savingGeneral, setSavingGeneral] = useState(false);
 
@@ -187,6 +191,8 @@ export default function Options(props) {
     CheckMsgIsGroup: "enabled",
     sendGreetingAccepted: "disabled",
     sendMsgTransfTicket: "disabled",
+    idleLogoutEnabled: false,
+    idleLogoutMinutes: 30,
   });
 
   const initialIntegrationsRef = useRef({
@@ -236,6 +242,17 @@ export default function Options(props) {
       const chatbotType = settings.find((s) => s.key === "chatBotType");
       if (chatbotType) {
         setChatbotType(chatbotType.value);
+      }
+
+      // Segurança: logout por inatividade
+      const idleEnabled = settings.find((s) => s.key === "idleLogoutEnabled");
+      if (idleEnabled) {
+        setIdleLogoutEnabled(String(idleEnabled.value || "").toLowerCase() === "enabled");
+      }
+      const idleMinutes = settings.find((s) => s.key === "idleLogoutMinutes");
+      if (idleMinutes) {
+        const n = Number(idleMinutes.value || 0);
+        if (Number.isFinite(n) && n > 0) setIdleLogoutMinutes(Math.max(1, Math.min(240, n)));
       }
 
       const ipixcType = settings.find((s) => s.key === "ipixc");
@@ -291,6 +308,11 @@ export default function Options(props) {
         CheckMsgIsGroup: CheckMsgIsGroup?.value ?? "enabled",
         sendGreetingAccepted: SendGreetingAccepted?.value ?? "disabled",
         sendMsgTransfTicket: SettingsTransfTicket?.value ?? "disabled",
+        idleLogoutEnabled: String(idleEnabled?.value || "").toLowerCase() === "enabled",
+        idleLogoutMinutes: (() => {
+          const n = Number(idleMinutes?.value || 0);
+          return Number.isFinite(n) && n > 0 ? Math.max(1, Math.min(240, n)) : 30;
+        })(),
       };
 
       initialIntegrationsRef.current = {
@@ -320,7 +342,9 @@ export default function Options(props) {
       String(chatbotType) !== String(init.chatBotType) ||
       String(CheckMsgIsGroup) !== String(init.CheckMsgIsGroup) ||
       String(SendGreetingAccepted) !== String(init.sendGreetingAccepted) ||
-      String(SettingsTransfTicket) !== String(init.sendMsgTransfTicket)
+      String(SettingsTransfTicket) !== String(init.sendMsgTransfTicket) ||
+      Boolean(idleLogoutEnabled) !== Boolean(init.idleLogoutEnabled) ||
+      Number(idleLogoutMinutes || 0) !== Number(init.idleLogoutMinutes || 0)
     );
   })();
   
@@ -385,6 +409,12 @@ export default function Options(props) {
       if (String(CheckMsgIsGroup) !== String(prev.CheckMsgIsGroup)) updates.push(update({ key: "CheckMsgIsGroup", value: CheckMsgIsGroup }));
       if (String(SendGreetingAccepted) !== String(prev.sendGreetingAccepted)) updates.push(update({ key: "sendGreetingAccepted", value: SendGreetingAccepted }));
       if (String(SettingsTransfTicket) !== String(prev.sendMsgTransfTicket)) updates.push(update({ key: "sendMsgTransfTicket", value: SettingsTransfTicket }));
+      if (Boolean(idleLogoutEnabled) !== Boolean(prev.idleLogoutEnabled)) {
+        updates.push(update({ key: "idleLogoutEnabled", value: idleLogoutEnabled ? "enabled" : "disabled" }));
+      }
+      if (Number(idleLogoutMinutes || 0) !== Number(prev.idleLogoutMinutes || 0)) {
+        updates.push(update({ key: "idleLogoutMinutes", value: String(Math.max(1, Math.min(240, Number(idleLogoutMinutes || 1)))) }));
+      }
 
       await Promise.all(updates);
       toast.success("Configurações salvas com sucesso.");
@@ -396,11 +426,16 @@ export default function Options(props) {
         CheckMsgIsGroup,
         sendGreetingAccepted: SendGreetingAccepted,
         sendMsgTransfTicket: SettingsTransfTicket,
+        idleLogoutEnabled: Boolean(idleLogoutEnabled),
+        idleLogoutMinutes: Number(idleLogoutMinutes || 0),
       };
       initialGeneralRef.current = nextSnap;
       if (typeof scheduleTypeChanged === "function") {
         scheduleTypeChanged(scheduleType);
       }
+      try {
+        window.dispatchEvent(new Event("tr-settings-updated"));
+      } catch (_) {}
     } catch (err) {
       toastError(err);
     } finally {
@@ -549,6 +584,86 @@ export default function Options(props) {
       </Grid>
       </div>
       </TrCard>
+      <div style={{ height: 12 }} />
+
+      <TrCard elevation={1} className="tr-card-border" style={{ padding: 0 }}>
+        <div className={classes.sectionCard}>
+          <TrSectionTitle title="Segurança" subtitle="Controle de sessão e proteção por inatividade" />
+          <Grid spacing={3} container style={{ marginTop: 4 }}>
+            <Grid xs={12} md={5} item>
+              <div className={classes.switchRow}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={Boolean(idleLogoutEnabled)}
+                      onChange={(e) => setIdleLogoutEnabled(Boolean(e.target.checked))}
+                      color="primary"
+                    />
+                  }
+                  label="Logout por inatividade"
+                />
+                <FormHelperText>
+                  Quando ligado, o sistema encerra a sessão se não houver atividade (mouse/teclado).
+                </FormHelperText>
+              </div>
+            </Grid>
+            <Grid xs={12} md={7} item>
+              <div
+                style={{
+                  padding: 12,
+                  borderRadius: 12,
+                  border: "1px solid rgba(15, 23, 42, 0.08)",
+                  background: "rgba(248, 250, 252, 0.70)",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                  <div style={{ display: "inline-flex", alignItems: "center", gap: 8, fontWeight: 900 }}>
+                    <AccessTimeOutlinedIcon style={{ fontSize: 18, opacity: 0.85 }} />
+                    Tempo de inatividade
+                  </div>
+                  <TextField
+                    disabled={!idleLogoutEnabled}
+                    variant="outlined"
+                    size="small"
+                    value={Number(idleLogoutMinutes || 0)}
+                    onChange={(e) => {
+                      const n = Number(e.target.value || 0);
+                      if (!Number.isFinite(n)) return;
+                      setIdleLogoutMinutes(Math.max(1, Math.min(240, n)));
+                    }}
+                    style={{ width: 160 }}
+                    InputProps={{
+                      endAdornment: <InputAdornment position="end">min</InputAdornment>,
+                    }}
+                  />
+                </div>
+                <div style={{ marginTop: 10, opacity: idleLogoutEnabled ? 1 : 0.55 }}>
+                  <Slider
+                    value={Number(idleLogoutMinutes || 1)}
+                    onChange={(_, v) => setIdleLogoutMinutes(Number(v || 1))}
+                    min={1}
+                    max={240}
+                    step={1}
+                    disabled={!idleLogoutEnabled}
+                    valueLabelDisplay="auto"
+                    marks={[
+                      { value: 5, label: "5" },
+                      { value: 15, label: "15" },
+                      { value: 30, label: "30" },
+                      { value: 60, label: "60" },
+                      { value: 120, label: "120" },
+                    ]}
+                  />
+                  <FormHelperText>
+                    Dica: 15–30 min é um bom padrão. Para desativar, desligue o switch.
+                  </FormHelperText>
+                </div>
+              </div>
+            </Grid>
+          </Grid>
+        </div>
+      </TrCard>
+
       <div style={{ height: 12 }} />
       <TrSectionTitle title="Integrações" subtitle="Credenciais dos serviços externos" />
       <TrCard elevation={1} className="tr-card-border" style={{ padding: 0 }}>

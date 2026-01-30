@@ -19,14 +19,9 @@ const App = () => {
     const preferredTheme = window.localStorage.getItem("preferredTheme");
     const [mode, setMode] = useState(preferredTheme ? preferredTheme : prefersDarkMode ? "dark" : "light");
 
-    const colorMode = React.useMemo(
-        () => ({
-            toggleColorMode: () => {
-                setMode((prevMode) => (prevMode === "light" ? "dark" : "light"));
-            },
-        }),
-        []
-    );
+    const toggleColorMode = React.useMemo(() => {
+        return () => setMode((prevMode) => (prevMode === "light" ? "dark" : "light"));
+    }, []);
 
     const theme = createTheme(
         {
@@ -99,7 +94,7 @@ const App = () => {
 
 
     return (
-        <ColorModeContext.Provider value={{ colorMode }}>
+        <ColorModeContext.Provider value={{ toggleColorMode }}>
             <ThemeProvider theme={theme}>
                 <QueryClientProvider client={queryClient}>
                     <Routes />

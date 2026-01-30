@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 import api from "../services/api";
-import { createMuiTheme, ThemeProvider as MuiThemeProvider } from "@material-ui/core/styles";
+import { createMuiTheme, ThemeProvider as MuiThemeProvider, useTheme as useMuiTheme } from "@material-ui/core/styles";
 
 const defaultBranding = {
   appTitle: "TR Multichat",
@@ -24,6 +24,13 @@ const ThemeContext = createContext({ branding: defaultBranding, setBranding: () 
 export const ThemeProvider = ({ children }) => {
   const [branding, setBranding] = useState(defaultBranding);
   const [muiTheme, setMuiTheme] = useState(createMuiTheme());
+  const parentTheme = useMuiTheme();
+
+  const parentMode =
+    (parentTheme && parentTheme.palette && parentTheme.palette.type) ||
+    (parentTheme && parentTheme.mode) ||
+    window.localStorage.getItem("preferredTheme") ||
+    "light";
 
   const darken = (hex, amount = 0.1) => {
     try {
@@ -43,6 +50,7 @@ export const ThemeProvider = ({ children }) => {
   const buildMuiTheme = (b) => {
     return createMuiTheme({
       palette: {
+        type: parentMode === "dark" ? "dark" : "light",
         primary: { main: b.primaryColor },
         secondary: { main: b.secondaryColor },
         background: { default: b.backgroundColor || '#F4F7F7' },
@@ -191,7 +199,18 @@ export const ThemeProvider = ({ children }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const value = useMemo(() => ({ branding, setBranding, refreshBranding, updateBranding, muiTheme }), [branding, muiTheme]);
+  useEffect(() => {
+    // Rebuild branding theme when dark/light changes.
+    try {
+      setMuiTheme(buildMuiTheme(branding));
+    } catch (_) {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [parentMode]);
+
+  const value = useMemo(
+    () => ({ branding, setBranding, refreshBranding, updateBranding, muiTheme }),
+    [branding, muiTheme, refreshBranding, updateBranding]
+  );
   return (
     <ThemeContext.Provider value={value}>
       <MuiThemeProvider theme={muiTheme}>

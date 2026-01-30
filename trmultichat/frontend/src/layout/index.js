@@ -1,4 +1,4 @@
-import React, { useState, useContext, useEffect } from "react";
+import React, { useEffect, useRef, useState, useContext } from "react";
 import clsx from "clsx";
 import { toast } from "react-toastify";
 import {
@@ -28,7 +28,6 @@ import NotificationsVolume from "../components/NotificationsVolume";
 import UserModal from "../components/UserModal";
 import { AuthContext } from "../context/Auth/AuthContext";
 import BackdropLoading from "../components/BackdropLoading";
-import DarkMode from "../components/DarkMode";
 import { i18n } from "../translate/i18n";
 import toastError from "../errors/toastError";
 
@@ -179,7 +178,7 @@ const useStyles = makeStyles((theme) => ({
   },
 }));
 
-const LoggedInLayout = ({ children, themeToggle }) => {
+const LoggedInLayout = ({ children }) => {
   const classes = useStyles();
   const [userModalOpen, setUserModalOpen] = useState(false);
   const [anchorEl, setAnchorEl] = useState(null);
@@ -193,13 +192,56 @@ const LoggedInLayout = ({ children, themeToggle }) => {
 
   const theme = useTheme();
   const { branding } = useThemeBranding();
-  const { colorMode } = useContext(ColorModeContext);
+  const { toggleColorMode } = useContext(ColorModeContext);
   const greaterThenSm = useMediaQuery(theme.breakpoints.up("sm"));
 
   const [volume, setVolume] = useState(Number(localStorage.getItem("volume") || 1));
   const volumeNum = Number(volume || 0);
 
   const { dateToClient } = useDate();
+
+  // Idle logout (company setting)
+  const idleTimerRef = useRef(null);
+  const [idleCfg, setIdleCfg] = useState({ enabled: false, minutes: 0 });
+
+  const clearIdleTimer = () => {
+    try {
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+    } catch (_) {}
+    idleTimerRef.current = null;
+  };
+
+  const scheduleIdleTimer = (cfg) => {
+    clearIdleTimer();
+    const enabled = Boolean(cfg?.enabled);
+    const minutes = Number(cfg?.minutes || 0);
+    if (!enabled || !(minutes > 0)) return;
+    const ms = Math.max(10_000, Math.floor(minutes * 60 * 1000));
+    idleTimerRef.current = setTimeout(() => {
+      try {
+        toast.info("Sessão encerrada por inatividade.");
+      } catch (_) {}
+      handleLogout();
+    }, ms);
+  };
+
+  const loadIdleConfig = async () => {
+    try {
+      const { data } = await api.get("/settings");
+      const list = Array.isArray(data) ? data : [];
+      const enabledRow = list.find((s) => String(s?.key) === "idleLogoutEnabled");
+      const minutesRow = list.find((s) => String(s?.key) === "idleLogoutMinutes");
+      const enabled = String(enabledRow?.value || "").toLowerCase() === "enabled";
+      const minutes = Number(minutesRow?.value || 0);
+      const next = { enabled, minutes: Number.isFinite(minutes) ? minutes : 0 };
+      setIdleCfg(next);
+      scheduleIdleTimer(next);
+    } catch (_) {
+      // fail silent
+      setIdleCfg({ enabled: false, minutes: 0 });
+      clearIdleTimer();
+    }
+  };
 
 
   //################### CODIGOS DE TESTE #########################################
@@ -254,6 +296,47 @@ const LoggedInLayout = ({ children, themeToggle }) => {
       setDrawerOpen(true);
     }
   }, []);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      await loadIdleConfig();
+      if (!alive) return;
+    })();
+
+    const onUpdated = () => loadIdleConfig();
+    window.addEventListener("tr-settings-updated", onUpdated);
+    return () => {
+      alive = false;
+      window.removeEventListener("tr-settings-updated", onUpdated);
+      clearIdleTimer();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const idleEnabled = Boolean(idleCfg && idleCfg.enabled);
+  const idleMinutes = Number((idleCfg && idleCfg.minutes) || 0);
+
+  useEffect(() => {
+    const enabled = idleEnabled;
+    const minutes = idleMinutes;
+    if (!enabled || !(minutes > 0)) {
+      clearIdleTimer();
+      return;
+    }
+
+    const onActivity = () => scheduleIdleTimer({ enabled, minutes });
+    const events = ["mousemove", "mousedown", "keydown", "scroll", "touchstart"];
+    events.forEach((ev) => window.addEventListener(ev, onActivity, { passive: true }));
+
+    // Start timer immediately
+    scheduleIdleTimer({ enabled, minutes });
+
+    return () => {
+      events.forEach((ev) => window.removeEventListener(ev, onActivity));
+      clearIdleTimer();
+    };
+  }, [idleEnabled, idleMinutes]); // handleLogout is stable from context in this app
 
   useEffect(() => {
     if (document.body.offsetWidth < 600) {
@@ -368,9 +451,9 @@ const LoggedInLayout = ({ children, themeToggle }) => {
     }
   };
 
-  const toggleColorMode = () => {
-    colorMode.toggleColorMode();
-  }
+  const handleToggleColorMode = () => {
+    if (typeof toggleColorMode === "function") toggleColorMode();
+  };
 
   if (loading) {
     return <BackdropLoading />;
@@ -446,7 +529,7 @@ const LoggedInLayout = ({ children, themeToggle }) => {
             )}
           </Typography>
 
-          <IconButton edge="start" onClick={toggleColorMode}>
+          <IconButton edge="start" onClick={handleToggleColorMode}>
             {theme.mode === 'dark' ? <Brightness7Icon style={{ color: "white" }} /> : <Brightness4Icon style={{ color: "white" }} />}
           </IconButton>
 
