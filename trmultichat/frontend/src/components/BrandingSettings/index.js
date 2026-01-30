@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Box,
   Chip,
@@ -24,11 +24,16 @@ import CloudUploadOutlinedIcon from "@material-ui/icons/CloudUploadOutlined";
 import SaveOutlinedIcon from "@material-ui/icons/SaveOutlined";
 import RefreshOutlinedIcon from "@material-ui/icons/RefreshOutlined";
 import BusinessOutlinedIcon from "@material-ui/icons/BusinessOutlined";
+import StarsIcon from "@material-ui/icons/Stars";
+import UndoIcon from "@material-ui/icons/Undo";
+import PaletteIcon from "@material-ui/icons/Palette";
 
 import { TrButton } from "../ui";
 import api from "../../services/api";
 import useCompanies from "../../hooks/useCompanies";
 import { useThemeBranding } from "../../context/ThemeContext";
+import { toast } from "react-toastify";
+import Vibrant from "node-vibrant";
 
 const useStyles = makeStyles((theme) => ({
   root: {
@@ -322,6 +327,24 @@ function adjustForWhiteText(baseHex, minRatio = 4.5) {
   return baseHex;
 }
 
+function swatchHex(sw) {
+  if (!sw) return "";
+  try {
+    if (typeof sw.getHex === "function") return sw.getHex();
+    if (typeof sw.hex === "string") return sw.hex;
+  } catch {}
+  return "";
+}
+
+async function fileToDataUrl(file) {
+  return await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = (e) => reject(e);
+    reader.readAsDataURL(file);
+  });
+}
+
 const PREMIUM_PALETTES = [
   {
     id: "emerald",
@@ -398,6 +421,9 @@ export default function BrandingSettings({ currentUser }) {
   const [form, setForm] = useState(normalizeBranding({}));
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [logoPalette, setLogoPalette] = useState(null);
+  const [logoPaletteLoading, setLogoPaletteLoading] = useState(false);
+  const [beforeAutoPalette, setBeforeAutoPalette] = useState(null);
 
   // IMPORTANT: React (v16) pools events. Never read e.target.value inside setState updaters.
   const setFormKey = (key, normalize) => (e) => {
@@ -405,6 +431,69 @@ export default function BrandingSettings({ currentUser }) {
     const value = normalize ? normalize(raw) : raw;
     setForm((f) => ({ ...f, [key]: value }));
   };
+
+  const applyPaletteToForm = useCallback((palette, mode = "auto") => {
+    const dark = swatchHex(palette?.DarkVibrant) || swatchHex(palette?.DarkMuted) || swatchHex(palette?.Vibrant);
+    const vivid = swatchHex(palette?.Vibrant) || swatchHex(palette?.LightVibrant) || swatchHex(palette?.Muted) || dark;
+    const light = swatchHex(palette?.LightMuted) || swatchHex(palette?.LightVibrant) || "";
+
+    if (!dark && !vivid) return;
+
+    setForm((f) => {
+      if (mode === "auto" && !beforeAutoPalette) setBeforeAutoPalette(f);
+
+      const next = { ...f };
+      const primaryBase = normalizeHex(dark || next.primaryColor);
+      const secondaryBase = normalizeHex(vivid || next.secondaryColor);
+
+      next.primaryColor = adjustForWhiteText(primaryBase, 4.5);
+      next.secondaryColor = secondaryBase || next.secondaryColor;
+      next.buttonColor = adjustForWhiteText(normalizeHex(secondaryBase || next.buttonColor), 4.5);
+
+      // Only adjust background when using solid color (keeps user image backgrounds intact)
+      if (String(next.backgroundType || "color") !== "image") {
+        const baseBg = normalizeHex(light || mixHex(secondaryBase || primaryBase, "#FFFFFF", 0.90) || next.backgroundColor);
+        next.backgroundType = "color";
+        next.backgroundColor = baseBg || next.backgroundColor;
+      }
+
+      // Ensure readable text on background
+      if (next.backgroundColor && contrastRatio(next.backgroundColor, next.textColor) < 4.5) {
+        next.textColor = smartTextForBg(next.backgroundColor);
+      }
+
+      // Keep premium layout
+      next.sidebarVariant = "gradient";
+      return next;
+    });
+
+    toast.success("Cores da logo aplicadas automaticamente.");
+  }, [beforeAutoPalette]);
+
+  const handleRevertPalette = () => {
+    if (!beforeAutoPalette) return;
+    setForm(beforeAutoPalette);
+    setBeforeAutoPalette(null);
+    toast.info("Cores revertidas.");
+  };
+
+  const detectPaletteFromLogoFile = useCallback(async (file) => {
+    if (!file) return;
+    setLogoPaletteLoading(true);
+    try {
+      const dataUrl = await fileToDataUrl(file);
+      const palette = await Vibrant.from(dataUrl).getPalette();
+      setLogoPalette(palette || null);
+      if (palette) applyPaletteToForm(palette, "auto");
+    } catch (e) {
+      setLogoPalette(null);
+      // eslint-disable-next-line no-console
+      console.error("[branding] palette detection failed", e);
+      toast.error("Não foi possível detectar as cores da logo. Tente uma imagem .png/.jpg.");
+    } finally {
+      setLogoPaletteLoading(false);
+    }
+  }, [applyPaletteToForm]);
 
   const canPickCompany = isSuper;
 
@@ -600,7 +689,11 @@ export default function BrandingSettings({ currentUser }) {
                         type="file"
                         hidden
                         accept="image/png,image/svg+xml,image/jpeg"
-                        onChange={(e) => handleUpload(e.target.files?.[0], "logoUrl")}
+                        onChange={(e) => {
+                          const file = e?.target?.files?.[0];
+                          detectPaletteFromLogoFile(file);
+                          handleUpload(file, "logoUrl");
+                        }}
                       />
                     </TrButton>
                     <div className={classes.uploadHint}>
@@ -638,6 +731,71 @@ export default function BrandingSettings({ currentUser }) {
                       </div>
                     </Grid>
                   )}
+
+                  <Grid item xs={12}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 4 }}>
+                      <PaletteIcon style={{ fontSize: 18, opacity: 0.75 }} />
+                      <Typography style={{ fontWeight: 1000, fontSize: 12, color: "inherit" }}>
+                        Cores detectadas da logo
+                      </Typography>
+                      <Box flex={1} />
+                      {beforeAutoPalette ? (
+                        <TrButton
+                          variant="outlined"
+                          size="small"
+                          startIcon={<UndoIcon />}
+                          onClick={handleRevertPalette}
+                        >
+                          Reverter
+                        </TrButton>
+                      ) : null}
+                    </div>
+
+                    <Typography className={classes.muted} style={{ marginTop: 6, fontSize: 12, lineHeight: 1.35 }}>
+                      Ao enviar a logo, o sistema identifica automaticamente as cores principais e ajusta o tema da empresa para ficar padronizado.
+                    </Typography>
+
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
+                      {logoPaletteLoading ? (
+                        <Chip size="small" label="Detectando cores..." style={{ fontWeight: 1000 }} />
+                      ) : logoPalette ? (
+                        <>
+                          <Chip
+                            size="small"
+                            icon={<StarsIcon />}
+                            label={`Primária: ${form.primaryColor}`}
+                            style={{ fontWeight: 1000, background: form.primaryColor, color: "#fff" }}
+                          />
+                          <Chip
+                            size="small"
+                            label={`Secundária: ${form.secondaryColor}`}
+                            style={{ fontWeight: 1000, background: form.secondaryColor, color: "#fff" }}
+                          />
+                          <Chip
+                            size="small"
+                            label={`Botão: ${form.buttonColor}`}
+                            style={{ fontWeight: 1000, background: form.buttonColor, color: "#fff" }}
+                          />
+                          {String(form.backgroundType || "color") !== "image" ? (
+                            <Chip
+                              size="small"
+                              label={`Fundo: ${form.backgroundColor}`}
+                              style={{
+                                fontWeight: 1000,
+                                background: form.backgroundColor,
+                                color: smartTextForBg(form.backgroundColor),
+                                border: "1px solid rgba(15,23,42,0.12)",
+                              }}
+                            />
+                          ) : (
+                            <Chip size="small" label="Fundo: imagem (mantido)" style={{ fontWeight: 1000 }} />
+                          )}
+                        </>
+                      ) : (
+                        <Chip size="small" label="Envie uma logo para detectar as cores." style={{ fontWeight: 1000 }} />
+                      )}
+                    </div>
+                  </Grid>
                 </Grid>
               </Paper>
             </Grid>
