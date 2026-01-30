@@ -23,6 +23,8 @@ import HighlightOffIcon from "@material-ui/icons/HighlightOff";
 import { FormControlLabel, Switch } from "@material-ui/core";
 import Autocomplete from "@material-ui/lab/Autocomplete";
 import { isString, isEmpty, isObject, has } from "lodash";
+import StarBorderOutlinedIcon from "@material-ui/icons/StarBorderOutlined";
+import StarOutlinedIcon from "@material-ui/icons/StarOutlined";
 
 import { i18n } from "../../translate/i18n";
 import api from "../../services/api";
@@ -333,12 +335,31 @@ const CustomInput = (props) => {
   const [popupOpen, setPopupOpen] = useState(false);
 
   const { user } = useContext(AuthContext);
+  const companyId = localStorage.getItem("companyId");
+  const pinKey = `qm:pins:${companyId}:${user?.id || "me"}`;
+  const usageKey = `qm:usage:${companyId}:${user?.id || "me"}`;
+
+  const readJson = (key, fallback) => {
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) return fallback;
+      return JSON.parse(raw);
+    } catch {
+      return fallback;
+    }
+  };
+  const writeJson = (key, value) => {
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+    } catch {}
+  };
+  const [pinnedMap, setPinnedMap] = useState(() => readJson(pinKey, {}));
+  const [usageMap, setUsageMap] = useState(() => readJson(usageKey, {}));
 
   const { list: listQuickMessages } = useQuickMessages();
 
   useEffect(() => {
     async function fetchData() {
-      const companyId = localStorage.getItem("companyId");
       const messages = await listQuickMessages({ companyId, userId: user.id });
       const options = messages.map((m) => {
         let truncatedMessage = m.message;
@@ -347,6 +368,9 @@ const CustomInput = (props) => {
         }
         return {
           value: m.message,
+          shortcode: m.shortcode,
+          id: m.id,
+          category: m.category,
           label: `/${m.shortcode} - ${truncatedMessage}`,
           mediaPath: m.mediaPath,
         };
@@ -358,18 +382,102 @@ const CustomInput = (props) => {
   }, []);
 
   useEffect(() => {
+    // keep localStorage in sync when keys change (tenant/user)
+    setPinnedMap(readJson(pinKey, {}));
+    setUsageMap(readJson(usageKey, {}));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pinKey, usageKey]);
+
+  const isPinned = (opt) => {
+    const id = String(opt?.id ?? opt?.shortcode ?? "");
+    return Boolean(pinnedMap?.[id]);
+  };
+
+  const togglePinned = (opt) => {
+    const id = String(opt?.id ?? opt?.shortcode ?? "");
+    if (!id) return;
+    setPinnedMap((prev) => {
+      const next = { ...(prev || {}) };
+      next[id] = !next[id];
+      if (!next[id]) delete next[id];
+      writeJson(pinKey, next);
+      return next;
+    });
+  };
+
+  const bumpUsage = (opt) => {
+    const id = String(opt?.id ?? opt?.shortcode ?? "");
+    if (!id) return;
+    setUsageMap((prev) => {
+      const next = { ...(prev || {}) };
+      next[id] = (Number(next[id]) || 0) + 1;
+      writeJson(usageKey, next);
+      return next;
+    });
+  };
+
+  const sortPremium = (arr) => {
+    const a = Array.isArray(arr) ? [...arr] : [];
+    a.sort((x, y) => {
+      const px = isPinned(x) ? 1 : 0;
+      const py = isPinned(y) ? 1 : 0;
+      if (px !== py) return py - px;
+      const ux = Number(usageMap?.[String(x?.id ?? x?.shortcode ?? "")] || 0);
+      const uy = Number(usageMap?.[String(y?.id ?? y?.shortcode ?? "")] || 0);
+      if (ux !== uy) return uy - ux;
+      return String(x?.shortcode || "").localeCompare(String(y?.shortcode || ""));
+    });
+    return a;
+  };
+
+  useEffect(() => {
     if (
       isString(inputMessage) &&
       !isEmpty(inputMessage) &&
       inputMessage.length > 1
     ) {
-      const firstWord = inputMessage.charAt(0);
-      setPopupOpen(firstWord.indexOf("/") > -1);
+      const firstChar = inputMessage.charAt(0);
+      const isQuick = firstChar === "/";
+      setPopupOpen(isQuick);
 
-      const filteredOptions = quickMessages.filter(
-        (m) => m.label.indexOf(inputMessage) > -1
-      );
-      setOptions(filteredOptions);
+      if (isQuick) {
+        const q = String(inputMessage || "").toLowerCase();
+        let filteredOptions = quickMessages
+          .filter((m) => {
+            const sc = String(m.shortcode || "").toLowerCase();
+            const lbl = String(m.label || "").toLowerCase();
+            const val = String(m.value || "").toLowerCase();
+            return sc.startsWith(q.replace("/", "")) || lbl.includes(q) || val.includes(q.replace("/", ""));
+          })
+          .slice(0, 40);
+
+        // Special cases:
+        // "/" or very short query -> show pinned + most used on top
+        const naked = q === "/" || q === "/ " || q === "/\n";
+        if (naked || q.length <= 2) {
+          const byUsage = [...quickMessages].sort((a, b) => {
+            const ua = Number(usageMap?.[String(a?.id ?? a?.shortcode ?? "")] || 0);
+            const ub = Number(usageMap?.[String(b?.id ?? b?.shortcode ?? "")] || 0);
+            return ub - ua;
+          });
+          const pinned = quickMessages.filter((m) => isPinned(m));
+          const topUsed = byUsage.filter((m) => (Number(usageMap?.[String(m?.id ?? m?.shortcode ?? "")] || 0) > 0)).slice(0, 8);
+          const merged = [];
+          const seen = new Set();
+          for (const m of [...pinned, ...topUsed, ...filteredOptions]) {
+            const k = String(m?.id ?? m?.shortcode ?? "");
+            if (!k || seen.has(k)) continue;
+            seen.add(k);
+            merged.push(m);
+            if (merged.length >= 18) break;
+          }
+          filteredOptions = merged;
+        }
+
+        setOptions(sortPremium(filteredOptions).slice(0, 18));
+      } else {
+        setOptions([]);
+      }
     } else {
       setPopupOpen(false);
     }
@@ -379,6 +487,23 @@ const CustomInput = (props) => {
   const onKeyPress = (e) => {
     if (loading || e.shiftKey) return;
     else if (e.key === "Enter") {
+      // Premium UX: se o usuário digitou exatamente "/atalho", já envia a resposta rápida
+      const raw = String(inputMessage || "").trim();
+      if (raw.startsWith("/")) {
+        const typed = raw.replace(/^\//, "").trim().toLowerCase();
+        const exact = quickMessages.find((m) => String(m.shortcode || "").toLowerCase() === typed);
+        if (exact) {
+          // com anexo: já dispara envio; sem anexo: envia o texto diretamente
+          if (!isNil(exact.mediaPath)) {
+            handleQuickAnswersClick(exact);
+            bumpUsage(exact);
+            return;
+          }
+          handleSendMessage(exact.value);
+          bumpUsage(exact);
+          return;
+        }
+      }
       handleSendMessage();
     }
   };
@@ -413,6 +538,13 @@ const CustomInput = (props) => {
         value={inputMessage}
         options={options}
         closeIcon={null}
+        groupBy={(opt) => {
+          if (!isObject(opt)) return "";
+          if (isPinned(opt)) return "Fixados";
+          const used = Number(usageMap?.[String(opt?.id ?? opt?.shortcode ?? "")] || 0);
+          if (used > 0) return (opt?.category ? String(opt.category) : "Mais usados");
+          return opt?.category ? String(opt.category) : "Outros";
+        }}
         getOptionLabel={(option) => {
           if (isObject(option)) {
             return option.label;
@@ -424,11 +556,13 @@ const CustomInput = (props) => {
          
           if (isObject(opt) && has(opt, "value") && isNil(opt.mediaPath)) {
             setInputMessage(opt.value);
+            bumpUsage(opt);
             setTimeout(() => {
               inputRef.current.scrollTop = inputRef.current.scrollHeight;
             }, 200);
           } else if (isObject(opt) && has(opt, "value") && !isNil(opt.mediaPath)) {
             handleQuickAnswersClick(opt);
+            bumpUsage(opt);
 
             setTimeout(() => {
               inputRef.current.scrollTop = inputRef.current.scrollHeight;
@@ -443,6 +577,50 @@ const CustomInput = (props) => {
         onPaste={onPaste}
         onKeyPress={onKeyPress}
         style={{ width: "100%" }}
+        renderOption={(opt) => {
+          try {
+            const shortcode = String(opt?.shortcode || "").trim();
+            const hasMedia = !isNil(opt?.mediaPath);
+            const preview = String(opt?.value || "").replace(/\s+/g, " ").trim();
+            const pinned = isPinned(opt);
+            return (
+              <div style={{ width: "100%", padding: "8px 10px" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 900, fontSize: 13, color: "rgba(15,23,42,0.92)" }}>
+                      /{shortcode || "atalho"}
+                      {hasMedia ? (
+                        <span style={{ marginLeft: 8, fontSize: 11, opacity: 0.8 }} role="img" aria-label="Anexo">
+                          📎
+                        </span>
+                      ) : null}
+                    </div>
+                    <div style={{ fontSize: 12, color: "rgba(15,23,42,0.62)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {preview || "—"}
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <IconButton
+                      size="small"
+                      style={{ padding: 6 }}
+                      title={pinned ? "Desafixar" : "Fixar"}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        togglePinned(opt);
+                      }}
+                    >
+                      {pinned ? <StarOutlinedIcon style={{ fontSize: 18 }} /> : <StarBorderOutlinedIcon style={{ fontSize: 18 }} />}
+                    </IconButton>
+                    <div style={{ fontSize: 11, opacity: 0.7, fontWeight: 800 }}>Enter</div>
+                  </div>
+                </div>
+              </div>
+            );
+          } catch {
+            return String(opt?.label || opt);
+          }
+        }}
         renderInput={(params) => {
           const { InputLabelProps, InputProps, ...rest } = params;
           return (
@@ -581,8 +759,9 @@ const MessageInputCustom = (props) => {
     setMedias([]);
   };
 
-  const handleSendMessage = async () => {
-    if (inputMessage.trim() === "") return;
+  const handleSendMessage = async (overrideMessage) => {
+    const bodyRaw = typeof overrideMessage === "string" ? overrideMessage : inputMessage;
+    if (String(bodyRaw || "").trim() === "") return;
     setLoading(true);
 
     const message = {
@@ -590,8 +769,8 @@ const MessageInputCustom = (props) => {
       fromMe: true,
       mediaUrl: "",
       body: signMessage
-        ? `*${user?.name}:*\n${inputMessage.trim()}`
-        : inputMessage.trim(),
+        ? `*${user?.name}:*\n${String(bodyRaw || "").trim()}`
+        : String(bodyRaw || "").trim(),
       quotedMsg: replyingMessage,
     };
     try {

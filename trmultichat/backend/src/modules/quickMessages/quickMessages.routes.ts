@@ -9,8 +9,31 @@ function tenantIdFromReq(req: any): number {
   return Number(req?.tenantId || 0);
 }
 
+async function ensureQuickMessagesSchema() {
+  // Adds "category" if missing (non-breaking)
+  try {
+    const hasCol = await pgQuery<any>(
+      `
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'QuickMessages'
+          AND column_name = 'category'
+        LIMIT 1
+      `,
+      []
+    );
+    if (!hasCol?.length) {
+      await pgQuery(`ALTER TABLE "QuickMessages" ADD COLUMN IF NOT EXISTS category VARCHAR(80)`, []);
+    }
+  } catch {
+    // silent (avoid startup failing if permissions differ)
+  }
+}
+
 // Legacy/UI compatibility: returns ARRAY
 router.get("/list", authMiddleware, async (req, res) => {
+  await ensureQuickMessagesSchema();
   const companyId = Number(req.query.companyId || tenantIdFromReq(req) || 0);
   if (!companyId) return res.status(401).json({ error: true, message: "missing tenantId" });
   const userId = req.query.userId ? Number(req.query.userId) : null;
@@ -23,13 +46,14 @@ router.get("/list", authMiddleware, async (req, res) => {
   }
 
   const rows = await pgQuery<any>(
-    `SELECT id, shortcode, message, "companyId", "userId", "mediaPath", "mediaName" FROM "QuickMessages" WHERE ${where} ORDER BY id ASC`,
+    `SELECT id, shortcode, message, category, "companyId", "userId", "mediaPath", "mediaName" FROM "QuickMessages" WHERE ${where} ORDER BY id ASC`,
     params
   );
   return res.json(Array.isArray(rows) ? rows : []);
 });
 
 router.get("/", authMiddleware, async (req, res) => {
+  await ensureQuickMessagesSchema();
   const companyId = tenantIdFromReq(req);
   if (!companyId) return res.status(401).json({ error: true, message: "missing tenantId" });
   const pageNumber = Number(req.query.pageNumber || 1);
@@ -48,7 +72,7 @@ router.get("/", authMiddleware, async (req, res) => {
   params.push(limit);
   params.push(offset);
   const records = await pgQuery<any>(
-    `SELECT id, shortcode, message, "companyId", "userId", "mediaPath", "mediaName"
+    `SELECT id, shortcode, message, category, "companyId", "userId", "mediaPath", "mediaName"
      FROM "QuickMessages"
      WHERE ${where}
      ORDER BY id ASC
@@ -60,6 +84,7 @@ router.get("/", authMiddleware, async (req, res) => {
 
 // POST /quick-messages (create)
 router.post("/", authMiddleware, async (req, res) => {
+  await ensureQuickMessagesSchema();
   const companyId = tenantIdFromReq(req);
   const userId = Number((req as any).userId || 0) || null;
   if (!companyId) return res.status(401).json({ error: true, message: "missing tenantId" });
@@ -67,6 +92,7 @@ router.post("/", authMiddleware, async (req, res) => {
   const body: any = req.body || {};
   const shortcode = String(body.shortcode || "").trim();
   const message = String(body.message || "").trim();
+  const category = body.category !== undefined ? String(body.category || "").trim() : null;
   const mediaPath = body.mediaPath !== undefined ? body.mediaPath : null;
 
   if (!shortcode) return res.status(400).json({ error: true, message: "missing shortcode" });
@@ -75,11 +101,11 @@ router.post("/", authMiddleware, async (req, res) => {
   // Keep compatibility: ignore extra fields (geral/status/isMedia) if DB doesn't have them.
   const inserted = await pgQuery<any>(
     `
-      INSERT INTO "QuickMessages" (shortcode, message, "companyId", "userId", "mediaPath", "createdAt", "updatedAt")
-      VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
-      RETURNING id, shortcode, message, "companyId", "userId", "mediaPath", "mediaName"
+      INSERT INTO "QuickMessages" (shortcode, message, category, "companyId", "userId", "mediaPath", "createdAt", "updatedAt")
+      VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
+      RETURNING id, shortcode, message, category, "companyId", "userId", "mediaPath", "mediaName"
     `,
-    [shortcode, message, companyId, userId, mediaPath]
+    [shortcode, message, category, companyId, userId, mediaPath]
   );
   const record = inserted?.[0];
   if (!record) return res.status(500).json({ error: true, message: "failed to create quick message" });
@@ -95,13 +121,14 @@ router.post("/", authMiddleware, async (req, res) => {
 
 // GET /quick-messages/:id (fetch one)
 router.get("/:id", authMiddleware, async (req, res) => {
+  await ensureQuickMessagesSchema();
   const companyId = tenantIdFromReq(req);
   const id = Number(req.params.id);
   if (!companyId) return res.status(401).json({ error: true, message: "missing tenantId" });
   if (!id) return res.status(400).json({ error: true, message: "invalid id" });
 
   const rows = await pgQuery<any>(
-    `SELECT id, shortcode, message, "companyId", "userId", "mediaPath", "mediaName" FROM "QuickMessages" WHERE id = $1 AND "companyId" = $2 LIMIT 1`,
+    `SELECT id, shortcode, message, category, "companyId", "userId", "mediaPath", "mediaName" FROM "QuickMessages" WHERE id = $1 AND "companyId" = $2 LIMIT 1`,
     [id, companyId]
   );
   const record = rows?.[0];
@@ -111,6 +138,7 @@ router.get("/:id", authMiddleware, async (req, res) => {
 
 // PUT /quick-messages/:id (update)
 router.put("/:id", authMiddleware, async (req, res) => {
+  await ensureQuickMessagesSchema();
   const companyId = tenantIdFromReq(req);
   const id = Number(req.params.id);
   if (!companyId) return res.status(401).json({ error: true, message: "missing tenantId" });
@@ -119,6 +147,7 @@ router.put("/:id", authMiddleware, async (req, res) => {
   const body: any = req.body || {};
   const shortcode = body.shortcode !== undefined ? String(body.shortcode || "").trim() : undefined;
   const message = body.message !== undefined ? String(body.message || "").trim() : undefined;
+  const category = body.category !== undefined ? String(body.category || "").trim() : undefined;
   const mediaPath = body.mediaPath !== undefined ? body.mediaPath : undefined;
 
   // allow partial update; but don't blank required fields if provided empty
@@ -142,15 +171,16 @@ router.put("/:id", authMiddleware, async (req, res) => {
       SET
         shortcode = COALESCE($1, shortcode),
         message = COALESCE($2, message),
-        "mediaPath" = COALESCE($3, "mediaPath"),
+        category = COALESCE($3, category),
+        "mediaPath" = COALESCE($4, "mediaPath"),
         "updatedAt" = NOW()
-      WHERE id = $4 AND "companyId" = $5
+      WHERE id = $5 AND "companyId" = $6
     `,
-    [shortcode ?? null, message ?? null, mediaPath ?? null, id, companyId]
+    [shortcode ?? null, message ?? null, category ?? null, mediaPath ?? null, id, companyId]
   );
 
   const rows = await pgQuery<any>(
-    `SELECT id, shortcode, message, "companyId", "userId", "mediaPath", "mediaName" FROM "QuickMessages" WHERE id = $1 AND "companyId" = $2 LIMIT 1`,
+    `SELECT id, shortcode, message, category, "companyId", "userId", "mediaPath", "mediaName" FROM "QuickMessages" WHERE id = $1 AND "companyId" = $2 LIMIT 1`,
     [id, companyId]
   );
   const record = rows?.[0];
@@ -166,6 +196,7 @@ router.put("/:id", authMiddleware, async (req, res) => {
 
 // DELETE /quick-messages/:id (delete)
 router.delete("/:id", authMiddleware, async (req, res) => {
+  await ensureQuickMessagesSchema();
   const companyId = tenantIdFromReq(req);
   const id = Number(req.params.id);
   if (!companyId) return res.status(401).json({ error: true, message: "missing tenantId" });

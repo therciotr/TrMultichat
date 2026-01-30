@@ -2,7 +2,6 @@ import React, { useState, useEffect, useReducer, useContext } from "react";
 import { toast } from "react-toastify";
 
 import { makeStyles } from "@material-ui/core/styles";
-import Paper from "@material-ui/core/Paper";
 import { TrButton } from "../../components/ui";
 import Card from "@material-ui/core/Card";
 import CardContent from "@material-ui/core/CardContent";
@@ -12,6 +11,10 @@ import SearchIcon from "@material-ui/icons/Search";
 import TextField from "@material-ui/core/TextField";
 import InputAdornment from "@material-ui/core/InputAdornment";
 import FlashOnOutlinedIcon from "@material-ui/icons/FlashOnOutlined";
+import ContentCopyOutlinedIcon from "@material-ui/icons/FileCopyOutlined";
+import InfoOutlinedIcon from "@material-ui/icons/InfoOutlined";
+import StarBorderOutlinedIcon from "@material-ui/icons/StarBorderOutlined";
+import StarOutlinedIcon from "@material-ui/icons/StarOutlined";
 
 import DeleteOutlineIcon from "@material-ui/icons/DeleteOutline";
 import EditIcon from "@material-ui/icons/Edit";
@@ -85,6 +88,44 @@ const reducer = (state, action) => {
 };
 
 const useStyles = makeStyles((theme) => ({
+  hero: {
+    borderRadius: 18,
+    border: "1px solid rgba(15, 23, 42, 0.10)",
+    boxShadow: "0 14px 36px rgba(15, 23, 42, 0.06)",
+    background:
+      "linear-gradient(135deg, rgba(59, 130, 246, 0.10), rgba(16, 185, 129, 0.08) 52%, rgba(255,255,255,0.96))",
+    padding: theme.spacing(2),
+    marginBottom: theme.spacing(2),
+  },
+  heroRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: theme.spacing(1.25),
+    flexWrap: "wrap",
+  },
+  heroIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 14,
+    display: "grid",
+    placeItems: "center",
+    background: "rgba(59, 130, 246, 0.12)",
+    border: "1px solid rgba(59, 130, 246, 0.16)",
+    color: "rgba(14, 116, 144, 1)",
+    flexShrink: 0,
+  },
+  heroTitle: {
+    fontSize: 16,
+    fontWeight: 1000,
+    margin: 0,
+    color: "rgba(15, 23, 42, 0.92)",
+  },
+  heroSub: {
+    marginTop: 4,
+    marginBottom: 0,
+    fontSize: 13,
+    color: "rgba(15, 23, 42, 0.66)",
+  },
   mainPaper: {
     flex: 1,
     padding: theme.spacing(2),
@@ -107,6 +148,31 @@ const useStyles = makeStyles((theme) => ({
     borderRadius: 12,
     fontWeight: 800,
     textTransform: "none",
+  },
+  hintCard: {
+    borderRadius: 14,
+    border: "1px solid rgba(15, 23, 42, 0.08)",
+    background: "#fff",
+    padding: theme.spacing(1.5),
+    display: "flex",
+    alignItems: "flex-start",
+    gap: theme.spacing(1.25),
+    marginBottom: theme.spacing(1.5),
+  },
+  hintIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    display: "grid",
+    placeItems: "center",
+    background: "rgba(59, 130, 246, 0.10)",
+    color: "rgba(30, 64, 175, 0.95)",
+    flex: "0 0 auto",
+  },
+  hintText: {
+    fontSize: 13,
+    color: "rgba(15, 23, 42, 0.72)",
+    lineHeight: 1.45,
   },
   cardsGrid: {
     marginTop: theme.spacing(1),
@@ -194,6 +260,15 @@ const useStyles = makeStyles((theme) => ({
     backgroundColor: "#fff",
     height: 140,
   },
+  actionIcon: {
+    background: "rgba(15,23,42,0.04)",
+    border: "1px solid rgba(15,23,42,0.08)",
+    borderRadius: 12,
+    padding: 6,
+    "&:hover": {
+      background: "rgba(15,23,42,0.06)",
+    },
+  },
 }));
 
 const Quickemessages = () => {
@@ -209,7 +284,55 @@ const Quickemessages = () => {
   const [searchParam, setSearchParam] = useState("");
   const [quickemessages, dispatch] = useReducer(reducer, []);
   const { user } = useContext(AuthContext);
-  const { profile } = user;
+  const companyId = user?.companyId;
+  const userId = user?.id;
+
+  const pinKey = `qm:pins:${companyId}:${userId || "me"}`;
+  const usageKey = `qm:usage:${companyId}:${userId || "me"}`;
+  const [pinnedMap, setPinnedMap] = useState({});
+  const [usageMap, setUsageMap] = useState({});
+
+  const readJson = (key, fallback) => {
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) return fallback;
+      return JSON.parse(raw);
+    } catch {
+      return fallback;
+    }
+  };
+  const writeJson = (key, value) => {
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+    } catch {}
+  };
+
+  useEffect(() => {
+    if (!companyId) return;
+    setPinnedMap(readJson(pinKey, {}));
+    setUsageMap(readJson(usageKey, {}));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [companyId, userId]);
+
+  const isPinned = (qm) => {
+    const id = String(qm?.id ?? qm?.shortcode ?? "");
+    return Boolean(pinnedMap?.[id]);
+  };
+  const usageCount = (qm) => {
+    const id = String(qm?.id ?? qm?.shortcode ?? "");
+    return Number(usageMap?.[id] || 0);
+  };
+  const togglePinned = (qm) => {
+    const id = String(qm?.id ?? qm?.shortcode ?? "");
+    if (!id) return;
+    setPinnedMap((prev) => {
+      const next = { ...(prev || {}) };
+      next[id] = !next[id];
+      if (!next[id]) delete next[id];
+      writeJson(pinKey, next);
+      return next;
+    });
+  };
 
   useEffect(() => {
     dispatch({ type: "RESET" });
@@ -226,8 +349,8 @@ const Quickemessages = () => {
   }, [searchParam, pageNumber]);
 
   useEffect(() => {
-    const companyId = user.companyId;
-    const socket = socketConnection({ companyId, userId: user.id });
+    if (!companyId || !userId) return;
+    const socket = socketConnection({ companyId, userId });
 
     socket.on(`company${companyId}-quickemessage`, (data) => {
       if (data.action === "update" || data.action === "create") {
@@ -240,12 +363,10 @@ const Quickemessages = () => {
     return () => {
       socket.disconnect();
     };
-  }, []);
+  }, [companyId, userId]);
 
   const fetchQuickemessages = async () => {
     try {
-      const companyId = user.companyId;
-      //const searchParam = ({ companyId, userId: user.id });
       const { data } = await api.get("/quick-messages", {
         params: { searchParam, pageNumber },
       });
@@ -272,6 +393,16 @@ const Quickemessages = () => {
 
   const handleSearch = (event) => {
     setSearchParam(event.target.value.toLowerCase());
+  };
+
+  const handleCopy = async (shortcode) => {
+    try {
+      const txt = `/${String(shortcode || "").trim()}`;
+      await navigator.clipboard.writeText(txt);
+      toast.success("Atalho copiado.");
+    } catch (err) {
+      toastError(err);
+    }
   };
 
   const handleEditQuickemessage = (quickemessage) => {
@@ -328,49 +459,65 @@ const Quickemessages = () => {
         quickemessageId={selectedQuickemessage && selectedQuickemessage.id}
       />
       <MainHeader>
-        <Grid style={{ width: "99.6%" }} container className={classes.headerRow} spacing={2}>
-          <Grid xs={12} sm={8} item>
-            <Title>{i18n.t("quickMessages.title")}</Title>
-          </Grid>
-          <Grid xs={12} sm={4} item>
-            <Grid spacing={2} container>
-              <Grid xs={6} sm={6} item>
-                <TextField
-                  fullWidth
-                  placeholder={i18n.t("quickMessages.searchPlaceholder")}
-                  type="search"
-                  value={searchParam}
-                  onChange={handleSearch}
-                  variant="outlined"
-                  size="small"
-                  className={classes.searchField}
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <SearchIcon style={{ color: "gray" }} />
-                      </InputAdornment>
-                    ),
-                  }}
-                />
-              </Grid>
-              <Grid xs={6} sm={6} item>
-                <TrButton
-                  fullWidth
-                  className={classes.addButton}
-                  onClick={handleOpenQuickMessageDialog}
-                >
-                  {i18n.t("quickMessages.buttons.add")}
-                </TrButton>
-              </Grid>
-            </Grid>
-          </Grid>
-        </Grid>
+        <Title>{i18n.t("quickMessages.title")}</Title>
       </MainHeader>
-      <Paper
+      <div
         className={classes.mainPaper}
-        variant="outlined"
         onScroll={handleScroll}
       >
+        <div className={classes.hero}>
+          <div className={classes.heroRow}>
+            <div className={classes.heroIcon}>
+              <FlashOnOutlinedIcon />
+            </div>
+            <div style={{ minWidth: 220 }}>
+              <p className={classes.heroTitle}>Respostas Rápidas</p>
+              <p className={classes.heroSub}>
+                Use atalhos no atendimento para ganhar velocidade e padronizar mensagens.
+              </p>
+            </div>
+            <Box flex={1} />
+            <Chip size="small" label={`${quickemessages.length} atalhos`} style={{ fontWeight: 1000 }} />
+          </div>
+        </div>
+
+        <div className={classes.hintCard}>
+          <div className={classes.hintIcon}>
+            <InfoOutlinedIcon style={{ fontSize: 18 }} />
+          </div>
+          <div className={classes.hintText}>
+            <div style={{ fontWeight: 900, marginBottom: 2 }}>Como usar no chat</div>
+            Digite <strong>/atalho</strong> e pressione <strong>Enter</strong> para enviar automaticamente (inclui anexos se houver).
+          </div>
+        </div>
+
+        <Grid container spacing={2} className={classes.headerRow} style={{ marginBottom: 8 }}>
+          <Grid item xs={12} md={8}>
+            <TextField
+              fullWidth
+              placeholder={i18n.t("quickMessages.searchPlaceholder")}
+              type="search"
+              value={searchParam}
+              onChange={handleSearch}
+              variant="outlined"
+              size="small"
+              className={classes.searchField}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon style={{ color: "gray" }} />
+                  </InputAdornment>
+                ),
+              }}
+            />
+          </Grid>
+          <Grid item xs={12} md={4}>
+            <TrButton fullWidth className={classes.addButton} onClick={handleOpenQuickMessageDialog}>
+              {i18n.t("quickMessages.buttons.add")}
+            </TrButton>
+          </Grid>
+        </Grid>
+
         {quickemessages.length === 0 && !loading ? (
           <div className={classes.emptyWrap}>
             <FlashOnOutlinedIcon className={classes.emptyIcon} />
@@ -406,13 +553,53 @@ const Quickemessages = () => {
                               }
                               variant="outlined"
                             />
+                            {quickemessage.category ? (
+                              <Chip
+                                size="small"
+                                label={String(quickemessage.category)}
+                                variant="outlined"
+                                style={{ fontWeight: 900 }}
+                              />
+                            ) : null}
+                            {isPinned(quickemessage) ? (
+                              <Chip
+                                size="small"
+                                icon={<StarOutlinedIcon />}
+                                label="Fixado"
+                                variant="outlined"
+                                style={{ fontWeight: 900 }}
+                              />
+                            ) : null}
+                            <Chip
+                              size="small"
+                              label={`Usos: ${usageCount(quickemessage)}`}
+                              variant="outlined"
+                              style={{ fontWeight: 900, opacity: 0.9 }}
+                            />
                           </div>
                         </div>
                       </div>
                       <Box>
                         <IconButton
                           size="small"
+                          title={isPinned(quickemessage) ? "Desafixar" : "Fixar"}
+                          onClick={() => togglePinned(quickemessage)}
+                          className={classes.actionIcon}
+                        >
+                          {isPinned(quickemessage) ? <StarOutlinedIcon /> : <StarBorderOutlinedIcon />}
+                        </IconButton>
+                        <IconButton
+                          size="small"
+                          title="Copiar atalho"
+                          onClick={() => handleCopy(quickemessage.shortcode)}
+                          className={classes.actionIcon}
+                        >
+                          <ContentCopyOutlinedIcon />
+                        </IconButton>
+                        <IconButton
+                          size="small"
                           onClick={() => handleEditQuickemessage(quickemessage)}
+                          className={classes.actionIcon}
                         >
                           <EditIcon />
                         </IconButton>
@@ -422,6 +609,7 @@ const Quickemessages = () => {
                             setConfirmModalOpen(true);
                             setDeletingQuickemessage(quickemessage);
                           }}
+                          className={classes.actionIcon}
                         >
                           <DeleteOutlineIcon />
                         </IconButton>
@@ -446,7 +634,7 @@ const Quickemessages = () => {
               ))}
           </Grid>
         )}
-      </Paper>
+      </div>
     </MainContainer>
   );
 };
