@@ -84,7 +84,7 @@ const UserModal = ({ open, onClose, userId }) => {
 
 	const [user, setUser] = useState(initialState);
 	const [selectedQueueIds, setSelectedQueueIds] = useState([]);
-	const [whatsappId, setWhatsappId] = useState(false);
+	const [whatsappId, setWhatsappId] = useState("");
 	const { loading, whatsApps } = useWhatsApps();
 	const [companiesById, setCompaniesById] = useState({});
 
@@ -139,6 +139,8 @@ const UserModal = ({ open, onClose, userId }) => {
 	const handleClose = () => {
 		onClose();
 		setUser(initialState);
+		setWhatsappId("");
+		setSelectedQueueIds([]);
 	};
 
 	const handleSaveUser = async values => {
@@ -147,7 +149,7 @@ const UserModal = ({ open, onClose, userId }) => {
 		const userData = {
 			...values,
 			companyId: effectiveCompanyId,
-			whatsappId,
+			whatsappId: whatsappId ? whatsappId : null,
 			queueIds: selectedQueueIds,
 		};
 		try {

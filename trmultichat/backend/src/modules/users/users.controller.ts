@@ -11,6 +11,18 @@ import appEnv from "../../config/env";
 import { pgQuery } from "../../utils/pgClient";
 import { getIO } from "../../libs/socket";
 
+function normalizeWhatsAppId(raw: any): number | null {
+  // Accepts: number | string | null/undefined | boolean (legacy UI sends false)
+  // Returns a valid FK id (>0) or null.
+  if (raw === undefined || raw === null) return null;
+  if (raw === false) return null;
+  const s = String(raw).trim().toLowerCase();
+  if (!s || s === "false" || s === "0" || s === "null" || s === "undefined") return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return n;
+}
+
 export async function list(req: Request, res: Response) {
   const pageNumber = Number(req.query.pageNumber || 1);
   const limit = 50;
@@ -235,10 +247,8 @@ export async function update(req: Request, res: Response) {
     const email =
       body.email !== undefined ? String(body.email || "").trim().toLowerCase() : undefined;
     const profile = body.profile !== undefined ? String(body.profile || "user").trim() : undefined;
-    const whatsappId =
-      body.whatsappId === undefined || body.whatsappId === null || String(body.whatsappId).trim() === ""
-        ? undefined
-        : Number(body.whatsappId);
+    const whatsappProvided = Object.prototype.hasOwnProperty.call(body, "whatsappId");
+    const whatsappId = whatsappProvided ? normalizeWhatsAppId(body.whatsappId) : null;
     const queueIdsRaw = Array.isArray(body.queueIds) ? body.queueIds : undefined;
     const queueIds =
       queueIdsRaw === undefined
@@ -271,6 +281,10 @@ export async function update(req: Request, res: Response) {
     const nextProfile = profile !== undefined ? profile : String(current.profile || "user");
     const now = new Date();
 
+    const setWhatsAppSql = whatsappProvided
+      ? `"whatsappId" = $5`
+      : `"whatsappId" = COALESCE($5, "whatsappId")`;
+
     // Try update with password column too (some schemas keep "password" as hash)
     let updated: any = null;
     try {
@@ -282,7 +296,7 @@ export async function update(req: Request, res: Response) {
               profile = $3,
               "passwordHash" = COALESCE($4, "passwordHash"),
               "password" = COALESCE($4, "password"),
-              "whatsappId" = COALESCE($5, "whatsappId"),
+              ${setWhatsAppSql},
               "updatedAt" = $6
           WHERE id = $7
           RETURNING id, name, email, "companyId", profile, "super"
@@ -299,7 +313,7 @@ export async function update(req: Request, res: Response) {
               email = $2,
               profile = $3,
               "passwordHash" = COALESCE($4, "passwordHash"),
-              "whatsappId" = COALESCE($5, "whatsappId"),
+              ${setWhatsAppSql},
               "updatedAt" = $6
           WHERE id = $7
           RETURNING id, name, email, "companyId", profile, "super"
@@ -350,10 +364,7 @@ export async function create(req: Request, res: Response) {
     const password = String(body.password || "");
     const profile = String(body.profile || "user").trim();
     let companyId = Number(body.companyId || body.tenantId || tenantId || 0);
-    const whatsappId =
-      body.whatsappId === undefined || body.whatsappId === null || String(body.whatsappId).trim() === ""
-        ? null
-        : Number(body.whatsappId);
+    const whatsappId = normalizeWhatsAppId(body.whatsappId);
     const queueIdsRaw = Array.isArray(body.queueIds) ? body.queueIds : [];
     const queueIds = queueIdsRaw
       .map((q: any) => Number(q))
