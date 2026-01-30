@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext } from "react";
+import React, { useState, useEffect, useContext, useMemo } from "react";
 
 import * as Yup from "yup";
 import {
@@ -10,25 +10,26 @@ import {
 import { toast } from "react-toastify";
 
 import {
-    Box,
     CircularProgress,
     Dialog,
     DialogActions,
     DialogContent,
     DialogTitle,
-    Divider,
     Grid,
     makeStyles,
     TextField
 } from "@material-ui/core";
+import { useTheme } from "@material-ui/core/styles";
+import useMediaQuery from "@material-ui/core/useMediaQuery";
 import IconButton from "@material-ui/core/IconButton";
 import Chip from "@material-ui/core/Chip";
-import Typography from "@material-ui/core/Typography";
 import DeleteOutlineIcon from "@material-ui/icons/DeleteOutline";
 import AttachFileIcon from "@material-ui/icons/AttachFile";
 import AddCircleOutlineIcon from "@material-ui/icons/AddCircleOutline";
 import CloudUploadIcon from "@material-ui/icons/CloudUpload";
 import OpenInNewIcon from "@material-ui/icons/OpenInNew";
+import InsertDriveFileOutlinedIcon from "@material-ui/icons/InsertDriveFileOutlined";
+import InfoOutlinedIcon from "@material-ui/icons/InfoOutlined";
 
 import { green } from "@material-ui/core/colors";
 
@@ -44,6 +45,78 @@ const useStyles = makeStyles(theme => ({
         display: "flex",
         flexWrap: "wrap",
         gap: 4
+    },
+    dialogPaper: {
+        borderRadius: 18,
+        overflow: "hidden",
+        border: "1px solid rgba(15, 23, 42, 0.10)",
+        maxHeight: "calc(100vh - 72px)",
+        [theme.breakpoints.down("xs")]: {
+            maxHeight: "100vh",
+            borderRadius: 0,
+        },
+    },
+    titleWrap: {
+        display: "flex",
+        alignItems: "center",
+        gap: 12,
+    },
+    titleIcon: {
+        width: 42,
+        height: 42,
+        borderRadius: 14,
+        display: "grid",
+        placeItems: "center",
+        background: "rgba(59, 130, 246, 0.12)",
+        border: "1px solid rgba(59, 130, 246, 0.16)",
+        color: "rgba(14, 116, 144, 1)",
+        flex: "0 0 auto",
+    },
+    titleText: {
+        fontWeight: 1000,
+        fontSize: 15,
+        margin: 0,
+        color: "rgba(15, 23, 42, 0.92)",
+    },
+    titleSub: {
+        fontSize: 12,
+        marginTop: 2,
+        color: "rgba(15, 23, 42, 0.64)",
+    },
+    hintRow: {
+        display: "flex",
+        alignItems: "flex-start",
+        gap: 10,
+        padding: theme.spacing(1.25),
+        borderRadius: 14,
+        border: "1px solid rgba(15,23,42,0.08)",
+        background: "rgba(15,23,42,0.03)",
+        marginBottom: theme.spacing(1.5),
+    },
+    hintIcon: {
+        width: 34,
+        height: 34,
+        borderRadius: 12,
+        display: "grid",
+        placeItems: "center",
+        background: "rgba(59,130,246,0.12)",
+        color: "rgba(30,64,175,0.95)",
+        flex: "0 0 auto",
+    },
+    sectionCard: {
+        borderRadius: 16,
+        border: "1px solid rgba(15, 23, 42, 0.10)",
+        background: "rgba(255,255,255,0.96)",
+        padding: theme.spacing(1.5),
+    },
+    sectionTitle: {
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        fontWeight: 1000,
+        fontSize: 12,
+        color: "rgba(15,23,42,0.76)",
+        marginBottom: theme.spacing(1),
     },
     multFieldLine: {
         display: "flex",
@@ -84,10 +157,10 @@ const useStyles = makeStyles(theme => ({
     },
     optionRow: {
         width: "100%",
-        padding: theme.spacing(1),
+        padding: theme.spacing(1.25),
         borderRadius: 12,
-        border: "1px solid rgba(11, 76, 70, 0.14)",
-        background: "rgba(11, 76, 70, 0.03)",
+        border: "1px solid rgba(15, 23, 42, 0.10)",
+        background: "rgba(248,250,252,1)",
     },
     optionActions: {
         display: "flex",
@@ -133,6 +206,37 @@ const useStyles = makeStyles(theme => ({
         // keep it clickable in all browsers
         zIndex: 2,
     },
+    actionsBar: {
+        position: "sticky",
+        bottom: 0,
+        zIndex: 2,
+        background: "#fff",
+        borderTop: "1px solid rgba(15,23,42,0.10)",
+        padding: theme.spacing(1.25, 1.5),
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "flex-end",
+        flexWrap: "wrap",
+        gap: theme.spacing(1),
+        "& > *": { margin: 0 },
+        [theme.breakpoints.down("xs")]: {
+            flexDirection: "column",
+            alignItems: "stretch",
+            "& > *": { width: "100%" },
+        },
+    },
+    actionBtn: {
+        borderRadius: 12,
+        fontWeight: 900,
+        textTransform: "none",
+        minHeight: 40,
+    },
+    actionBtnPrimary: {
+        borderRadius: 12,
+        fontWeight: 1000,
+        textTransform: "none",
+        minHeight: 40,
+    },
 }));
 
 const FileListSchema = Yup.object().shape({
@@ -155,6 +259,8 @@ function hasAnySelectedFile(options) {
 const FilesModal = ({ open, onClose, fileListId, reload }) => {
     const classes = useStyles();
     const { user } = useContext(AuthContext);
+    const theme = useTheme();
+    const fullScreen = useMediaQuery(theme.breakpoints.down("xs"));
     const [selectedFileNames, setSelectedFileNames] = useState([]);
 
 
@@ -165,6 +271,10 @@ const FilesModal = ({ open, onClose, fileListId, reload }) => {
     };
 
     const [fileList, setFileList] = useState(initialState);
+
+    const modalTitle = useMemo(() => {
+        return fileListId ? `${i18n.t("fileModal.title.edit")}` : `${i18n.t("fileModal.title.add")}`;
+    }, [fileListId]);
 
     useEffect(() => {
         try {
@@ -269,9 +379,22 @@ const FilesModal = ({ open, onClose, fileListId, reload }) => {
                 onClose={handleClose}
                 maxWidth="md"
                 fullWidth
-                scroll="paper">
-                <DialogTitle id="form-dialog-title">
-                    {(fileListId ? `${i18n.t("fileModal.title.edit")}` : `${i18n.t("fileModal.title.add")}`)}
+                scroll="paper"
+                classes={{ paper: classes.dialogPaper }}
+                fullScreen={fullScreen}
+            >
+                <DialogTitle id="form-dialog-title" disableTypography>
+                    <div className={classes.titleWrap}>
+                        <div className={classes.titleIcon}>
+                            <InsertDriveFileOutlinedIcon />
+                        </div>
+                        <div style={{ minWidth: 0 }}>
+                            <p className={classes.titleText}>{modalTitle}</p>
+                            <div className={classes.titleSub}>
+                                Crie listas com arquivos e mensagens prontas para agilizar o atendimento.
+                            </div>
+                        </div>
+                    </div>
                 </DialogTitle>
                 <Formik
                     initialValues={fileList}
@@ -287,44 +410,57 @@ const FilesModal = ({ open, onClose, fileListId, reload }) => {
                     {({ touched, errors, isSubmitting, values, setFieldValue }) => (
                         <Form>
                             <DialogContent dividers>
-                                <div className={classes.multFieldLine}>
-                                    <Field
-                                        as={TextField}
-                                        label={i18n.t("fileModal.form.name")}
-                                        name="name"
-                                        error={touched.name && Boolean(errors.name)}
-                                        helperText={touched.name && errors.name}
-                                        variant="outlined"
-                                        margin="dense"
-                                        fullWidth
-                                    />
+                                <div className={classes.hintRow}>
+                                    <div className={classes.hintIcon}>
+                                        <InfoOutlinedIcon style={{ fontSize: 18 }} />
+                                    </div>
+                                    <div style={{ fontSize: 13, color: "rgba(15,23,42,0.72)", lineHeight: 1.4 }}>
+                                        <div style={{ fontWeight: 900, marginBottom: 2 }}>Dica premium</div>
+                                        Use uma mensagem padrão clara e adicione itens com arquivos e descrições objetivas.
+                                    </div>
                                 </div>
-                                <br />
-                                <div className={classes.multFieldLine}>
-                                    <Field
-                                        as={TextField}
-                                        label={i18n.t("fileModal.form.message")}
-                                        type="message"
-                                        multiline
-                                        minRows={5}
-                                        fullWidth
-                                        name="message"
-                                        error={
-                                            touched.message && Boolean(errors.message)
-                                        }
-                                        helperText={
-                                            touched.message && errors.message
-                                        }
-                                        variant="outlined"
-                                        margin="dense"
-                                    />
+
+                                <div className={classes.sectionCard} style={{ marginBottom: 14 }}>
+                                    <div className={classes.sectionTitle}>
+                                        <InsertDriveFileOutlinedIcon style={{ fontSize: 16, opacity: 0.8 }} />
+                                        Informações da lista
+                                    </div>
+                                    <Grid container spacing={2}>
+                                        <Grid item xs={12}>
+                                            <Field
+                                                as={TextField}
+                                                label={i18n.t("fileModal.form.name")}
+                                                name="name"
+                                                error={touched.name && Boolean(errors.name)}
+                                                helperText={touched.name && errors.name}
+                                                variant="outlined"
+                                                margin="dense"
+                                                fullWidth
+                                            />
+                                        </Grid>
+                                        <Grid item xs={12}>
+                                            <Field
+                                                as={TextField}
+                                                label={i18n.t("fileModal.form.message")}
+                                                type="message"
+                                                multiline
+                                                minRows={4}
+                                                fullWidth
+                                                name="message"
+                                                error={touched.message && Boolean(errors.message)}
+                                                helperText={touched.message && errors.message}
+                                                variant="outlined"
+                                                margin="dense"
+                                            />
+                                        </Grid>
+                                    </Grid>
                                 </div>
-                                <Typography
-                                    style={{ marginBottom: 8, marginTop: 12 }}
-                                    variant="subtitle1"
-                                >
-                                    {i18n.t("fileModal.form.fileOptions")}
-                                </Typography>
+
+                                <div className={classes.sectionCard}>
+                                    <div className={classes.sectionTitle}>
+                                        <AttachFileIcon style={{ fontSize: 16, opacity: 0.8 }} />
+                                        Itens da lista
+                                    </div>
 
                                 <FieldArray name="options">
                                     {({ push, remove }) => (
@@ -337,7 +473,7 @@ const FilesModal = ({ open, onClose, fileListId, reload }) => {
                                                         key={`${index}-info`}
                                                     >
                                                         <Grid container spacing={1} className={classes.optionRow}>
-                                                            <Grid xs={6} md={10} item> 
+                                                            <Grid xs={12} md={9} item> 
                                                                 <Field
                                                                     as={TextField}
                                                                     label={i18n.t("fileModal.form.extraName")}
@@ -350,12 +486,13 @@ const FilesModal = ({ open, onClose, fileListId, reload }) => {
                                                                     className={classes.textField}
                                                                 />
                                                             </Grid>     
-                                                            <Grid xs={6} md={2} item className={classes.optionActions}>
+                                                            <Grid xs={12} md={3} item className={classes.optionActions}>
                                                                 <span className={classes.attachWrap}>
                                                                     <TrButton
                                                                         className={classes.attachBtn}
                                                                         startIcon={<CloudUploadIcon />}
                                                                         component="span"
+                                                                        variant="outlined"
                                                                     >
                                                                         Anexar
                                                                     </TrButton>
@@ -442,18 +579,21 @@ const FilesModal = ({ open, onClose, fileListId, reload }) => {
                                         </>
                                     )}
                                 </FieldArray>
+                                </div>
                             </DialogContent>
-                            <DialogActions>
+                            <DialogActions className={classes.actionsBar}>
                                 <TrButton
                                     onClick={handleClose}
                                     disabled={isSubmitting}
+                                    variant="outlined"
+                                    className={classes.actionBtn}
                                 >
                                     {i18n.t("fileModal.buttons.cancel")}
                                 </TrButton>
                                 <TrButton
                                     type="submit"
                                     disabled={isSubmitting}
-                                    className={classes.btnWrapper}
+                                    className={classes.actionBtnPrimary}
                                 >
                                     {fileListId
                                         ? `${i18n.t("fileModal.buttons.okEdit")}`
