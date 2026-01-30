@@ -16,6 +16,8 @@ import IconButton from "@material-ui/core/IconButton";
 import SearchIcon from "@material-ui/icons/Search";
 import TextField from "@material-ui/core/TextField";
 import InputAdornment from "@material-ui/core/InputAdornment";
+import InsertDriveFileOutlinedIcon from "@material-ui/icons/InsertDriveFileOutlined";
+import InfoOutlinedIcon from "@material-ui/icons/InfoOutlined";
 
 import DeleteOutlineIcon from "@material-ui/icons/DeleteOutline";
 import EditIcon from "@material-ui/icons/Edit";
@@ -23,7 +25,6 @@ import AttachFileIcon from "@material-ui/icons/AttachFile";
 
 import MainContainer from "../../components/MainContainer";
 import MainHeader from "../../components/MainHeader";
-import MainHeaderButtonsWrapper from "../../components/MainHeaderButtonsWrapper";
 import Title from "../../components/Title";
 
 import api from "../../services/api";
@@ -79,34 +80,135 @@ const reducer = (state, action) => {
 };
 
 const useStyles = makeStyles((theme) => ({
+    hero: {
+        borderRadius: 18,
+        border: "1px solid rgba(15, 23, 42, 0.10)",
+        boxShadow: "0 14px 36px rgba(15, 23, 42, 0.06)",
+        background:
+            "linear-gradient(135deg, rgba(59, 130, 246, 0.10), rgba(16, 185, 129, 0.08) 52%, rgba(255,255,255,0.96))",
+        padding: theme.spacing(2),
+        marginBottom: theme.spacing(2),
+    },
+    heroRow: {
+        display: "flex",
+        alignItems: "center",
+        gap: theme.spacing(1.25),
+        flexWrap: "wrap",
+    },
+    heroIcon: {
+        width: 46,
+        height: 46,
+        borderRadius: 14,
+        display: "grid",
+        placeItems: "center",
+        background: "rgba(59, 130, 246, 0.12)",
+        border: "1px solid rgba(59, 130, 246, 0.16)",
+        color: "rgba(14, 116, 144, 1)",
+        flexShrink: 0,
+    },
+    heroTitle: {
+        fontSize: 16,
+        fontWeight: 1000,
+        margin: 0,
+        color: "rgba(15, 23, 42, 0.92)",
+    },
+    heroSub: {
+        marginTop: 4,
+        marginBottom: 0,
+        fontSize: 13,
+        color: "rgba(15, 23, 42, 0.66)",
+    },
     mainPaper: {
         flex: 1,
         padding: theme.spacing(2),
         overflowY: "auto",
         ...theme.scrollbarStyles,
+        backgroundColor: "#F8FAFC",
+        borderRadius: 14,
+        border: "1px solid rgba(15, 23, 42, 0.08)",
     },
-    headerRow: {
+    headerRow: { alignItems: "center" },
+    searchField: {
+        "& .MuiOutlinedInput-root": {
+            borderRadius: 12,
+            backgroundColor: "#fff",
+        },
+    },
+    addButton: {
+        borderRadius: 12,
+        fontWeight: 900,
+        textTransform: "none",
+    },
+    hintCard: {
+        borderRadius: 14,
+        border: "1px solid rgba(15, 23, 42, 0.08)",
+        background: "#fff",
+        padding: theme.spacing(1.5),
         display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        gap: theme.spacing(1),
+        alignItems: "flex-start",
+        gap: theme.spacing(1.25),
+        marginBottom: theme.spacing(1.5),
+    },
+    hintIcon: {
+        width: 36,
+        height: 36,
+        borderRadius: 12,
+        display: "grid",
+        placeItems: "center",
+        background: "rgba(59, 130, 246, 0.10)",
+        color: "rgba(30, 64, 175, 0.95)",
+        flex: "0 0 auto",
+    },
+    hintText: {
+        fontSize: 13,
+        color: "rgba(15, 23, 42, 0.72)",
+        lineHeight: 1.45,
     },
     card: {
-        padding: theme.spacing(2),
-        borderRadius: 14,
-        border: "1px solid rgba(11, 76, 70, 0.18)",
-        background:
-            "linear-gradient(180deg, rgba(11, 76, 70, 0.045), rgba(255,255,255,1) 42%)",
         height: "100%",
+        borderRadius: 14,
+        border: "1px solid rgba(15, 23, 42, 0.08)",
+        boxShadow: "0 1px 2px rgba(15, 23, 42, 0.06)",
+        background:
+            "linear-gradient(180deg, rgba(59, 130, 246, 0.05), rgba(255,255,255,1) 42%)",
+        transition: "box-shadow 150ms ease, transform 150ms ease, border-color 150ms ease",
+        padding: theme.spacing(2),
         display: "flex",
         flexDirection: "column",
         gap: theme.spacing(1.25),
         minWidth: 0,
         cursor: "pointer",
+        "&:hover": {
+            borderColor: "rgba(15, 23, 42, 0.14)",
+            boxShadow: "0 10px 22px rgba(15, 23, 42, 0.10)",
+            transform: "translateY(-1px)",
+        },
+    },
+    cardTop: {
+        display: "flex",
+        alignItems: "flex-start",
+        justifyContent: "space-between",
+        gap: theme.spacing(1),
+    },
+    cardTitleRow: {
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        minWidth: 0,
+    },
+    iconBadge: {
+        width: 38,
+        height: 38,
+        borderRadius: 12,
+        display: "grid",
+        placeItems: "center",
+        backgroundColor: "rgba(59, 130, 246, 0.10)",
+        color: "rgba(30, 64, 175, 0.95)",
+        flex: "none",
     },
     cardTitle: {
-        fontWeight: 800,
-        color: "var(--tr-primary)",
+        fontWeight: 1000,
+        color: "rgba(15, 23, 42, 0.92)",
         minWidth: 0,
     },
     cardActions: {
@@ -114,6 +216,15 @@ const useStyles = makeStyles((theme) => ({
         alignItems: "center",
         gap: 4,
         flexShrink: 0,
+    },
+    actionIcon: {
+        background: "rgba(15,23,42,0.04)",
+        border: "1px solid rgba(15,23,42,0.08)",
+        borderRadius: 12,
+        padding: 6,
+        "&:hover": {
+            background: "rgba(15,23,42,0.06)",
+        },
     },
     metaRow: {
         display: "flex",
@@ -128,10 +239,29 @@ const useStyles = makeStyles((theme) => ({
         overflow: "hidden",
         wordBreak: "break-word",
     },
-    emptyState: {
+    emptyWrap: {
+        borderRadius: 14,
+        border: "1px solid rgba(15, 23, 42, 0.08)",
+        backgroundColor: "#fff",
+        boxShadow: "0 1px 2px rgba(15, 23, 42, 0.06)",
         padding: theme.spacing(4),
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: theme.spacing(1),
         textAlign: "center",
-        color: theme.palette.text.secondary,
+        marginTop: theme.spacing(2),
+    },
+    emptyIcon: {
+        width: 52,
+        height: 52,
+        color: "rgba(15, 23, 42, 0.22)",
+    },
+    skeletonCard: {
+        borderRadius: 14,
+        border: "1px solid rgba(15, 23, 42, 0.08)",
+        backgroundColor: "#fff",
+        height: 140,
     },
 }));
 
@@ -246,6 +376,7 @@ const FileLists = () => {
         if (Array.isArray(opts)) return opts.length;
         return 0;
     };
+    const totalItems = (Array.isArray(files) ? files : []).reduce((sum, f) => sum + getOptionsCount(f), 0);
 
     return (
         <MainContainer>
@@ -265,51 +396,82 @@ const FileLists = () => {
                 fileListId={selectedFileList && selectedFileList.id}
             />
             <MainHeader>
-                <Title>{i18n.t("files.title")} ({files.length})</Title>
-                <MainHeaderButtonsWrapper>
-                    <TextField
-                        placeholder={i18n.t("contacts.searchPlaceholder")}
-                        type="search"
-                        value={searchParam}
-                        onChange={handleSearch}
-                        InputProps={{
-                            startAdornment: (
-                                <InputAdornment position="start">
-                                    <SearchIcon style={{ color: "gray" }} />
-                                </InputAdornment>
-                            ),
-                        }}
-                    />
-                    <TrButton onClick={handleOpenFileListModal}>
-                        {i18n.t("files.buttons.add")}
-                    </TrButton>
-                </MainHeaderButtonsWrapper>
+                <Title>{i18n.t("files.title")}</Title>
             </MainHeader>
-      <Paper
-        className={`${classes.mainPaper} tr-card-border`}
+            <Paper
+                className={classes.mainPaper}
                 variant="outlined"
                 onScroll={handleScroll}
             >
-                {loading && (
-                    <Box className={classes.emptyState}>
-                        <Typography variant="body2">Carregando arquivos...</Typography>
-                    </Box>
-                )}
+                <div className={classes.hero}>
+                    <div className={classes.heroRow}>
+                        <div className={classes.heroIcon}>
+                            <InsertDriveFileOutlinedIcon />
+                        </div>
+                        <div style={{ minWidth: 220 }}>
+                            <p className={classes.heroTitle}>Lista de arquivos</p>
+                            <p className={classes.heroSub}>
+                                Centralize seus anexos e mensagens prontas para o atendimento.
+                            </p>
+                        </div>
+                        <Box flex={1} />
+                        <Chip size="small" label={`${files.length} listas`} style={{ fontWeight: 1000 }} />
+                        <Chip size="small" label={`${totalItems} itens`} style={{ fontWeight: 1000 }} />
+                    </div>
+                </div>
+
+                <div className={classes.hintCard}>
+                    <div className={classes.hintIcon}>
+                        <InfoOutlinedIcon style={{ fontSize: 18 }} />
+                    </div>
+                    <div className={classes.hintText}>
+                        <div style={{ fontWeight: 900, marginBottom: 2 }}>Dica</div>
+                        Organize por listas (ex.: <strong>Documentos</strong>, <strong>Contratos</strong>, <strong>Boletos</strong>) para achar mais rápido.
+                    </div>
+                </div>
+
+                <Grid container spacing={2} className={classes.headerRow} style={{ marginBottom: 8 }}>
+                    <Grid item xs={12} md={8}>
+                        <TextField
+                            fullWidth
+                            placeholder={i18n.t("files.searchPlaceholder")}
+                            type="search"
+                            value={searchParam}
+                            onChange={handleSearch}
+                            variant="outlined"
+                            size="small"
+                            className={classes.searchField}
+                            InputProps={{
+                                startAdornment: (
+                                    <InputAdornment position="start">
+                                        <SearchIcon style={{ color: "gray" }} />
+                                    </InputAdornment>
+                                ),
+                            }}
+                        />
+                    </Grid>
+                    <Grid item xs={12} md={4}>
+                        <TrButton fullWidth className={classes.addButton} onClick={handleOpenFileListModal}>
+                            {i18n.t("files.buttons.add")}
+                        </TrButton>
+                    </Grid>
+                </Grid>
 
                 {!loading && files.length === 0 && (
-                    <Box className={classes.emptyState}>
-                        <Typography variant="h6" style={{ fontWeight: 800, color: "var(--tr-primary)" }}>
-                            Nenhum arquivo cadastrado
+                    <div className={classes.emptyWrap}>
+                        <InsertDriveFileOutlinedIcon className={classes.emptyIcon} />
+                        <Typography style={{ fontWeight: 900, fontSize: 16 }}>
+                            Nenhuma lista cadastrada
                         </Typography>
-                        <Typography variant="body2" style={{ marginTop: 8 }}>
-                            Clique em <b>Adicionar</b> para criar sua primeira lista de arquivos.
+                        <Typography style={{ color: "rgba(15, 23, 42, 0.65)", fontSize: 13 }}>
+                            Clique em <strong>Adicionar</strong> para criar sua primeira lista de arquivos.
                         </Typography>
-                        <Box style={{ marginTop: 16, display: "flex", justifyContent: "center" }}>
-                            <TrButton onClick={handleOpenFileListModal}>
+                        <Box style={{ marginTop: 10, width: "min(360px, 100%)" }}>
+                            <TrButton fullWidth className={classes.addButton} onClick={handleOpenFileListModal}>
                                 {i18n.t("files.buttons.add")}
                             </TrButton>
                         </Box>
-                    </Box>
+                    </div>
                 )}
 
                 {!loading && files.length > 0 && (
@@ -323,22 +485,40 @@ const FileLists = () => {
                                         variant="outlined"
                                         onClick={() => handleEditFileList(fileList)}
                                     >
-                                        <div className={classes.headerRow}>
-                                            <Box style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-                                                <AttachFileIcon style={{ color: "var(--tr-primary)" }} />
-                                                <Typography className={classes.cardTitle} variant="subtitle1" noWrap>
-                                                    {fileList.name}
-                                                </Typography>
-                                            </Box>
+                                        <div className={classes.cardTop}>
+                                            <div className={classes.cardTitleRow}>
+                                                <div className={classes.iconBadge}>
+                                                    <AttachFileIcon style={{ fontSize: 18 }} />
+                                                </div>
+                                                <div style={{ minWidth: 0 }}>
+                                                    <Typography className={classes.cardTitle} variant="subtitle1" noWrap>
+                                                        {fileList.name}
+                                                    </Typography>
+                                                    <div className={classes.metaRow}>
+                                                        <Chip
+                                                            size="small"
+                                                            label={`Itens: ${optionsCount}`}
+                                                            variant="outlined"
+                                                            style={{ fontWeight: 900 }}
+                                                        />
+                                                        <Chip size="small" label={`ID: ${fileList.id}`} variant="outlined" />
+                                                    </div>
+                                                </div>
+                                            </div>
                                             <div className={classes.cardActions} onClick={(e) => e.stopPropagation()}>
                                                 <Tooltip title="Editar">
-                                                    <IconButton size="small" onClick={() => handleEditFileList(fileList)}>
+                                                    <IconButton
+                                                        size="small"
+                                                        className={classes.actionIcon}
+                                                        onClick={() => handleEditFileList(fileList)}
+                                                    >
                                                         <EditIcon />
                                                     </IconButton>
                                                 </Tooltip>
                                                 <Tooltip title="Excluir">
                                                     <IconButton
                                                         size="small"
+                                                        className={classes.actionIcon}
                                                         onClick={() => {
                                                             setConfirmModalOpen(true);
                                                             setDeletingFileList(fileList);
@@ -350,20 +530,7 @@ const FileLists = () => {
                                             </div>
                                         </div>
 
-                                        <div className={classes.metaRow}>
-                                            <Chip
-                                                size="small"
-                                                label={`Itens: ${optionsCount}`}
-                                                style={{
-                                                    background: "rgba(11, 76, 70, 0.08)",
-                                                    color: "var(--tr-primary)",
-                                                    fontWeight: 700,
-                                                }}
-                                            />
-                                            <Chip size="small" label={`ID: ${fileList.id}`} />
-                                        </div>
-
-                                        <Box style={{ marginTop: 4 }}>
+                                        <Box style={{ marginTop: 2 }}>
                                             <Typography variant="caption" color="textSecondary" style={{ fontWeight: 700 }}>
                                                 Mensagem
                                             </Typography>
@@ -375,6 +542,16 @@ const FileLists = () => {
                                 </Grid>
                             );
                         })}
+                    </Grid>
+                )}
+
+                {loading && (
+                    <Grid container spacing={2}>
+                        {Array.from({ length: 8 }).map((_, idx) => (
+                            <Grid key={`sk-${idx}`} item xs={12} sm={6} md={4} lg={3}>
+                                <div className={classes.skeletonCard} />
+                            </Grid>
+                        ))}
                     </Grid>
                 )}
             </Paper>

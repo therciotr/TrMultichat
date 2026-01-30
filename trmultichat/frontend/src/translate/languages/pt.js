@@ -461,6 +461,7 @@ const messages = {
       },
       files: {
         title: "Lista de arquivos",
+        searchPlaceholder: "Pesquisar...",
         table: {
           name: "Nome",
           contacts: "Contatos",
