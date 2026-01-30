@@ -399,6 +399,13 @@ export default function BrandingSettings({ currentUser }) {
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  // IMPORTANT: React (v16) pools events. Never read e.target.value inside setState updaters.
+  const setFormKey = (key, normalize) => (e) => {
+    const raw = e?.target?.value;
+    const value = normalize ? normalize(raw) : raw;
+    setForm((f) => ({ ...f, [key]: value }));
+  };
+
   const canPickCompany = isSuper;
 
   useEffect(() => {
@@ -555,7 +562,7 @@ export default function BrandingSettings({ currentUser }) {
                       variant="outlined"
                       size="small"
                       value={form.appTitle}
-                      onChange={(e) => setForm((f) => ({ ...f, appTitle: e.target.value }))}
+                      onChange={setFormKey("appTitle", (v) => String(v ?? ""))}
                       InputProps={{
                         startAdornment: (
                           <InputAdornment position="start">
@@ -575,7 +582,7 @@ export default function BrandingSettings({ currentUser }) {
                       variant="outlined"
                       size="small"
                       value={form.fontFamily}
-                      onChange={(e) => setForm((f) => ({ ...f, fontFamily: e.target.value }))}
+                      onChange={setFormKey("fontFamily", (v) => String(v ?? ""))}
                       helperText="Selecione uma fonte compatível com o sistema."
                     >
                       {FONT_OPTIONS.map((opt) => (
@@ -731,7 +738,7 @@ export default function BrandingSettings({ currentUser }) {
                     variant="outlined"
                     size="small"
                     value={form.primaryColor}
-                    onChange={(e) => setForm((f) => ({ ...f, primaryColor: e.target.value }))}
+                    onChange={setFormKey("primaryColor", normalizeHex)}
                   />
                 </Grid>
                 <Grid item xs={12} sm={6}>
@@ -743,7 +750,7 @@ export default function BrandingSettings({ currentUser }) {
                     variant="outlined"
                     size="small"
                     value={form.secondaryColor}
-                    onChange={(e) => setForm((f) => ({ ...f, secondaryColor: e.target.value }))}
+                    onChange={setFormKey("secondaryColor", normalizeHex)}
                   />
                 </Grid>
                 <Grid item xs={12} sm={6}>
@@ -755,7 +762,7 @@ export default function BrandingSettings({ currentUser }) {
                     variant="outlined"
                     size="small"
                     value={form.buttonColor}
-                    onChange={(e) => setForm((f) => ({ ...f, buttonColor: e.target.value }))}
+                    onChange={setFormKey("buttonColor", normalizeHex)}
                   />
                 </Grid>
                 <Grid item xs={12} sm={6}>
@@ -767,7 +774,7 @@ export default function BrandingSettings({ currentUser }) {
                     variant="outlined"
                     size="small"
                     value={form.textColor}
-                    onChange={(e) => setForm((f) => ({ ...f, textColor: e.target.value }))}
+                    onChange={setFormKey("textColor", normalizeHex)}
                   />
                 </Grid>
 
@@ -780,7 +787,7 @@ export default function BrandingSettings({ currentUser }) {
                     variant="outlined"
                     size="small"
                     value={form.backgroundType}
-                    onChange={(e) => setForm((f) => ({ ...f, backgroundType: e.target.value }))}
+                    onChange={setFormKey("backgroundType", (v) => String(v ?? ""))}
                   >
                     <MenuItem value="color">Cor sólida</MenuItem>
                     <MenuItem value="image">Imagem</MenuItem>
@@ -807,7 +814,7 @@ export default function BrandingSettings({ currentUser }) {
                       variant="outlined"
                       size="small"
                       value={form.backgroundColor}
-                      onChange={(e) => setForm((f) => ({ ...f, backgroundColor: e.target.value }))}
+                      onChange={setFormKey("backgroundColor", normalizeHex)}
                     />
                   )}
                 </Grid>
@@ -831,7 +838,10 @@ export default function BrandingSettings({ currentUser }) {
                     control={
                       <Switch
                         checked={String(form.sidebarVariant || "gradient") === "gradient"}
-                        onChange={(e) => setForm((f) => ({ ...f, sidebarVariant: e.target.checked ? "gradient" : "solid" }))}
+                        onChange={(e) => {
+                          const checked = Boolean(e?.target?.checked);
+                          setForm((f) => ({ ...f, sidebarVariant: checked ? "gradient" : "solid" }));
+                        }}
                         color="primary"
                       />
                     }
