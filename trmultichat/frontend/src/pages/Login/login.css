@@ -37,18 +37,18 @@
 }
 
 [data-tr-mode="light"] .loginRoot {
-  /* Left side: solid light brand tint (no gradient) */
-  background: rgba(var(--tr-secondary-rgb, 43,169,165), 0.18);
+  /* Left side: solid dark brand tint (no gradient) */
+  background: rgba(var(--tr-primary-rgb, 11,76,70), 0.16);
 }
 
 /* Strong right-side brand panel (replaces the old grid) */
 [data-tr-mode="light"] .loginRoot::before {
-  /* Invert: strong side uses darker brand (primary) */
+  /* Invert: strong side uses lighter brand (secondary) */
   background: linear-gradient(
     135deg,
-    rgba(var(--tr-primary-rgb, 11,76,70), 0.98) 0%,
-    rgba(var(--tr-primary-rgb, 11,76,70), 0.92) 60%,
-    rgba(var(--tr-primary-rgb, 11,76,70), 0.86) 100%
+    rgba(var(--tr-secondary-rgb, 43,169,165), 0.88) 0%,
+    rgba(var(--tr-secondary-rgb, 43,169,165), 0.78) 60%,
+    rgba(var(--tr-secondary-rgb, 43,169,165), 0.68) 100%
   );
   clip-path: polygon(56% 0%, 100% 0%, 100% 100%, 46% 100%);
   opacity: 0.94;
