@@ -90,6 +90,40 @@ const App = () => {
 				campaigntab: isDark ? "rgba(15,23,42,0.92)" : "rgba(15,23,42,0.03)",
             },
             mode,
+            overrides: {
+                MuiPaper: {
+                    root: {
+                        backgroundColor: isDark ? "#0F172A" : "#FFFFFF",
+                        color: isDark ? "#E5E7EB" : "#0F172A",
+                    }
+                },
+                MuiCard: {
+                    root: {
+                        backgroundColor: isDark ? "#0F172A" : "#FFFFFF",
+                        borderRadius: 14,
+                        border: isDark ? "1px solid rgba(148,163,184,0.16)" : "1px solid rgba(15,23,42,0.10)",
+                    }
+                },
+                MuiDialog: {
+                    paper: {
+                        backgroundColor: isDark ? "#0F172A" : "#FFFFFF",
+                    }
+                },
+                MuiTableCell: {
+                    root: {
+                        borderBottom: isDark ? "1px solid rgba(148,163,184,0.16)" : "1px solid rgba(15,23,42,0.10)",
+                    },
+                    head: {
+                        fontWeight: 900,
+                        backgroundColor: isDark ? "rgba(15,23,42,0.55)" : "rgba(15,23,42,0.03)",
+                    }
+                },
+                MuiOutlinedInput: {
+                    root: {
+                        backgroundColor: isDark ? "rgba(15,23,42,0.92)" : "#FFFFFF",
+                    }
+                }
+            }
         },
         locale
     );
