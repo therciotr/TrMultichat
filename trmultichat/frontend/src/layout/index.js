@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useContext } from "react";
+import React, { useCallback, useEffect, useRef, useState, useContext } from "react";
 import clsx from "clsx";
 import { toast } from "react-toastify";
 import {
@@ -201,31 +201,75 @@ const LoggedInLayout = ({ children }) => {
   const { dateToClient } = useDate();
 
   // Idle logout (company setting)
-  const idleTimerRef = useRef(null);
+  const idleIntervalRef = useRef(null);
+  const lastActivityAtRef = useRef(Date.now());
+  const didIdleLogoutRef = useRef(false);
   const [idleCfg, setIdleCfg] = useState({ enabled: false, minutes: 0 });
 
-  const clearIdleTimer = () => {
+  const clearIdleTimer = useCallback(() => {
     try {
-      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+      if (idleIntervalRef.current) clearInterval(idleIntervalRef.current);
     } catch (_) {}
-    idleTimerRef.current = null;
-  };
+    idleIntervalRef.current = null;
+    didIdleLogoutRef.current = false;
+  }, []);
 
-  const scheduleIdleTimer = (cfg) => {
+  const startIdleWatch = useCallback((cfg) => {
     clearIdleTimer();
     const enabled = Boolean(cfg?.enabled);
     const minutes = Number(cfg?.minutes || 0);
     if (!enabled || !(minutes > 0)) return;
-    const ms = Math.max(10_000, Math.floor(minutes * 60 * 1000));
-    idleTimerRef.current = setTimeout(() => {
-      try {
-        toast.info("Sessão encerrada por inatividade.");
-      } catch (_) {}
-      handleLogout();
-    }, ms);
-  };
 
-  const loadIdleConfig = async () => {
+    // marca "agora" como última atividade ao habilitar/reconfigurar
+    lastActivityAtRef.current = Date.now();
+    didIdleLogoutRef.current = false;
+
+    const msLimit = Math.max(10_000, Math.floor(minutes * 60 * 1000));
+    idleIntervalRef.current = setInterval(() => {
+      try {
+        if (didIdleLogoutRef.current) return;
+        const now = Date.now();
+        const last = Number(lastActivityAtRef.current || 0);
+        if (now - last < msLimit) return;
+        didIdleLogoutRef.current = true;
+        try {
+          toast.info("Sessão encerrada por inatividade.");
+        } catch (_) {}
+        // Preferir logout padrão, mas garantir fallback caso falhe (API /auth/logout pode falhar)
+        try {
+          const p = handleLogout?.();
+          // se não redirecionar, força limpeza local
+          setTimeout(() => {
+            try {
+              if (String(window.location.pathname || "").startsWith("/login")) return;
+              localStorage.removeItem("token");
+              localStorage.removeItem("refreshToken");
+              localStorage.removeItem("companyId");
+              localStorage.removeItem("userId");
+              localStorage.removeItem("cshow");
+            } catch (_) {}
+            try {
+              window.location.href = "/login";
+            } catch (_) {}
+          }, 2500);
+          return p;
+        } catch (_) {
+          try {
+            localStorage.removeItem("token");
+            localStorage.removeItem("refreshToken");
+            localStorage.removeItem("companyId");
+            localStorage.removeItem("userId");
+            localStorage.removeItem("cshow");
+          } catch (_) {}
+          try {
+            window.location.href = "/login";
+          } catch (_) {}
+        }
+      } catch (_) {}
+    }, 2000);
+  }, [clearIdleTimer, handleLogout]);
+
+  const loadIdleConfig = useCallback(async () => {
     try {
       const { data } = await api.get("/settings");
       const list = Array.isArray(data) ? data : [];
@@ -235,13 +279,12 @@ const LoggedInLayout = ({ children }) => {
       const minutes = Number(minutesRow?.value || 0);
       const next = { enabled, minutes: Number.isFinite(minutes) ? minutes : 0 };
       setIdleCfg(next);
-      scheduleIdleTimer(next);
     } catch (_) {
       // fail silent
       setIdleCfg({ enabled: false, minutes: 0 });
       clearIdleTimer();
     }
-  };
+  }, [clearIdleTimer]);
 
 
   //################### CODIGOS DE TESTE #########################################
@@ -295,7 +338,7 @@ const LoggedInLayout = ({ children }) => {
     if (document.body.offsetWidth > 600) {
       setDrawerOpen(true);
     }
-  }, []);
+  }, [loadIdleConfig, clearIdleTimer]);
 
   useEffect(() => {
     let alive = true;
@@ -325,18 +368,21 @@ const LoggedInLayout = ({ children }) => {
       return;
     }
 
-    const onActivity = () => scheduleIdleTimer({ enabled, minutes });
-    const events = ["mousemove", "mousedown", "keydown", "scroll", "touchstart"];
+    const onActivity = () => {
+      lastActivityAtRef.current = Date.now();
+      didIdleLogoutRef.current = false;
+    };
+    const events = ["mousemove", "mousedown", "keydown", "touchstart"];
     events.forEach((ev) => window.addEventListener(ev, onActivity, { passive: true }));
 
-    // Start timer immediately
-    scheduleIdleTimer({ enabled, minutes });
+    // Start watcher immediately
+    startIdleWatch({ enabled, minutes });
 
     return () => {
       events.forEach((ev) => window.removeEventListener(ev, onActivity));
       clearIdleTimer();
     };
-  }, [idleEnabled, idleMinutes]); // handleLogout is stable from context in this app
+  }, [idleEnabled, idleMinutes, startIdleWatch, clearIdleTimer]);
 
   useEffect(() => {
     if (document.body.offsetWidth < 600) {
