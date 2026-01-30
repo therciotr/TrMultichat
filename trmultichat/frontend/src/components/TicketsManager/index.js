@@ -22,7 +22,11 @@ import { Can } from "../Can";
 import TicketsQueueSelect from "../TicketsQueueSelect";
 import { Button } from "@material-ui/core";
 
-const useStyles = makeStyles(theme => ({
+const useStyles = makeStyles((theme) => {
+  const isDark = theme.palette.type === "dark";
+  const border = `1px solid ${theme.palette.divider}`;
+
+  return ({
 	ticketsWrapper: {
 		position: "relative",
 		display: "flex",
@@ -35,7 +39,8 @@ const useStyles = makeStyles(theme => ({
 
 	tabsHeader: {
 		flex: "none",
-		backgroundColor: "#eee",
+		backgroundColor: theme.palette.background.paper,
+		borderBottom: border,
 	},
 
 	settingsIcon: {
@@ -53,21 +58,23 @@ const useStyles = makeStyles(theme => ({
 		display: "flex",
 		justifyContent: "space-between",
 		alignItems: "center",
-		background: "#fafafa",
+		background: isDark ? "rgba(15,23,42,0.55)" : "rgba(15,23,42,0.03)",
 		padding: theme.spacing(1),
+		borderBottom: border,
 	},
 
 	serachInputWrapper: {
 		flex: 1,
-		background: "#fff",
+		background: isDark ? "rgba(15,23,42,0.92)" : "#fff",
 		display: "flex",
 		borderRadius: 40,
 		padding: 4,
 		marginRight: theme.spacing(1),
+		border,
 	},
 
 	searchIcon: {
-		color: "grey",
+		color: theme.palette.text.secondary,
 		marginLeft: 6,
 		marginRight: 6,
 		alignSelf: "center",
@@ -77,8 +84,9 @@ const useStyles = makeStyles(theme => ({
 		flex: 1,
 		border: "none",
 		borderRadius: 30,
+		color: theme.palette.text.primary,
 	},
-}));
+})});
 
 const TicketsManager = () => {
 	const classes = useStyles();

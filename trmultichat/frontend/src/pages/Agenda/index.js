@@ -43,7 +43,12 @@ import api from "../../services/api";
 import toastError from "../../errors/toastError";
 import { AuthContext } from "../../context/Auth/AuthContext";
 
-const useStyles = makeStyles((theme) => ({
+const useStyles = makeStyles((theme) => {
+  const isDark = theme.palette.type === "dark";
+  const border = `1px solid ${theme.palette.divider}`;
+  const softShadow = isDark ? "0 18px 44px rgba(0,0,0,0.35)" : "0 14px 36px rgba(15, 23, 42, 0.06)";
+
+  return ({
   root: {
     flex: 1,
     display: "flex",
@@ -51,10 +56,11 @@ const useStyles = makeStyles((theme) => ({
   },
   hero: {
     borderRadius: 18,
-    border: "1px solid rgba(15, 23, 42, 0.10)",
-    boxShadow: "0 14px 36px rgba(15, 23, 42, 0.06)",
-    background:
-      "linear-gradient(135deg, rgba(59, 130, 246, 0.10), rgba(16, 185, 129, 0.08) 52%, rgba(255,255,255,0.96))",
+    border,
+    boxShadow: softShadow,
+    background: isDark
+      ? "linear-gradient(135deg, rgba(59, 130, 246, 0.10), rgba(16, 185, 129, 0.08) 52%, rgba(15,23,42,0.88))"
+      : "linear-gradient(135deg, rgba(59, 130, 246, 0.10), rgba(16, 185, 129, 0.08) 52%, rgba(255,255,255,0.96))",
     padding: theme.spacing(2),
     margin: theme.spacing(2, 2, 1.5, 2),
   },
@@ -79,19 +85,19 @@ const useStyles = makeStyles((theme) => ({
     fontSize: 16,
     fontWeight: 1000,
     margin: 0,
-    color: "rgba(15, 23, 42, 0.92)",
+    color: theme.palette.text.primary,
   },
   heroSub: {
     marginTop: 4,
     marginBottom: 0,
     fontSize: 13,
-    color: "rgba(15, 23, 42, 0.66)",
+    color: theme.palette.text.secondary,
   },
   card: {
     borderRadius: 18,
-    border: "1px solid rgba(15, 23, 42, 0.10)",
-    boxShadow: "0 14px 34px rgba(15, 23, 42, 0.05)",
-    backgroundColor: "#fff",
+    border,
+    boxShadow: isDark ? "0 16px 40px rgba(0,0,0,0.35)" : "0 14px 34px rgba(15, 23, 42, 0.05)",
+    backgroundColor: theme.palette.background.paper,
     padding: theme.spacing(2),
     margin: theme.spacing(0, 2, 2, 2),
   },
@@ -120,7 +126,7 @@ const useStyles = makeStyles((theme) => ({
     minWidth: 240,
     "& .MuiOutlinedInput-root": {
       borderRadius: 14,
-      background: "#fff",
+      background: isDark ? "rgba(15,23,42,0.92)" : "#fff",
     },
   },
   viewChip: {
@@ -129,8 +135,28 @@ const useStyles = makeStyles((theme) => ({
   },
   calendarWrap: {
     borderRadius: 16,
-    border: "1px solid rgba(15, 23, 42, 0.10)",
+    border,
     overflow: "hidden",
+    backgroundColor: theme.palette.background.paper,
+    "& .fc": {
+      // FullCalendar v5+ supports CSS variables
+      "--fc-border-color": theme.palette.divider,
+      "--fc-page-bg-color": theme.palette.background.paper,
+      "--fc-neutral-bg-color": isDark ? "rgba(148,163,184,0.08)" : "rgba(15,23,42,0.03)",
+      "--fc-today-bg-color": isDark ? "rgba(59,130,246,0.14)" : "rgba(59,130,246,0.08)",
+      "--fc-list-event-hover-bg-color": isDark ? "rgba(148,163,184,0.10)" : "rgba(15,23,42,0.03)",
+      color: theme.palette.text.primary,
+    },
+    "& .fc a": { color: "inherit" },
+    "& .fc .fc-col-header-cell-cushion": { color: theme.palette.text.secondary },
+    "& .fc .fc-daygrid-day-number": { color: theme.palette.text.secondary },
+    "& .fc .fc-list-day-cushion": {
+      backgroundColor: isDark ? "rgba(15,23,42,0.72)" : "rgba(15,23,42,0.03)",
+      color: theme.palette.text.primary,
+    },
+    "& .fc .fc-list-event:hover td": {
+      backgroundColor: isDark ? "rgba(148,163,184,0.08)" : "rgba(15,23,42,0.03)",
+    },
   },
   modalTitle: {
     display: "flex",
@@ -149,7 +175,7 @@ const useStyles = makeStyles((theme) => ({
   field: {
     "& .MuiOutlinedInput-root": {
       borderRadius: 14,
-      background: "#fff",
+      background: isDark ? "rgba(15,23,42,0.92)" : "#fff",
     },
   },
   actionsRow: {
@@ -162,7 +188,7 @@ const useStyles = makeStyles((theme) => ({
   sectionLabel: {
     fontWeight: 1000,
     fontSize: 12,
-    color: "rgba(15,23,42,0.72)",
+    color: theme.palette.text.secondary,
     marginTop: theme.spacing(1),
     marginBottom: theme.spacing(0.75),
     display: "flex",
@@ -176,13 +202,13 @@ const useStyles = makeStyles((theme) => ({
   },
   attachmentItem: {
     borderRadius: 14,
-    border: "1px solid rgba(15,23,42,0.10)",
+    border,
     padding: theme.spacing(1, 1.25),
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
     gap: theme.spacing(1),
-    background: "rgba(255,255,255,0.92)",
+    background: isDark ? "rgba(15,23,42,0.55)" : "rgba(255,255,255,0.92)",
   },
   attachmentName: {
     fontSize: 12,
@@ -192,7 +218,7 @@ const useStyles = makeStyles((theme) => ({
     whiteSpace: "nowrap",
     maxWidth: 360,
   },
-}));
+})});
 
 const DEFAULT_COLORS = [
   { label: "Azul", value: "#2563EB" },

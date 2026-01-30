@@ -30,7 +30,11 @@ import { UsersFilter } from "../UsersFilter";
 import useQueues from "../../hooks/useQueues";
 import api from "../../services/api";
 
-const useStyles = makeStyles(theme => ({
+const useStyles = makeStyles((theme) => {
+  const isDark = theme.palette.type === "dark";
+  const border = `1px solid ${theme.palette.divider}`;
+
+  return ({
 	ticketsWrapper: {
 		position: "relative",
 		display: "flex",
@@ -44,14 +48,14 @@ const useStyles = makeStyles(theme => ({
 
 	tabsHeader: {
 		flex: "none",
-		backgroundColor: "#fff",
-		borderBottom: "1px solid rgba(15, 23, 42, 0.08)",
+		backgroundColor: theme.palette.background.paper,
+		borderBottom: border,
 	},
 
 	tabsInternal: {
 		flex: "none",
-		backgroundColor: "#fff",
-		borderBottom: "1px solid rgba(15, 23, 42, 0.08)",
+		backgroundColor: theme.palette.background.paper,
+		borderBottom: border,
 	},
 
 	settingsIcon: {
@@ -80,10 +84,10 @@ const useStyles = makeStyles(theme => ({
 		display: "flex",
 		justifyContent: "space-between",
 		alignItems: "center",
-		background: "#fff",
+		background: isDark ? "rgba(15,23,42,0.55)" : theme.palette.background.paper,
 		padding: theme.spacing(1.25, 1.25),
 		gap: theme.spacing(1),
-		borderBottom: "1px solid rgba(15, 23, 42, 0.08)",
+		borderBottom: border,
 	},
 
 	ticketSearchLine: {
@@ -92,12 +96,12 @@ const useStyles = makeStyles(theme => ({
 
 	serachInputWrapper: {
 		flex: 1,
-		background: "rgba(15, 23, 42, 0.04)",
+		background: isDark ? "rgba(15,23,42,0.92)" : "rgba(15, 23, 42, 0.04)",
 		display: "flex",
 		borderRadius: 12,
 		padding: theme.spacing(0.75, 1),
 		marginRight: theme.spacing(1),
-		border: "1px solid rgba(15, 23, 42, 0.08)",
+		border,
 		transition: "box-shadow 120ms ease, border-color 120ms ease",
 		"&:focus-within": {
 			borderColor: "rgba(59, 130, 246, 0.55)",
@@ -106,7 +110,7 @@ const useStyles = makeStyles(theme => ({
 	},
 
 	searchIcon: {
-		color: "rgba(15, 23, 42, 0.55)",
+		color: theme.palette.text.secondary,
 		marginRight: 8,
 		alignSelf: "center",
 	},
@@ -115,6 +119,7 @@ const useStyles = makeStyles(theme => ({
 		flex: 1,
 		border: "none",
 		borderRadius: 10,
+		color: theme.palette.text.primary,
 	},
 
 	insiderTabPanel: {
@@ -176,10 +181,10 @@ const useStyles = makeStyles(theme => ({
 		gap: 6,
 		fontSize: 12,
 		fontWeight: 700,
-		color: "rgba(15, 23, 42, 0.62)",
+		color: theme.palette.text.secondary,
 		whiteSpace: "nowrap",
 	}
-}));
+})});
 
 const TicketsManagerTabs = () => {
   const classes = useStyles();

@@ -19,15 +19,19 @@ import PlaylistAddOutlinedIcon from "@material-ui/icons/PlaylistAddOutlined";
 import AddCircleOutlineIcon from "@material-ui/icons/AddCircleOutline";
 import AssignmentTurnedInOutlinedIcon from "@material-ui/icons/AssignmentTurnedInOutlined";
 
-const useStyles = makeStyles((theme) => ({
+const useStyles = makeStyles((theme) => {
+  const isDark = theme.palette.type === "dark";
+  const border = `1px solid ${theme.palette.divider}`;
+
+  return ({
   root: {
     padding: theme.spacing(2),
   },
   surface: {
     borderRadius: 14,
-    border: "1px solid rgba(15, 23, 42, 0.08)",
-    boxShadow: "0 1px 2px rgba(15, 23, 42, 0.06)",
-    backgroundColor: "#F8FAFC",
+    border,
+    boxShadow: isDark ? "0 16px 40px rgba(0,0,0,0.35)" : "0 1px 2px rgba(15, 23, 42, 0.06)",
+    backgroundColor: theme.palette.background.paper,
     padding: theme.spacing(2),
   },
   header: {
@@ -55,11 +59,11 @@ const useStyles = makeStyles((theme) => ({
   title: {
     fontWeight: 900,
     letterSpacing: 0,
-    color: "rgba(15, 23, 42, 0.92)",
+    color: theme.palette.text.primary,
   },
   subtitle: {
     marginTop: 2,
-    color: "rgba(15, 23, 42, 0.62)",
+    color: theme.palette.text.secondary,
     fontSize: 13,
   },
   inputRow: {
@@ -72,7 +76,7 @@ const useStyles = makeStyles((theme) => ({
     flex: 1,
     "& .MuiOutlinedInput-root": {
       borderRadius: 12,
-      backgroundColor: "#fff",
+      backgroundColor: isDark ? "rgba(15,23,42,0.92)" : "#fff",
     },
   },
   addButton: {
@@ -88,12 +92,12 @@ const useStyles = makeStyles((theme) => ({
   },
   card: {
     borderRadius: 14,
-    border: "1px solid rgba(15, 23, 42, 0.08)",
-    boxShadow: "0 1px 2px rgba(15, 23, 42, 0.06)",
+    border,
+    boxShadow: isDark ? "0 1px 2px rgba(0,0,0,0.45)" : "0 1px 2px rgba(15, 23, 42, 0.06)",
     transition: "box-shadow 150ms ease, transform 150ms ease, border-color 150ms ease",
     "&:hover": {
-      borderColor: "rgba(15, 23, 42, 0.14)",
-      boxShadow: "0 10px 22px rgba(15, 23, 42, 0.10)",
+      borderColor: isDark ? "rgba(148,163,184,0.32)" : "rgba(15, 23, 42, 0.14)",
+      boxShadow: isDark ? "0 10px 26px rgba(0,0,0,0.38)" : "0 10px 22px rgba(15, 23, 42, 0.10)",
       transform: "translateY(-1px)",
     },
   },
@@ -105,7 +109,7 @@ const useStyles = makeStyles((theme) => ({
   },
   taskText: {
     fontWeight: 900,
-    color: "rgba(15, 23, 42, 0.92)",
+    color: theme.palette.text.primary,
     lineHeight: 1.25,
     wordBreak: "break-word",
   },
@@ -117,7 +121,7 @@ const useStyles = makeStyles((theme) => ({
   },
   chip: {
     borderRadius: 999,
-    backgroundColor: "rgba(15, 23, 42, 0.04)",
+    backgroundColor: isDark ? "rgba(148,163,184,0.10)" : "rgba(15, 23, 42, 0.04)",
   },
   actions: {
     justifyContent: "flex-end",
@@ -127,18 +131,31 @@ const useStyles = makeStyles((theme) => ({
     marginTop: theme.spacing(2),
     padding: theme.spacing(4),
     borderRadius: 14,
-    border: "1px dashed rgba(15, 23, 42, 0.18)",
-    backgroundColor: "rgba(255,255,255,0.75)",
+    border: `1px dashed ${theme.palette.divider}`,
+    backgroundColor: isDark ? "rgba(15,23,42,0.55)" : "rgba(255,255,255,0.75)",
     textAlign: "center",
   },
   emptyIcon: {
     width: 56,
     height: 56,
-    color: "rgba(15, 23, 42, 0.22)",
+    color: isDark ? "rgba(148,163,184,0.35)" : "rgba(15, 23, 42, 0.22)",
     margin: "0 auto 10px",
     display: "block",
   },
-}));
+  emptyTitle: {
+    fontWeight: 900,
+    fontSize: 16,
+    color: theme.palette.text.primary,
+  },
+  emptySub: {
+    color: theme.palette.text.secondary,
+    fontSize: 13,
+  },
+  mutedIcon: {
+    color: theme.palette.text.secondary,
+    opacity: 0.9,
+  },
+})});
 
 const ToDoList = () => {
   const classes = useStyles();
@@ -226,7 +243,7 @@ const ToDoList = () => {
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
-                  <PlaylistAddOutlinedIcon style={{ color: "rgba(15, 23, 42, 0.55)" }} />
+                  <PlaylistAddOutlinedIcon className={classes.mutedIcon} />
                 </InputAdornment>
               ),
             }}
@@ -245,10 +262,10 @@ const ToDoList = () => {
         {tasks.length === 0 ? (
           <div className={classes.emptyWrap}>
             <AssignmentTurnedInOutlinedIcon className={classes.emptyIcon} />
-            <Typography style={{ fontWeight: 900, fontSize: 16, color: "rgba(15, 23, 42, 0.92)" }}>
+            <Typography className={classes.emptyTitle}>
               Nenhuma tarefa ainda
             </Typography>
-            <Typography style={{ color: "rgba(15, 23, 42, 0.62)", fontSize: 13 }}>
+            <Typography className={classes.emptySub}>
               Adicione uma nova tarefa para começar a organizar seu dia.
             </Typography>
           </div>

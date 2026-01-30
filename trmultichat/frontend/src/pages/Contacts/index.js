@@ -109,14 +109,19 @@ function hueFromString(input = "") {
   return h;
 }
 
-const useStyles = makeStyles((theme) => ({
+const useStyles = makeStyles((theme) => {
+  const isDark = theme.palette.type === "dark";
+  const border = `1px solid ${theme.palette.divider}`;
+  const softShadow = isDark ? "0 18px 44px rgba(0,0,0,0.35)" : "0 10px 30px rgba(15, 23, 42, 0.10)";
+
+  return ({
   headerSurface: {
     width: "100%",
-    background: "rgba(255,255,255,0.82)",
-    border: "1px solid rgba(15, 23, 42, 0.10)",
+    background: isDark ? "rgba(15,23,42,0.65)" : "rgba(255,255,255,0.82)",
+    border,
     borderRadius: 16,
     padding: theme.spacing(1, 1),
-    boxShadow: "0 10px 30px rgba(15, 23, 42, 0.10)",
+    boxShadow: softShadow,
     backdropFilter: "blur(10px)",
     marginBottom: theme.spacing(1.5),
   },
@@ -137,7 +142,7 @@ const useStyles = makeStyles((theme) => ({
     fontWeight: 900,
     fontSize: 18,
     lineHeight: "22px",
-    color: "rgba(15, 23, 42, 0.92)",
+    color: theme.palette.text.primary,
     margin: 0,
   },
   mainPaper: {
@@ -145,9 +150,9 @@ const useStyles = makeStyles((theme) => ({
     padding: theme.spacing(2),
     overflowY: "scroll",
     ...theme.scrollbarStyles,
-    backgroundColor: "#F8FAFC",
+    backgroundColor: isDark ? "rgba(15,23,42,0.55)" : "#F8FAFC",
     borderRadius: 14,
-    border: "1px solid rgba(15, 23, 42, 0.08)",
+    border,
   },
   headerRow: {
     width: "99.6%",
@@ -158,8 +163,8 @@ const useStyles = makeStyles((theme) => ({
     flex: "1 1 240px",
     "& .MuiOutlinedInput-root": {
       borderRadius: 12,
-      backgroundColor: "#fff",
-      boxShadow: "0 1px 2px rgba(15, 23, 42, 0.06)",
+      backgroundColor: isDark ? "rgba(15,23,42,0.92)" : "#fff",
+      boxShadow: isDark ? "0 1px 2px rgba(0,0,0,0.45)" : "0 1px 2px rgba(15, 23, 42, 0.06)",
       transition: "box-shadow 150ms ease, border-color 150ms ease",
       "&.Mui-focused": {
         boxShadow: "0 0 0 4px rgba(59, 130, 246, 0.18)",
@@ -197,25 +202,25 @@ const useStyles = makeStyles((theme) => ({
     gap: 6,
     padding: "2px 10px 2px 6px",
     borderRadius: 999,
-    border: "1px solid rgba(15, 23, 42, 0.10)",
-    background: "#fff",
-    boxShadow: "0 1px 2px rgba(15, 23, 42, 0.06)",
+    border,
+    background: theme.palette.background.paper,
+    boxShadow: isDark ? "0 1px 2px rgba(0,0,0,0.45)" : "0 1px 2px rgba(15, 23, 42, 0.06)",
     cursor: "pointer",
     userSelect: "none",
   },
   selectPillLabel: {
     fontSize: 12,
     fontWeight: 900,
-    color: "rgba(15, 23, 42, 0.76)",
+    color: theme.palette.text.secondary,
     whiteSpace: "nowrap",
   },
   cardSelect: {
     position: "absolute",
     left: 8,
     top: 10,
-    background: "rgba(255,255,255,0.88)",
+    background: isDark ? "rgba(15,23,42,0.72)" : "rgba(255,255,255,0.88)",
     borderRadius: 10,
-    border: "1px solid rgba(15, 23, 42, 0.08)",
+    border,
     padding: 2,
   },
   cardsGrid: {
@@ -226,8 +231,8 @@ const useStyles = makeStyles((theme) => ({
     position: "relative",
     overflow: "hidden",
     borderRadius: 14,
-    border: "1px solid rgba(15, 23, 42, 0.08)",
-    boxShadow: "0 1px 2px rgba(15, 23, 42, 0.06)",
+    border,
+    boxShadow: isDark ? "0 1px 2px rgba(0,0,0,0.45)" : "0 1px 2px rgba(15, 23, 42, 0.06)",
     transition: "box-shadow 150ms ease, transform 150ms ease, border-color 150ms ease",
     "&:before": {
       content: '""',
@@ -239,15 +244,17 @@ const useStyles = makeStyles((theme) => ({
       opacity: 0.75,
     },
     "&:hover": {
-      borderColor: "rgba(15, 23, 42, 0.14)",
-      boxShadow: "0 10px 22px rgba(15, 23, 42, 0.10)",
+      borderColor: isDark ? "rgba(148,163,184,0.32)" : "rgba(15, 23, 42, 0.14)",
+      boxShadow: isDark ? "0 10px 26px rgba(0,0,0,0.38)" : "0 10px 22px rgba(15, 23, 42, 0.10)",
       transform: "translateY(-1px)",
     },
   },
   cardSelected: {
     borderColor: "rgba(59, 130, 246, 0.55)",
     boxShadow: "0 12px 26px rgba(59, 130, 246, 0.18)",
-    background: "linear-gradient(180deg, rgba(59, 130, 246, 0.06), rgba(255,255,255,1) 55%)",
+    background: isDark
+      ? "linear-gradient(180deg, rgba(59, 130, 246, 0.10), rgba(15,23,42,0.92) 55%)"
+      : "linear-gradient(180deg, rgba(59, 130, 246, 0.06), rgba(255,255,255,1) 55%)",
   },
   cardTop: {
     display: "flex",
@@ -265,9 +272,9 @@ const useStyles = makeStyles((theme) => ({
     width: 46,
     height: 46,
     borderRadius: 14,
-    border: "1px solid rgba(15, 23, 42, 0.08)",
-    backgroundColor: "rgba(15, 23, 42, 0.06)",
-    color: "rgba(15, 23, 42, 0.92)",
+    border,
+    backgroundColor: isDark ? "rgba(148,163,184,0.10)" : "rgba(15, 23, 42, 0.06)",
+    color: theme.palette.text.primary,
     fontWeight: 900,
   },
   avatarFallback: {
@@ -278,11 +285,11 @@ const useStyles = makeStyles((theme) => ({
   name: {
     fontWeight: 900,
     fontSize: 14,
-    color: "rgba(15, 23, 42, 0.92)",
+    color: theme.palette.text.primary,
   },
   sub: {
     marginTop: 2,
-    color: "rgba(15, 23, 42, 0.65)",
+    color: theme.palette.text.secondary,
     fontSize: 13,
   },
   chips: {
@@ -293,11 +300,11 @@ const useStyles = makeStyles((theme) => ({
   },
   chip: {
     borderRadius: 999,
-    backgroundColor: "rgba(15, 23, 42, 0.04)",
+    backgroundColor: isDark ? "rgba(148,163,184,0.10)" : "rgba(15, 23, 42, 0.04)",
   },
   actionIcon: {
-    color: "rgba(15, 23, 42, 0.68)",
-    "&:hover": { color: "rgba(15, 23, 42, 0.92)" },
+    color: theme.palette.text.secondary,
+    "&:hover": { color: theme.palette.text.primary },
   },
   actions: {
     justifyContent: "flex-end",
@@ -305,8 +312,8 @@ const useStyles = makeStyles((theme) => ({
   },
   emptyWrap: {
     borderRadius: 14,
-    border: "1px dashed rgba(15, 23, 42, 0.18)",
-    backgroundColor: "rgba(255,255,255,0.75)",
+    border: `1px dashed ${theme.palette.divider}`,
+    backgroundColor: isDark ? "rgba(15,23,42,0.55)" : "rgba(255,255,255,0.75)",
     padding: theme.spacing(4),
     textAlign: "center",
     marginTop: theme.spacing(2),
@@ -314,17 +321,30 @@ const useStyles = makeStyles((theme) => ({
   emptyIcon: {
     width: 56,
     height: 56,
-    color: "rgba(15, 23, 42, 0.22)",
+    color: isDark ? "rgba(148,163,184,0.35)" : "rgba(15, 23, 42, 0.22)",
     margin: "0 auto 10px",
     display: "block",
   },
   skeletonCard: {
     borderRadius: 14,
-    border: "1px solid rgba(15, 23, 42, 0.08)",
-    backgroundColor: "#fff",
+    border,
+    backgroundColor: theme.palette.background.paper,
     height: 140,
   },
-}));
+  mutedIcon: {
+    color: theme.palette.text.secondary,
+    opacity: 0.9,
+  },
+  emptyTitle: {
+    fontWeight: 900,
+    fontSize: 16,
+    color: theme.palette.text.primary,
+  },
+  emptySub: {
+    color: theme.palette.text.secondary,
+    fontSize: 13,
+  },
+})});
 
 const Contacts = () => {
   const classes = useStyles();
@@ -581,7 +601,7 @@ const Contacts = () => {
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
-                  <SearchOutlinedIcon style={{ color: "rgba(15, 23, 42, 0.55)" }} />
+                  <SearchOutlinedIcon className={classes.mutedIcon} />
                 </InputAdornment>
               ),
               endAdornment: searchParam ? (
@@ -592,7 +612,7 @@ const Contacts = () => {
                     aria-label="Limpar busca"
                     title="Limpar"
                   >
-                    <CloseOutlinedIcon style={{ color: "rgba(15, 23, 42, 0.55)" }} />
+                    <CloseOutlinedIcon className={classes.mutedIcon} />
                   </IconButton>
                 </InputAdornment>
               ) : null,
@@ -686,10 +706,10 @@ const Contacts = () => {
         {contacts.length === 0 && !loading ? (
           <div className={classes.emptyWrap}>
             <PersonOutlineIcon className={classes.emptyIcon} />
-            <Typography style={{ fontWeight: 900, fontSize: 16, color: "rgba(15, 23, 42, 0.92)" }}>
+            <Typography className={classes.emptyTitle}>
               {i18n.t("contacts.title")}
             </Typography>
-            <Typography style={{ color: "rgba(15, 23, 42, 0.62)", fontSize: 13 }}>
+            <Typography className={classes.emptySub}>
               {i18n.t("contacts.searchPlaceholder")}
             </Typography>
           </div>

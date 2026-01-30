@@ -23,7 +23,11 @@ import api from "../../services/api";
 import toastError from "../../errors/toastError";
 import ConfirmationModal from "../ConfirmationModal";
 
-const useStyles = makeStyles((theme) => ({
+const useStyles = makeStyles((theme) => {
+  const isDark = theme.palette.type === "dark";
+  const border = `1px solid ${theme.palette.divider}`;
+
+  return ({
   ticketsListWrapper: {
     position: "relative",
     display: "flex",
@@ -39,14 +43,14 @@ const useStyles = makeStyles((theme) => ({
     maxHeight: "100%",
     overflowY: "scroll",
     ...theme.scrollbarStyles,
-    backgroundColor: "#F8FAFC",
+    backgroundColor: isDark ? "rgba(15,23,42,0.55)" : "#F8FAFC",
   },
 
   ticketsListHeader: {
-    color: "rgb(67, 83, 105)",
+    color: theme.palette.text.primary,
     zIndex: 2,
-    backgroundColor: "white",
-    borderBottom: "1px solid rgba(0, 0, 0, 0.12)",
+    backgroundColor: theme.palette.background.paper,
+    borderBottom: border,
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
@@ -55,14 +59,14 @@ const useStyles = makeStyles((theme) => ({
 
   ticketsCount: {
     fontWeight: "normal",
-    color: "rgb(104, 121, 146)",
+    color: theme.palette.text.secondary,
     marginLeft: "8px",
     fontSize: "14px",
   },
 
   noTicketsText: {
     textAlign: "center",
-    color: "rgba(15, 23, 42, 0.65)",
+    color: theme.palette.text.secondary,
     fontSize: 13,
     lineHeight: "1.4",
     margin: 0,
@@ -73,7 +77,7 @@ const useStyles = makeStyles((theme) => ({
     fontSize: 16,
     fontWeight: 700,
     margin: 0,
-    color: "rgba(15, 23, 42, 0.92)",
+    color: theme.palette.text.primary,
   },
 
   noTicketsDiv: {
@@ -86,14 +90,14 @@ const useStyles = makeStyles((theme) => ({
     gap: theme.spacing(1),
     padding: theme.spacing(3),
     borderRadius: 12,
-    border: "1px solid rgba(15, 23, 42, 0.08)",
-    backgroundColor: "#fff",
-    boxShadow: "0 1px 2px rgba(15, 23, 42, 0.06)",
+    border,
+    backgroundColor: theme.palette.background.paper,
+    boxShadow: isDark ? "0 1px 2px rgba(0,0,0,0.45)" : "0 1px 2px rgba(15, 23, 42, 0.06)",
   },
   noTicketsIcon: {
     width: 44,
     height: 44,
-    color: "rgba(15, 23, 42, 0.22)",
+    color: isDark ? "rgba(148,163,184,0.35)" : "rgba(15, 23, 42, 0.22)",
     marginBottom: theme.spacing(0.5),
   },
   listPad: {
@@ -102,7 +106,7 @@ const useStyles = makeStyles((theme) => ({
     paddingLeft: theme.spacing(1),
     paddingRight: theme.spacing(1),
   },
-}));
+})});
 
 const reducer = (state, action) => {
   if (action.type === "LOAD_TICKETS") {
