@@ -38,7 +38,8 @@
 
 [data-tr-mode="light"] .loginRoot {
   /* Left side: solid dark brand tint (no gradient) */
-  background: rgba(var(--tr-primary-rgb, 11,76,70), 0.16);
+  /* Make it clearly "verde escuro" (not grey) */
+  background: rgba(var(--tr-primary-rgb, 11,76,70), 0.42);
 }
 
 /* Strong right-side brand panel (replaces the old grid) */
