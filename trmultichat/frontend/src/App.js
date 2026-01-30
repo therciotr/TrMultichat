@@ -47,9 +47,11 @@ const App = () => {
             },
             palette: {
                 type: mode,
-                // Usa tokens do Branding via CSS vars (sem perder modo)
-                primary: { main: "var(--tr-primary)" },
-                secondary: { main: "var(--tr-secondary)" },
+                // IMPORTANTE: Material-UI v4 não suporta CSS var() aqui
+                // (ele calcula contraste e quebra). O Branding ThemeProvider
+                // sobrescreve essas cores depois com valores reais.
+                primary: { main: "#0B4C46" },
+                secondary: { main: "#2BA9A5" },
                 background: {
                     default: isDark ? "#0B1220" : "#F6F8FC",
                     paper: isDark ? "#0F172A" : "#FFFFFF",
