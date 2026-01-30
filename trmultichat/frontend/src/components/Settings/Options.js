@@ -104,26 +104,26 @@ const useStyles = makeStyles((theme) => ({
     margin: 0,
     fontSize: 16,
     fontWeight: 800,
-    color: "rgba(15, 23, 42, 0.92)",
+    color: theme.palette.text.primary,
   },
   topBarSub: {
     margin: 0,
     marginTop: 2,
     fontSize: 13,
-    color: "rgba(15, 23, 42, 0.65)",
+    color: theme.palette.text.secondary,
   },
   sectionCard: {
     padding: 16,
     borderRadius: 14,
-    border: "1px solid rgba(15, 23, 42, 0.10)",
-    boxShadow: "0 8px 24px rgba(15, 23, 42, 0.05)",
-    backgroundColor: "#fff",
+    border: `1px solid ${theme.palette.divider}`,
+    boxShadow: theme.palette.type === "dark" ? "0 10px 28px rgba(0,0,0,0.35)" : "0 8px 24px rgba(15, 23, 42, 0.05)",
+    backgroundColor: theme.palette.background.paper,
   },
   switchRow: {
     padding: 12,
     borderRadius: 12,
-    border: "1px solid rgba(15, 23, 42, 0.08)",
-    background: "rgba(248, 250, 252, 0.70)",
+    border: `1px solid ${theme.palette.divider}`,
+    background: theme.palette.type === "dark" ? "rgba(15,23,42,0.55)" : "rgba(15,23,42,0.03)",
   },
 }));
 

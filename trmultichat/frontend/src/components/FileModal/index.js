@@ -49,7 +49,7 @@ const useStyles = makeStyles(theme => ({
     dialogPaper: {
         borderRadius: 18,
         overflow: "hidden",
-        border: "1px solid rgba(15, 23, 42, 0.10)",
+        border: `1px solid ${theme.palette.divider}`,
         maxHeight: "calc(100vh - 72px)",
         [theme.breakpoints.down("xs")]: {
             maxHeight: "100vh",
@@ -76,12 +76,12 @@ const useStyles = makeStyles(theme => ({
         fontWeight: 1000,
         fontSize: 15,
         margin: 0,
-        color: "rgba(15, 23, 42, 0.92)",
+        color: theme.palette.text.primary,
     },
     titleSub: {
         fontSize: 12,
         marginTop: 2,
-        color: "rgba(15, 23, 42, 0.64)",
+        color: theme.palette.text.secondary,
     },
     hintRow: {
         display: "flex",
@@ -89,8 +89,8 @@ const useStyles = makeStyles(theme => ({
         gap: 10,
         padding: theme.spacing(1.25),
         borderRadius: 14,
-        border: "1px solid rgba(15,23,42,0.08)",
-        background: "rgba(15,23,42,0.03)",
+        border: `1px solid ${theme.palette.divider}`,
+        background: theme.palette.type === "dark" ? "rgba(15,23,42,0.55)" : "rgba(15,23,42,0.03)",
         marginBottom: theme.spacing(1.5),
     },
     hintIcon: {
@@ -105,8 +105,8 @@ const useStyles = makeStyles(theme => ({
     },
     sectionCard: {
         borderRadius: 16,
-        border: "1px solid rgba(15, 23, 42, 0.10)",
-        background: "rgba(255,255,255,0.96)",
+        border: `1px solid ${theme.palette.divider}`,
+        background: theme.palette.background.paper,
         padding: theme.spacing(1.5),
     },
     sectionTitle: {

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import api from "../services/api";
 import { createMuiTheme, ThemeProvider as MuiThemeProvider, useTheme as useMuiTheme } from "@material-ui/core/styles";
 
@@ -48,13 +48,20 @@ export const ThemeProvider = ({ children }) => {
   };
 
   const buildMuiTheme = (b) => {
-    return createMuiTheme({
+    // Importante: herdar o tema base (inclui dark/light e superfícies).
+    return createMuiTheme(parentTheme || {}, {
       palette: {
         type: parentMode === "dark" ? "dark" : "light",
-        primary: { main: b.primaryColor },
-        secondary: { main: b.secondaryColor },
-        background: { default: b.backgroundColor || '#F4F7F7' },
-        text: { primary: b.textColor }
+        primary: { main: b.primaryColor || (parentTheme?.palette?.primary?.main || defaultBranding.primaryColor) },
+        secondary: { main: b.secondaryColor || (parentTheme?.palette?.secondary?.main || defaultBranding.secondaryColor) },
+        // não sobrescrever background/text do tema base no dark (evita "quebrar" o modo)
+        text: {
+          primary: parentMode === "dark" ? (parentTheme?.palette?.text?.primary || "#E5E7EB") : (b.textColor || parentTheme?.palette?.text?.primary || defaultBranding.textColor),
+          secondary: parentTheme?.palette?.text?.secondary || (parentMode === "dark" ? "#94A3B8" : "#475569")
+        }
+      },
+      typography: {
+        fontFamily: b.fontFamily || parentTheme?.typography?.fontFamily || defaultBranding.fontFamily,
       },
       overrides: {
         MuiButton: {
@@ -65,8 +72,21 @@ export const ThemeProvider = ({ children }) => {
           }
         },
         MuiAppBar: { colorPrimary: { backgroundColor: b.primaryColor } },
-        MuiDrawer: { paper: { background: `linear-gradient(180deg, ${b.primaryColor}, rgba(0,0,0,0.2))`, color: '#fff' } },
-        MuiCard: { root: { borderRadius: 12, border: `1px solid ${b.primaryColor}20` } },
+        MuiDrawer: {
+          paper: {
+            background: parentMode === "dark"
+              ? `linear-gradient(180deg, ${b.primaryColor}, rgba(2,6,23,0.55))`
+              : `linear-gradient(180deg, ${b.primaryColor}, rgba(0,0,0,0.20))`,
+            color: '#fff'
+          }
+        },
+        MuiCard: {
+          root: {
+            borderRadius: 12,
+            border: `1px solid ${b.primaryColor}20`,
+            backgroundColor: parentTheme?.palette?.background?.paper
+          }
+        },
         MuiChip: { colorPrimary: { backgroundColor: b.secondaryColor, color: '#fff' } },
         MuiTableHead: { root: { backgroundColor: `${b.primaryColor}10` } },
         MuiOutlinedInput: {
@@ -84,14 +104,19 @@ export const ThemeProvider = ({ children }) => {
     try {
       const body = document.body;
       if (!body) return;
+      const isDark = String(parentMode || "").toLowerCase() === "dark";
       if (b.backgroundType === "image" && b.backgroundImage) {
-        body.style.backgroundImage = `url(${b.backgroundImage})`;
+        // No dark mode, aplica overlay para harmonizar com as superfícies
+        body.style.backgroundImage = isDark
+          ? `linear-gradient(rgba(2,6,23,0.78), rgba(2,6,23,0.78)), url(${b.backgroundImage})`
+          : `url(${b.backgroundImage})`;
         body.style.backgroundSize = "cover";
         body.style.backgroundRepeat = "no-repeat";
         body.style.backgroundPosition = "center";
+        body.style.backgroundColor = isDark ? "#0B1220" : (b.backgroundColor || "#F4F7F7");
       } else {
         body.style.backgroundImage = "none";
-        body.style.background = b.backgroundColor || "#F4F7F7";
+        body.style.background = isDark ? "#0B1220" : (b.backgroundColor || "#F4F7F7");
       }
     } catch (_) {}
   };
@@ -100,14 +125,20 @@ export const ThemeProvider = ({ children }) => {
     try {
       const root = document.documentElement;
       if (!root) return;
+      const isDark = String(parentMode || "").toLowerCase() === "dark";
       root.style.setProperty("--tr-primary", b.primaryColor || defaultBranding.primaryColor);
       root.style.setProperty("--tr-secondary", b.secondaryColor || defaultBranding.secondaryColor);
       root.style.setProperty("--tr-button", b.buttonColor || b.primaryColor || defaultBranding.buttonColor);
       root.style.setProperty("--tr-text", b.textColor || defaultBranding.textColor);
-      root.style.setProperty("--tr-bg", b.backgroundColor || defaultBranding.backgroundColor);
+      root.style.setProperty("--tr-bg", isDark ? "#0B1220" : (b.backgroundColor || defaultBranding.backgroundColor));
       root.style.setProperty("--tr-logo", b.logoUrl || defaultBranding.logoUrl);
       root.style.setProperty("--tr-font", b.fontFamily || defaultBranding.fontFamily);
       root.style.setProperty("--tr-radius", ((b.borderRadius ?? defaultBranding.borderRadius) + "px"));
+      // tokens premium de superfície
+      root.style.setProperty("--tr-surface", isDark ? "#0F172A" : "#FFFFFF");
+      root.style.setProperty("--tr-surface2", isDark ? "rgba(15,23,42,0.92)" : "rgba(15,23,42,0.03)");
+      root.style.setProperty("--tr-border", isDark ? "rgba(148,163,184,0.18)" : "rgba(15,23,42,0.10)");
+      root.style.setProperty("--tr-muted", isDark ? "rgba(148,163,184,0.85)" : "rgba(15,23,42,0.65)");
     } catch (_) {}
   };
 
@@ -154,7 +185,7 @@ export const ThemeProvider = ({ children }) => {
     }
   };
 
-  const refreshBranding = async () => {
+  const refreshBranding = useCallback(async () => {
     try {
       const { data } = await api.get("/branding");
       const merged = { ...defaultBranding, ...(data || {}) };
@@ -176,9 +207,10 @@ export const ThemeProvider = ({ children }) => {
       applyMeta(defaultBranding);
       setMuiTheme(buildMuiTheme(defaultBranding));
     }
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [parentMode]);
 
-  const updateBranding = async (payload) => {
+  const updateBranding = useCallback(async (payload) => {
     const { data } = await api.put("/branding", payload);
     const merged = { ...defaultBranding, ...(data || {}) };
     const normalized = {
@@ -192,12 +224,12 @@ export const ThemeProvider = ({ children }) => {
     applyMeta(normalized);
     setMuiTheme(buildMuiTheme(normalized));
     return data;
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [parentMode]);
 
   useEffect(() => {
     refreshBranding();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [refreshBranding]);
 
   useEffect(() => {
     // Rebuild branding theme when dark/light changes.

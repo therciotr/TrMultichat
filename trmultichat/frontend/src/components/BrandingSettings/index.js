@@ -37,10 +37,11 @@ const useStyles = makeStyles((theme) => ({
   },
   hero: {
     borderRadius: 18,
-    border: "1px solid rgba(15, 23, 42, 0.10)",
-    boxShadow: "0 14px 36px rgba(15, 23, 42, 0.06)",
-    background:
-      "linear-gradient(135deg, rgba(16, 185, 129, 0.10), rgba(59, 130, 246, 0.08) 52%, rgba(255,255,255,0.96))",
+    border: `1px solid ${theme.palette.divider}`,
+    boxShadow: theme.palette.type === "dark" ? "0 18px 46px rgba(0,0,0,0.45)" : "0 14px 36px rgba(15, 23, 42, 0.06)",
+    background: theme.palette.type === "dark"
+      ? "linear-gradient(135deg, rgba(16,185,129,0.10), rgba(59,130,246,0.10) 52%, rgba(15,23,42,0.92))"
+      : "linear-gradient(135deg, rgba(16, 185, 129, 0.10), rgba(59, 130, 246, 0.08) 52%, rgba(255,255,255,0.96))",
     padding: theme.spacing(2),
     marginBottom: theme.spacing(2),
   },
@@ -64,26 +65,26 @@ const useStyles = makeStyles((theme) => ({
     fontSize: 16,
     fontWeight: 1000,
     margin: 0,
-    color: "rgba(15, 23, 42, 0.92)",
+    color: theme.palette.text.primary,
   },
   heroSub: {
     marginTop: 4,
     marginBottom: 0,
     fontSize: 13,
-    color: "rgba(15, 23, 42, 0.66)",
+    color: theme.palette.text.secondary,
   },
   card: {
     borderRadius: 18,
-    border: "1px solid rgba(15, 23, 42, 0.10)",
-    boxShadow: "0 14px 34px rgba(15, 23, 42, 0.05)",
-    backgroundColor: "#fff",
+    border: `1px solid ${theme.palette.divider}`,
+    boxShadow: theme.palette.type === "dark" ? "0 18px 46px rgba(0,0,0,0.45)" : "0 14px 34px rgba(15, 23, 42, 0.05)",
+    backgroundColor: theme.palette.background.paper,
     padding: theme.spacing(2),
     height: "100%",
   },
   sectionTitle: {
     fontWeight: 1000,
     fontSize: 13,
-    color: "rgba(15, 23, 42, 0.82)",
+    color: theme.palette.text.primary,
     display: "flex",
     alignItems: "center",
     gap: 8,
@@ -92,13 +93,13 @@ const useStyles = makeStyles((theme) => ({
   field: {
     "& .MuiOutlinedInput-root": {
       borderRadius: 14,
-      backgroundColor: "#fff",
+      backgroundColor: theme.palette.background.paper,
     },
   },
   preview: {
     borderRadius: 18,
-    border: "1px solid rgba(15, 23, 42, 0.10)",
-    boxShadow: "0 16px 40px rgba(15, 23, 42, 0.06)",
+    border: `1px solid ${theme.palette.divider}`,
+    boxShadow: theme.palette.type === "dark" ? "0 18px 46px rgba(0,0,0,0.45)" : "0 16px 40px rgba(15, 23, 42, 0.06)",
     overflow: "hidden",
   },
   previewTop: {
@@ -155,17 +156,17 @@ const useStyles = makeStyles((theme) => ({
   },
   previewCard: {
     borderRadius: 16,
-    border: "1px solid rgba(15, 23, 42, 0.10)",
-    background: "rgba(255,255,255,0.92)",
+    border: `1px solid ${theme.palette.divider}`,
+    background: theme.palette.background.paper,
     padding: theme.spacing(1.4),
-    boxShadow: "0 10px 24px rgba(15,23,42,0.08)",
+    boxShadow: theme.palette.type === "dark" ? "0 16px 38px rgba(0,0,0,0.45)" : "0 10px 24px rgba(15,23,42,0.08)",
   },
   previewLoginCard: {
     borderRadius: 16,
-    border: "1px solid rgba(15, 23, 42, 0.10)",
-    background: "rgba(255,255,255,0.94)",
+    border: `1px solid ${theme.palette.divider}`,
+    background: theme.palette.background.paper,
     padding: theme.spacing(1.4),
-    boxShadow: "0 12px 28px rgba(15,23,42,0.10)",
+    boxShadow: theme.palette.type === "dark" ? "0 18px 46px rgba(0,0,0,0.45)" : "0 12px 28px rgba(15,23,42,0.10)",
   },
   logoPreview: {
     height: 26,
