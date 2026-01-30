@@ -37,19 +37,8 @@
 }
 
 [data-tr-mode="light"] .loginRoot {
-  /* Premium split background (like the reference), using brand colors */
-  background:
-    radial-gradient(
-      980px 620px at 18% 26%,
-      rgba(var(--tr-secondary-rgb, 43,169,165), 0.40) 0%,
-      transparent 60%
-    ),
-    radial-gradient(
-      980px 640px at 18% 110%,
-      rgba(var(--tr-primary-rgb, 11,76,70), 0.22) 0%,
-      transparent 62%
-    ),
-    linear-gradient(180deg, rgba(255,255,255,0.92), rgba(255,255,255,0.88));
+  /* Left side: solid light brand tint (no gradient) */
+  background: rgba(var(--tr-secondary-rgb, 43,169,165), 0.14);
 }
 
 /* Strong right-side brand panel (replaces the old grid) */
