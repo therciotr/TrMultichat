@@ -2,8 +2,14 @@
 .loginRoot {
   min-height: 100vh;
   width: 100%;
-  /* Use global bg token so login follows dark/light */
-  background: radial-gradient(circle at top, var(--tr-secondary) 0%, var(--tr-primary) 55%, var(--tr-bg) 100%);
+  /* Default: premium brand gradient that still follows --tr-bg */
+  background:
+    radial-gradient(
+      circle at top,
+      rgba(var(--tr-secondary-rgb, 43,169,165), 0.35) 0%,
+      rgba(var(--tr-primary-rgb, 11,76,70), 0.22) 45%,
+      var(--tr-bg) 100%
+    );
   position: relative;
 }
 
@@ -13,9 +19,28 @@
   position: absolute;
   inset: 0;
   background:
-    repeating-linear-gradient( 90deg, rgba(255,255,255,0.06) 0px, rgba(255,255,255,0.06) 1px, transparent 1px, transparent 24px ),
-    repeating-linear-gradient( 0deg, rgba(255,255,255,0.04) 0px, rgba(255,255,255,0.04) 1px, transparent 1px, transparent 24px );
+    repeating-linear-gradient( 90deg, rgba(255,255,255,0.05) 0px, rgba(255,255,255,0.05) 1px, transparent 1px, transparent 26px ),
+    repeating-linear-gradient( 0deg, rgba(255,255,255,0.035) 0px, rgba(255,255,255,0.035) 1px, transparent 1px, transparent 26px );
   pointer-events: none;
+}
+
+/* Dark mode: neutralize the green and add deep overlay for premium look */
+[data-tr-mode="dark"] .loginRoot {
+  background:
+    linear-gradient(rgba(2,6,23,0.78), rgba(2,6,23,0.86)),
+    radial-gradient(
+      circle at top,
+      rgba(var(--tr-secondary-rgb, 43,169,165), 0.30) 0%,
+      rgba(var(--tr-primary-rgb, 11,76,70), 0.18) 40%,
+      var(--tr-bg) 100%
+    );
+}
+
+/* Light mode: keep it cleaner (less grid, more white-space feel) */
+[data-tr-mode="light"] .loginRoot::before {
+  background:
+    repeating-linear-gradient( 90deg, rgba(15,23,42,0.05) 0px, rgba(15,23,42,0.05) 1px, transparent 1px, transparent 28px ),
+    repeating-linear-gradient( 0deg, rgba(15,23,42,0.03) 0px, rgba(15,23,42,0.03) 1px, transparent 1px, transparent 28px );
 }
 
 /* ensure content sits over overlay */

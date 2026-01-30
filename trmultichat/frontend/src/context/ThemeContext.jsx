@@ -47,6 +47,22 @@ export const ThemeProvider = ({ children }) => {
     } catch (_) { return hex; }
   };
 
+  const hexToRgb = (hex) => {
+    try {
+      const h0 = String(hex || "").trim().replace("#", "");
+      if (!h0) return null;
+      const h = h0.length === 3 ? h0.split("").map((c) => c + c).join("") : h0;
+      if (h.length !== 6) return null;
+      const bigint = parseInt(h, 16);
+      const r = (bigint >> 16) & 255;
+      const g = (bigint >> 8) & 255;
+      const b = bigint & 255;
+      return { r, g, b };
+    } catch (_) {
+      return null;
+    }
+  };
+
   const buildMuiTheme = (b) => {
     // Importante: herdar o tema base (inclui dark/light e superfícies).
     return createMuiTheme(parentTheme || {}, {
@@ -126,6 +142,7 @@ export const ThemeProvider = ({ children }) => {
       const root = document.documentElement;
       if (!root) return;
       const isDark = String(parentMode || "").toLowerCase() === "dark";
+      root.setAttribute("data-tr-mode", isDark ? "dark" : "light");
       root.style.setProperty("--tr-primary", b.primaryColor || defaultBranding.primaryColor);
       root.style.setProperty("--tr-secondary", b.secondaryColor || defaultBranding.secondaryColor);
       root.style.setProperty("--tr-button", b.buttonColor || b.primaryColor || defaultBranding.buttonColor);
@@ -134,6 +151,11 @@ export const ThemeProvider = ({ children }) => {
       root.style.setProperty("--tr-logo", b.logoUrl || defaultBranding.logoUrl);
       root.style.setProperty("--tr-font", b.fontFamily || defaultBranding.fontFamily);
       root.style.setProperty("--tr-radius", ((b.borderRadius ?? defaultBranding.borderRadius) + "px"));
+      // RGB tokens (used by CSS for premium gradients/overlays)
+      const pr = hexToRgb(b.primaryColor || defaultBranding.primaryColor);
+      const sr = hexToRgb(b.secondaryColor || defaultBranding.secondaryColor);
+      if (pr) root.style.setProperty("--tr-primary-rgb", `${pr.r},${pr.g},${pr.b}`);
+      if (sr) root.style.setProperty("--tr-secondary-rgb", `${sr.r},${sr.g},${sr.b}`);
       // tokens premium de superfície
       root.style.setProperty("--tr-surface", isDark ? "#0F172A" : "#FFFFFF");
       root.style.setProperty("--tr-surface2", isDark ? "rgba(15,23,42,0.92)" : "rgba(15,23,42,0.03)");

@@ -26,11 +26,11 @@ const useStyles = makeStyles((theme) => ({
     alignItems: "center",
     padding: theme.spacing(2),
     borderRadius: theme.spacing(2),
-    backgroundColor: theme.palette.type === "dark" ? "rgba(255,255,255,0.10)" : "rgba(255,255,255,0.18)",
+    backgroundColor: theme.palette.type === "dark" ? "rgba(15,23,42,0.55)" : "rgba(255,255,255,0.88)",
     backdropFilter: "blur(10px)",
     WebkitBackdropFilter: "blur(10px)",
-    border: theme.palette.type === "dark" ? "1px solid rgba(255,255,255,0.22)" : "1px solid rgba(15,23,42,0.12)",
-    boxShadow: "0px 10px 30px rgba(0, 0, 0, 0.25)",
+    border: theme.palette.type === "dark" ? "1px solid rgba(148,163,184,0.22)" : "1px solid rgba(15,23,42,0.10)",
+    boxShadow: theme.palette.type === "dark" ? "0px 18px 50px rgba(0, 0, 0, 0.55)" : "0px 16px 44px rgba(15, 23, 42, 0.14)",
 
   },
   avatar: {

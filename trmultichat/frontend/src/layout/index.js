@@ -68,7 +68,7 @@ const useStyles = makeStyles((theme) => ({
   toolbar: {
     paddingRight: 24, // keep right padding when drawer closed
     color: '#fff',
-    background: 'var(--tr-primary)'
+    background: theme.palette.barraSuperior,
   },
   toolbarIcon: {
     display: "flex",
@@ -121,8 +121,10 @@ const useStyles = makeStyles((theme) => ({
       width: "100%"
     },
     ...theme.scrollbarStylesSoft,
-    background: 'linear-gradient(180deg, var(--tr-primary) 0%, rgba(0,0,0,0.25) 100%)',
-    color: '#fff'
+    background: theme.palette.type === "dark"
+      ? "linear-gradient(180deg, rgba(15,23,42,0.96) 0%, rgba(2,6,23,0.92) 100%)"
+      : "linear-gradient(180deg, var(--tr-primary) 0%, rgba(0,0,0,0.25) 100%)",
+    color: '#fff',
   },
   drawerPaperClose: {
     overflowX: "hidden",
@@ -518,7 +520,19 @@ const LoggedInLayout = ({ children }) => {
           ),
         }}
         open={drawerOpen}
-        PaperProps={{ style: { background: (branding?.sidebarVariant === 'solid' ? 'var(--tr-primary)' : 'linear-gradient(180deg, var(--tr-primary) 0%, rgba(0,0,0,0.25) 100%)'), color: '#fff' } }}
+        PaperProps={{
+          style: {
+            // In dark mode we keep a premium dark surface (avoid brand-green "persisting").
+            // In light mode we respect the branding sidebar variant.
+            background:
+              theme.palette.type === "dark"
+                ? "linear-gradient(180deg, rgba(15,23,42,0.96) 0%, rgba(2,6,23,0.92) 100%)"
+                : (branding?.sidebarVariant === "solid"
+                    ? "var(--tr-primary)"
+                    : "linear-gradient(180deg, var(--tr-primary) 0%, rgba(0,0,0,0.25) 100%)"),
+            color: "#fff",
+          },
+        }}
       >
         <div className={classes.toolbarIcon}>
           <img src={resolvedLogo} className={classes.logo} alt="logo" />
