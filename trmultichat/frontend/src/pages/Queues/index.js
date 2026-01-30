@@ -24,11 +24,18 @@ import { toast } from "react-toastify";
 import ConfirmationModal from "../../components/ConfirmationModal";
 import { socketConnection } from "../../services/socket";
 
-const useStyles = makeStyles((theme) => ({
+const useStyles = makeStyles((theme) => {
+  const isDark = theme.palette.type === "dark";
+  const border = `1px solid ${theme.palette.divider}`;
+
+  return ({
   mainPaper: {
     flex: 1,
     padding: theme.spacing(2),
     ...theme.scrollbarStyles,
+    backgroundColor: isDark ? "rgba(15,23,42,0.55)" : theme.palette.background.paper,
+    borderRadius: 14,
+    border,
   },
   headerRow: {
     display: "flex",
@@ -39,9 +46,10 @@ const useStyles = makeStyles((theme) => ({
   card: {
     padding: theme.spacing(2),
     borderRadius: 14,
-    border: "1px solid rgba(11, 76, 70, 0.18)",
-    background:
-      "linear-gradient(180deg, rgba(11, 76, 70, 0.045), rgba(255,255,255,1) 42%)",
+    border,
+    background: isDark
+      ? "linear-gradient(180deg, rgba(11, 76, 70, 0.10), rgba(15,23,42,0.92) 42%)"
+      : "linear-gradient(180deg, rgba(11, 76, 70, 0.045), rgba(255,255,255,1) 42%)",
     height: "100%",
     display: "flex",
     flexDirection: "column",
@@ -50,7 +58,7 @@ const useStyles = makeStyles((theme) => ({
   },
   cardTitle: {
     fontWeight: 800,
-    color: "var(--tr-primary)",
+    color: theme.palette.text.primary,
     minWidth: 0,
   },
   cardActions: {
@@ -63,7 +71,7 @@ const useStyles = makeStyles((theme) => ({
     width: 18,
     height: 18,
     borderRadius: 6,
-    border: "1px solid rgba(0,0,0,0.12)",
+    border: `1px solid ${theme.palette.divider}`,
     flexShrink: 0,
   },
   metaRow: {
@@ -84,7 +92,7 @@ const useStyles = makeStyles((theme) => ({
     textAlign: "center",
     color: theme.palette.text.secondary,
   },
-}));
+})});
 
 const reducer = (state, action) => {
   if (action.type === "LOAD_QUEUES") {
@@ -218,7 +226,7 @@ const Queues = () => {
           key="order"
           size="small"
           label={`Ordem: ${queue.orderQueue}`}
-          style={{ background: "rgba(11, 76, 70, 0.08)", color: "var(--tr-primary)", fontWeight: 600 }}
+          style={{ background: "rgba(11, 76, 70, 0.10)", color: "var(--tr-primary)", fontWeight: 600 }}
         />
       );
     }

@@ -46,15 +46,19 @@ import Dialog from "@material-ui/core/Dialog";
 import DialogContent from "@material-ui/core/DialogContent";
 import DialogTitle from "@material-ui/core/DialogTitle";
 
-const useStyles = makeStyles((theme) => ({
+const useStyles = makeStyles((theme) => {
+  const isDark = theme.palette.type === "dark";
+  const border = `1px solid ${theme.palette.divider}`;
+
+  return ({
   page: {
     padding: theme.spacing(2),
   },
   filtersCard: {
     borderRadius: 16,
-    border: "1px solid rgba(15, 23, 42, 0.10)",
-    boxShadow: "0 10px 30px rgba(15, 23, 42, 0.08)",
-    background: "rgba(255,255,255,0.88)",
+    border,
+    boxShadow: isDark ? "0 18px 44px rgba(0,0,0,0.35)" : "0 10px 30px rgba(15, 23, 42, 0.08)",
+    background: isDark ? "rgba(15,23,42,0.70)" : "rgba(255,255,255,0.88)",
     backdropFilter: "blur(8px)",
     padding: theme.spacing(1.25),
     marginBottom: theme.spacing(2),
@@ -70,14 +74,14 @@ const useStyles = makeStyles((theme) => ({
     display: "flex",
     alignItems: "center",
     gap: 10,
-    color: "rgba(15,23,42,0.78)",
+    color: theme.palette.text.primary,
     fontWeight: 900,
   },
   filterField: {
     minWidth: 170,
     "& .MuiOutlinedInput-root": {
       borderRadius: 12,
-      backgroundColor: "#fff",
+      backgroundColor: isDark ? "rgba(15,23,42,0.92)" : "#fff",
     },
   },
   filtersApplyBtn: {
@@ -103,12 +107,12 @@ const useStyles = makeStyles((theme) => ({
   },
   shell: {
     borderRadius: 16,
-    border: "1px solid rgba(15, 23, 42, 0.10)",
+    border,
     overflow: "hidden",
-    backgroundColor: "#fff",
+    backgroundColor: theme.palette.background.paper,
   },
   left: {
-    borderRight: "1px solid rgba(15, 23, 42, 0.08)",
+    borderRight: `1px solid ${theme.palette.divider}`,
     height: "calc(100vh - 190px)",
     overflow: "auto",
     ...theme.scrollbarStyles,
@@ -121,8 +125,8 @@ const useStyles = makeStyles((theme) => ({
   },
   listHeader: {
     padding: theme.spacing(1.5),
-    borderBottom: "1px solid rgba(15, 23, 42, 0.08)",
-    background: "rgba(11, 76, 70, 0.04)",
+    borderBottom: `1px solid ${theme.palette.divider}`,
+    background: isDark ? "rgba(15,23,42,0.55)" : "rgba(11, 76, 70, 0.04)",
   },
   listItem: {
     padding: theme.spacing(1.5),
@@ -136,16 +140,16 @@ const useStyles = makeStyles((theme) => ({
   },
   listItemCard: {
     borderRadius: 14,
-    border: "1px solid rgba(15, 23, 42, 0.08)",
-    boxShadow: "0 1px 2px rgba(15, 23, 42, 0.06)",
-    background: "#fff",
+    border,
+    boxShadow: isDark ? "0 1px 2px rgba(0,0,0,0.45)" : "0 1px 2px rgba(15, 23, 42, 0.06)",
+    background: theme.palette.background.paper,
     margin: theme.spacing(1.25),
     marginBottom: 0,
     transition: "transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease",
     "&:hover": {
       transform: "translateY(-1px)",
-      boxShadow: "0 12px 22px rgba(15, 23, 42, 0.10)",
-      borderColor: "rgba(15, 23, 42, 0.14)",
+      boxShadow: isDark ? "0 12px 26px rgba(0,0,0,0.38)" : "0 12px 22px rgba(15, 23, 42, 0.10)",
+      borderColor: isDark ? "rgba(148,163,184,0.32)" : "rgba(15, 23, 42, 0.14)",
     },
   },
   listCardInner: {
@@ -175,8 +179,8 @@ const useStyles = makeStyles((theme) => ({
     height: 24,
     fontWeight: 900,
     borderRadius: 999,
-    background: "rgba(15,23,42,0.05)",
-    border: "1px solid rgba(15,23,42,0.08)",
+    background: isDark ? "rgba(148,163,184,0.10)" : "rgba(15,23,42,0.05)",
+    border,
   },
   listItemCardActive: {
     borderColor: "rgba(59, 130, 246, 0.35)",
@@ -186,15 +190,15 @@ const useStyles = makeStyles((theme) => ({
     padding: theme.spacing(3),
     margin: theme.spacing(2),
     borderRadius: 14,
-    border: "1px dashed rgba(15, 23, 42, 0.18)",
-    background: "rgba(255,255,255,0.85)",
+    border: `1px dashed ${theme.palette.divider}`,
+    background: isDark ? "rgba(15,23,42,0.55)" : "rgba(255,255,255,0.85)",
     textAlign: "center",
-    color: "rgba(15, 23, 42, 0.70)",
+    color: theme.palette.text.secondary,
   },
   detailHeader: {
     padding: theme.spacing(2),
-    borderBottom: "1px solid rgba(15, 23, 42, 0.08)",
-    background: "rgba(15, 23, 42, 0.02)",
+    borderBottom: `1px solid ${theme.palette.divider}`,
+    background: isDark ? "rgba(15,23,42,0.55)" : "rgba(15, 23, 42, 0.02)",
   },
   headerActions: {
     display: "flex",
@@ -208,15 +212,17 @@ const useStyles = makeStyles((theme) => ({
     overflow: "auto",
     flex: 1,
     background:
-      "linear-gradient(180deg, rgba(59,130,246,0.04), rgba(255,255,255,0.0) 220px)",
+      isDark
+        ? "linear-gradient(180deg, rgba(59,130,246,0.10), rgba(2,6,23,0.0) 220px)"
+        : "linear-gradient(180deg, rgba(59,130,246,0.04), rgba(255,255,255,0.0) 220px)",
     ...theme.scrollbarStyles,
   },
   bubble: {
     padding: theme.spacing(1.25),
     borderRadius: 14,
-    border: "1px solid rgba(15, 23, 42, 0.08)",
-    background: "#fff",
-    boxShadow: "0 1px 2px rgba(15, 23, 42, 0.06)",
+    border,
+    background: theme.palette.background.paper,
+    boxShadow: isDark ? "0 1px 2px rgba(0,0,0,0.45)" : "0 1px 2px rgba(15, 23, 42, 0.06)",
     marginBottom: theme.spacing(1),
   },
   bubbleMine: {
@@ -226,20 +232,20 @@ const useStyles = makeStyles((theme) => ({
   bubbleName: {
     fontWeight: 900,
     fontSize: 13,
-    color: "rgba(15,23,42,0.88)",
+    color: theme.palette.text.primary,
   },
   bubbleText: {
     marginTop: 6,
     whiteSpace: "pre-wrap",
-    color: "rgba(15,23,42,0.88)",
+    color: theme.palette.text.primary,
   },
   bubbleMeta: {
     fontSize: 12,
-    color: "rgba(15, 23, 42, 0.60)",
+    color: theme.palette.text.secondary,
     marginTop: 6,
   },
   replyBar: {
-    borderTop: "1px solid rgba(15, 23, 42, 0.08)",
+    borderTop: `1px solid ${theme.palette.divider}`,
     padding: theme.spacing(1.5),
     display: "flex",
     gap: 10,
@@ -251,11 +257,11 @@ const useStyles = makeStyles((theme) => ({
     gap: 6,
     padding: "4px 8px",
     borderRadius: 999,
-    border: "1px solid rgba(15, 23, 42, 0.10)",
-    background: "rgba(15, 23, 42, 0.03)",
+    border,
+    background: isDark ? "rgba(148,163,184,0.10)" : "rgba(15, 23, 42, 0.03)",
     fontSize: 12,
     fontWeight: 800,
-    color: "rgba(15, 23, 42, 0.70)",
+    color: theme.palette.text.secondary,
   },
   attachmentsRow: {
     display: "flex",
@@ -268,12 +274,15 @@ const useStyles = makeStyles((theme) => ({
     width: 86,
     height: 64,
     borderRadius: 12,
-    border: "1px solid rgba(15, 23, 42, 0.12)",
-    background: "rgba(15, 23, 42, 0.03)",
+    border: `1px solid ${theme.palette.divider}`,
+    background: isDark ? "rgba(148,163,184,0.10)" : "rgba(15, 23, 42, 0.03)",
     objectFit: "cover",
     cursor: "pointer",
   },
-}));
+  textPrimary: { color: theme.palette.text.primary },
+  textSecondary: { color: theme.palette.text.secondary },
+  });
+});
 
 export default function Informativos() {
   const classes = useStyles();
@@ -607,7 +616,7 @@ export default function Informativos() {
       <TrCard className={classes.filtersCard} elevation={0}>
         <div className={classes.filtersTop}>
           <div className={classes.filtersTitle}>
-            <FilterListOutlinedIcon style={{ color: "rgba(15,23,42,0.55)" }} />
+            <FilterListOutlinedIcon className={classes.textSecondary} style={{ opacity: 0.9 }} />
             <span>Filtros</span>
           </div>
           <TrButton className={classes.filtersApplyBtn} onClick={() => fetchAnnouncements()} size="small">
@@ -727,7 +736,7 @@ export default function Informativos() {
           <Grid item xs={12} md={4} className={classes.left}>
             <div className={classes.listHeader}>
               <Box display="flex" alignItems="center" gridGap={10}>
-                <Typography style={{ fontWeight: 900, color: "rgba(15,23,42,0.82)" }}>Conversas</Typography>
+                <Typography className={classes.textPrimary} style={{ fontWeight: 900 }}>Conversas</Typography>
                 <Box flex={1} />
                 {isAdmin ? (
                   <TrButton
@@ -834,14 +843,14 @@ export default function Informativos() {
 
           <Grid item xs={12} md={8} className={classes.right}>
             {!selected ? (
-              <div style={{ padding: 24, color: "rgba(15, 23, 42, 0.65)" }}>Selecione um informativo para visualizar.</div>
+              <div style={{ padding: 24 }} className={classes.textSecondary}>Selecione um informativo para visualizar.</div>
             ) : (
               <>
                 <div className={classes.detailHeader}>
                   <Box display="flex" alignItems="center" justifyContent="space-between" gridGap={10}>
                     <div>
                       <Typography style={{ fontWeight: 900, fontSize: 16 }}>{selected.title}</Typography>
-                      <Typography style={{ marginTop: 4, color: "rgba(15, 23, 42, 0.65)", fontSize: 12 }}>
+                      <Typography className={classes.textSecondary} style={{ marginTop: 4, fontSize: 12 }}>
                         {selected.createdAt ? moment(selected.createdAt).format("DD/MM/YYYY HH:mm") : ""}
                       </Typography>
                       <Box display="flex" alignItems="center" gridGap={8} style={{ marginTop: 10, flexWrap: "wrap" }}>
@@ -885,7 +894,7 @@ export default function Informativos() {
                     </div>
                   </Box>
                   <Divider style={{ marginTop: 12 }} />
-                  <Typography style={{ marginTop: 12, color: "rgba(15, 23, 42, 0.82)" }}>{selected.text}</Typography>
+                  <Typography className={classes.textPrimary} style={{ marginTop: 12 }}>{selected.text}</Typography>
                 </div>
 
                 <div className={classes.detailBody}>
@@ -933,7 +942,7 @@ export default function Informativos() {
                   {repliesLoading ? (
                     <Skeleton variant="rect" height={140} style={{ borderRadius: 16 }} />
                   ) : replies.length === 0 ? (
-                    <div style={{ color: "rgba(15, 23, 42, 0.65)" }}>Ainda não há mensagens nesta conversa.</div>
+                    <div className={classes.textSecondary}>Ainda não há mensagens nesta conversa.</div>
                   ) : (
                     replies.map((r) => {
                       const mine = Number(r.userId || 0) === currentUserId;

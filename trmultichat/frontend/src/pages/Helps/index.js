@@ -21,22 +21,28 @@ import Title from "../../components/Title";
 import { i18n } from "../../translate/i18n";
 import useHelps from "../../hooks/useHelps";
 
-const useStyles = makeStyles((theme) => ({
+const useStyles = makeStyles((theme) => {
+  const isDark = theme.palette.type === "dark";
+  const border = `1px solid ${theme.palette.divider}`;
+
+  return ({
   gridWrap: {
     padding: theme.spacing(2),
   },
   helpCard: {
     height: "100%",
     borderRadius: 16,
-    border: "1px solid rgba(15, 23, 42, 0.08)",
+    border,
     overflow: "hidden",
-    boxShadow: "0 1px 2px rgba(15, 23, 42, 0.06)",
-    background: "linear-gradient(180deg, #FFFFFF 0%, #FBFCFE 100%)",
+    boxShadow: isDark ? "0 1px 2px rgba(0,0,0,0.45)" : "0 1px 2px rgba(15, 23, 42, 0.06)",
+    background: isDark
+      ? "linear-gradient(180deg, rgba(15,23,42,0.92) 0%, rgba(2,6,23,0.88) 100%)"
+      : "linear-gradient(180deg, #FFFFFF 0%, #FBFCFE 100%)",
     transition: "transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease",
     "&:hover": {
       transform: "translateY(-1px)",
-      borderColor: "rgba(15, 23, 42, 0.14)",
-      boxShadow: "0 12px 26px rgba(15, 23, 42, 0.12)",
+      borderColor: isDark ? "rgba(148,163,184,0.32)" : "rgba(15, 23, 42, 0.14)",
+      boxShadow: isDark ? "0 12px 26px rgba(0,0,0,0.38)" : "0 12px 26px rgba(15, 23, 42, 0.12)",
     },
   },
   actionArea: {
@@ -47,8 +53,8 @@ const useStyles = makeStyles((theme) => ({
     position: "relative",
     width: "100%",
     paddingTop: "56.25%", // 16:9
-    background: "rgba(11, 76, 70, 0.06)",
-    borderBottom: "1px solid rgba(15, 23, 42, 0.06)",
+    background: isDark ? "rgba(148,163,184,0.10)" : "rgba(11, 76, 70, 0.06)",
+    borderBottom: `1px solid ${theme.palette.divider}`,
     overflow: "hidden",
   },
   thumbImg: {
@@ -69,9 +75,9 @@ const useStyles = makeStyles((theme) => ({
   playPill: {
     borderRadius: 999,
     padding: "6px 10px",
-    background: "rgba(255,255,255,0.92)",
-    color: "rgba(11, 76, 70, 0.98)",
-    border: "1px solid rgba(15, 23, 42, 0.10)",
+    background: isDark ? "rgba(15,23,42,0.75)" : "rgba(255,255,255,0.92)",
+    color: theme.palette.text.primary,
+    border,
     fontWeight: 900,
     display: "inline-flex",
     alignItems: "center",
@@ -82,12 +88,12 @@ const useStyles = makeStyles((theme) => ({
   },
   title: {
     fontWeight: 900,
-    color: "rgba(15, 23, 42, 0.92)",
+    color: theme.palette.text.primary,
     lineHeight: 1.25,
   },
   desc: {
     marginTop: theme.spacing(0.75),
-    color: "rgba(15, 23, 42, 0.70)",
+    color: theme.palette.text.secondary,
     fontSize: 13,
     lineHeight: 1.45,
     display: "-webkit-box",
@@ -104,7 +110,7 @@ const useStyles = makeStyles((theme) => ({
   },
   chip: {
     borderRadius: 999,
-    backgroundColor: "rgba(15, 23, 42, 0.03)",
+    backgroundColor: isDark ? "rgba(148,163,184,0.10)" : "rgba(15, 23, 42, 0.03)",
   },
   videoModal: {
     display: "flex",
@@ -117,25 +123,25 @@ const useStyles = makeStyles((theme) => ({
     width: "100%",
     maxWidth: 1024,
     position: "relative",
-    backgroundColor: "white",
+    backgroundColor: theme.palette.background.paper,
     borderRadius: 16,
     overflow: "hidden",
-    border: "1px solid rgba(15, 23, 42, 0.10)",
-    boxShadow: "0 22px 60px rgba(15, 23, 42, 0.22)",
+    border,
+    boxShadow: isDark ? "0 22px 60px rgba(0,0,0,0.55)" : "0 22px 60px rgba(15, 23, 42, 0.22)",
   },
   modalClose: {
     position: "absolute",
     top: 8,
     right: 8,
     zIndex: 2,
-    background: "rgba(255,255,255,0.92)",
-    border: "1px solid rgba(15, 23, 42, 0.10)",
+    background: isDark ? "rgba(15,23,42,0.75)" : "rgba(255,255,255,0.92)",
+    border,
   },
   modalRatio: {
     position: "relative",
     width: "100%",
     paddingTop: "56.25%",
-    background: "#fff",
+    background: theme.palette.background.paper,
   },
   iframe: {
     position: "absolute",
@@ -151,8 +157,8 @@ const useStyles = makeStyles((theme) => ({
     marginTop: theme.spacing(2),
     padding: theme.spacing(4),
     borderRadius: 16,
-    border: "1px dashed rgba(15, 23, 42, 0.18)",
-    background: "rgba(255,255,255,0.75)",
+    border: `1px dashed ${theme.palette.divider}`,
+    background: isDark ? "rgba(15,23,42,0.55)" : "rgba(255,255,255,0.75)",
     textAlign: "center",
   },
   emptyIcon: {
@@ -160,9 +166,11 @@ const useStyles = makeStyles((theme) => ({
     height: 56,
     display: "block",
     margin: "0 auto 10px",
-    color: "rgba(15, 23, 42, 0.22)",
+    color: isDark ? "rgba(148,163,184,0.35)" : "rgba(15, 23, 42, 0.22)",
   },
-}));
+  emptyTitle: { fontWeight: 900, fontSize: 16, color: theme.palette.text.primary },
+  emptySub: { color: theme.palette.text.secondary, fontSize: 13 },
+})});
 
 const Helps = () => {
   const classes = useStyles();
@@ -280,10 +288,10 @@ const Helps = () => {
       return (
         <div className={classes.emptyWrap}>
           <HelpOutlineIcon className={classes.emptyIcon} />
-          <Typography style={{ fontWeight: 900, fontSize: 16, color: "rgba(15, 23, 42, 0.92)" }}>
+          <Typography className={classes.emptyTitle}>
             {i18n.t("helps.title")}
           </Typography>
-          <Typography style={{ color: "rgba(15, 23, 42, 0.62)", fontSize: 13 }}>
+          <Typography className={classes.emptySub}>
             Nenhum conteúdo de ajuda disponível no momento.
           </Typography>
         </div>

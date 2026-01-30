@@ -85,20 +85,24 @@ const reducer = (state, action) => {
   }
 };
 
-const useStyles = makeStyles((theme) => ({
+const useStyles = makeStyles((theme) => {
+  const isDark = theme.palette.type === "dark";
+  const border = `1px solid ${theme.palette.divider}`;
+
+  return ({
   mainPaper: {
     flex: 1,
     padding: theme.spacing(2),
     overflowY: "scroll",
     ...theme.scrollbarStyles,
-    backgroundColor: "#F6F8FB",
+    backgroundColor: isDark ? "rgba(15,23,42,0.55)" : "#F6F8FB",
     borderRadius: 14,
-    border: "1px solid rgba(15, 23, 42, 0.08)",
+    border,
   },
   searchField: {
     "& .MuiOutlinedInput-root": {
       borderRadius: 12,
-      backgroundColor: "#fff",
+      backgroundColor: isDark ? "rgba(15,23,42,0.92)" : "#fff",
     },
   },
   actionBtn: {
@@ -114,13 +118,15 @@ const useStyles = makeStyles((theme) => ({
     height: "100%",
     minHeight: 168,
     borderRadius: 14,
-    border: "1px solid rgba(15, 23, 42, 0.08)",
-    background: "linear-gradient(180deg, #FFFFFF 0%, #FBFCFE 100%)",
-    boxShadow: "0 1px 2px rgba(15, 23, 42, 0.06)",
+    border,
+    background: isDark
+      ? "linear-gradient(180deg, rgba(15,23,42,0.92) 0%, rgba(2,6,23,0.88) 100%)"
+      : "linear-gradient(180deg, #FFFFFF 0%, #FBFCFE 100%)",
+    boxShadow: isDark ? "0 1px 2px rgba(0,0,0,0.45)" : "0 1px 2px rgba(15, 23, 42, 0.06)",
     transition: "box-shadow 150ms ease, transform 150ms ease, border-color 150ms ease",
     "&:hover": {
-      borderColor: "rgba(15, 23, 42, 0.14)",
-      boxShadow: "0 10px 22px rgba(15, 23, 42, 0.10)",
+      borderColor: isDark ? "rgba(148,163,184,0.32)" : "rgba(15, 23, 42, 0.14)",
+      boxShadow: isDark ? "0 10px 26px rgba(0,0,0,0.38)" : "0 10px 22px rgba(15, 23, 42, 0.10)",
       transform: "translateY(-1px)",
     },
   },
@@ -159,10 +165,10 @@ const useStyles = makeStyles((theme) => ({
     gap: 4,
   },
   actionIcon: {
-    color: "rgba(15, 23, 42, 0.65)",
+    color: theme.palette.text.secondary,
     transition: "color 120ms ease, background-color 120ms ease",
     "&:hover": {
-      color: "rgba(15, 23, 42, 0.92)",
+      color: theme.palette.text.primary,
     },
   },
   deleteIcon: {
@@ -191,13 +197,13 @@ const useStyles = makeStyles((theme) => ({
   },
   countChip: {
     borderRadius: 999,
-    backgroundColor: "rgba(15, 23, 42, 0.03)",
-    color: "rgba(15, 23, 42, 0.78)",
+    backgroundColor: isDark ? "rgba(148,163,184,0.10)" : "rgba(15, 23, 42, 0.03)",
+    color: theme.palette.text.secondary,
   },
   countText: {
     fontSize: 12,
     fontWeight: 700,
-    color: "rgba(15, 23, 42, 0.72)",
+    color: theme.palette.text.secondary,
   },
   actions: {
     justifyContent: "flex-end",
@@ -205,8 +211,8 @@ const useStyles = makeStyles((theme) => ({
   },
   emptyWrap: {
     borderRadius: 14,
-    border: "1px dashed rgba(15, 23, 42, 0.18)",
-    backgroundColor: "rgba(255,255,255,0.75)",
+    border: `1px dashed ${theme.palette.divider}`,
+    backgroundColor: isDark ? "rgba(15,23,42,0.55)" : "rgba(255,255,255,0.75)",
     padding: theme.spacing(4),
     textAlign: "center",
     marginTop: theme.spacing(2),
@@ -214,17 +220,30 @@ const useStyles = makeStyles((theme) => ({
   emptyIcon: {
     width: 56,
     height: 56,
-    color: "rgba(15, 23, 42, 0.22)",
+    color: isDark ? "rgba(148,163,184,0.35)" : "rgba(15, 23, 42, 0.22)",
     margin: "0 auto 10px",
     display: "block",
   },
   skeletonCard: {
     borderRadius: 14,
-    border: "1px solid rgba(15, 23, 42, 0.08)",
-    backgroundColor: "#fff",
+    border,
+    backgroundColor: theme.palette.background.paper,
     height: 130,
   },
-}));
+  mutedIcon: {
+    color: theme.palette.text.secondary,
+    opacity: 0.9,
+  },
+  emptyTitle: {
+    fontWeight: 900,
+    fontSize: 16,
+    color: theme.palette.text.primary,
+  },
+  emptySub: {
+    color: theme.palette.text.secondary,
+    fontSize: 13,
+  },
+})});
 
 const Tags = () => {
   const classes = useStyles();
@@ -363,7 +382,7 @@ const Tags = () => {
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
-                  <SearchOutlinedIcon style={{ color: "rgba(15, 23, 42, 0.55)" }} />
+                  <SearchOutlinedIcon className={classes.mutedIcon} />
                 </InputAdornment>
               ),
             }}
@@ -381,10 +400,10 @@ const Tags = () => {
         {tags.length === 0 && !loading ? (
           <div className={classes.emptyWrap}>
             <LocalOfferOutlinedIcon className={classes.emptyIcon} />
-            <Typography style={{ fontWeight: 900, fontSize: 16, color: "rgba(15, 23, 42, 0.92)" }}>
+            <Typography className={classes.emptyTitle}>
               {i18n.t("tags.title")}
             </Typography>
-            <Typography style={{ color: "rgba(15, 23, 42, 0.62)", fontSize: 13 }}>
+            <Typography className={classes.emptySub}>
               {i18n.t("contacts.searchPlaceholder")}
             </Typography>
           </div>

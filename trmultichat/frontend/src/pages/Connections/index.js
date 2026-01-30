@@ -43,7 +43,11 @@ import toastError from "../../errors/toastError";
 import { AuthContext } from "../../context/Auth/AuthContext";
 import { Can } from "../../components/Can";
 
-const useStyles = makeStyles(theme => ({
+const useStyles = makeStyles((theme) => {
+  const isDark = theme.palette.type === "dark";
+  const border = `1px solid ${theme.palette.divider}`;
+
+  return ({
 	mainPaper: {
 		flex: 1,
 		padding: theme.spacing(2),
@@ -56,10 +60,10 @@ const useStyles = makeStyles(theme => ({
 		justifyContent: "center",
 	},
 	tooltip: {
-		backgroundColor: "#f5f5f9",
-		color: "rgba(0, 0, 0, 0.87)",
+		backgroundColor: theme.palette.background.paper,
+		color: theme.palette.text.primary,
 		fontSize: theme.typography.pxToRem(14),
-		border: "1px solid #dadde9",
+		border,
 		maxWidth: 450,
 	},
 	tooltipPopper: {
@@ -71,9 +75,10 @@ const useStyles = makeStyles(theme => ({
 	card: {
 		padding: theme.spacing(2),
 		borderRadius: 14,
-		border: "1px solid rgba(11, 76, 70, 0.18)",
-		background:
-			"linear-gradient(180deg, rgba(11, 76, 70, 0.045), rgba(255,255,255,1) 42%)",
+		border,
+		background: isDark
+			? "linear-gradient(180deg, rgba(11, 76, 70, 0.10), rgba(15,23,42,0.92) 42%)"
+			: "linear-gradient(180deg, rgba(11, 76, 70, 0.045), rgba(255,255,255,1) 42%)",
 		height: "100%",
 		display: "flex",
 		flexDirection: "column",
@@ -88,7 +93,7 @@ const useStyles = makeStyles(theme => ({
 	},
 	cardTitle: {
 		fontWeight: 800,
-		color: "var(--tr-primary)",
+		color: theme.palette.text.primary,
 		minWidth: 0,
 	},
 	cardMeta: {
@@ -108,7 +113,7 @@ const useStyles = makeStyles(theme => ({
 		textAlign: "center",
 		color: theme.palette.text.secondary,
 	},
-}));
+})});
 
 const CustomToolTip = ({ title, content, children }) => {
 	const classes = useStyles();
@@ -394,7 +399,7 @@ const Connections = () => {
 
 				{!loading && (!whatsApps || whatsApps.length === 0) && (
 					<Box className={classes.emptyState}>
-						<Typography variant="h6" style={{ fontWeight: 800, color: "var(--tr-primary)" }}>
+						<Typography variant="h6" style={{ fontWeight: 800, color: "inherit" }}>
 							Nenhuma conexão cadastrada
 						</Typography>
 						<Typography variant="body2" style={{ marginTop: 8 }}>

@@ -79,13 +79,20 @@ const reducer = (state, action) => {
     }
 };
 
-const useStyles = makeStyles((theme) => ({
+const useStyles = makeStyles((theme) => {
+    const isDark = theme.palette.type === "dark";
+    const border = `1px solid ${theme.palette.divider}`;
+    const softShadow = isDark ? "0 18px 44px rgba(0,0,0,0.35)" : "0 14px 36px rgba(15, 23, 42, 0.06)";
+    const cardShadow = isDark ? "0 10px 26px rgba(0,0,0,0.38)" : "0 10px 22px rgba(15, 23, 42, 0.10)";
+
+    return ({
     hero: {
         borderRadius: 18,
-        border: "1px solid rgba(15, 23, 42, 0.10)",
-        boxShadow: "0 14px 36px rgba(15, 23, 42, 0.06)",
-        background:
-            "linear-gradient(135deg, rgba(59, 130, 246, 0.10), rgba(16, 185, 129, 0.08) 52%, rgba(255,255,255,0.96))",
+        border,
+        boxShadow: softShadow,
+        background: isDark
+            ? "linear-gradient(135deg, rgba(59, 130, 246, 0.10), rgba(16, 185, 129, 0.08) 52%, rgba(15,23,42,0.88))"
+            : "linear-gradient(135deg, rgba(59, 130, 246, 0.10), rgba(16, 185, 129, 0.08) 52%, rgba(255,255,255,0.96))",
         padding: theme.spacing(2),
         marginBottom: theme.spacing(2),
     },
@@ -110,28 +117,28 @@ const useStyles = makeStyles((theme) => ({
         fontSize: 16,
         fontWeight: 1000,
         margin: 0,
-        color: "rgba(15, 23, 42, 0.92)",
+        color: theme.palette.text.primary,
     },
     heroSub: {
         marginTop: 4,
         marginBottom: 0,
         fontSize: 13,
-        color: "rgba(15, 23, 42, 0.66)",
+        color: theme.palette.text.secondary,
     },
     mainPaper: {
         flex: 1,
         padding: theme.spacing(2),
         overflowY: "auto",
         ...theme.scrollbarStyles,
-        backgroundColor: "#F8FAFC",
+        backgroundColor: isDark ? "rgba(15,23,42,0.55)" : "#F8FAFC",
         borderRadius: 14,
-        border: "1px solid rgba(15, 23, 42, 0.08)",
+        border,
     },
     headerRow: { alignItems: "center" },
     searchField: {
         "& .MuiOutlinedInput-root": {
             borderRadius: 12,
-            backgroundColor: "#fff",
+            backgroundColor: isDark ? "rgba(15,23,42,0.92)" : "#fff",
         },
     },
     addButton: {
@@ -141,8 +148,8 @@ const useStyles = makeStyles((theme) => ({
     },
     hintCard: {
         borderRadius: 14,
-        border: "1px solid rgba(15, 23, 42, 0.08)",
-        background: "#fff",
+        border,
+        background: theme.palette.background.paper,
         padding: theme.spacing(1.5),
         display: "flex",
         alignItems: "flex-start",
@@ -161,16 +168,18 @@ const useStyles = makeStyles((theme) => ({
     },
     hintText: {
         fontSize: 13,
-        color: "rgba(15, 23, 42, 0.72)",
+        color: theme.palette.text.secondary,
         lineHeight: 1.45,
     },
     card: {
         height: "100%",
         borderRadius: 14,
-        border: "1px solid rgba(15, 23, 42, 0.08)",
-        boxShadow: "0 1px 2px rgba(15, 23, 42, 0.06)",
+        border,
+        boxShadow: isDark ? "0 1px 2px rgba(0,0,0,0.45)" : "0 1px 2px rgba(15, 23, 42, 0.06)",
         background:
-            "linear-gradient(180deg, rgba(59, 130, 246, 0.05), rgba(255,255,255,1) 42%)",
+            isDark
+                ? "linear-gradient(180deg, rgba(59, 130, 246, 0.10), rgba(15,23,42,0.92) 42%)"
+                : "linear-gradient(180deg, rgba(59, 130, 246, 0.05), rgba(255,255,255,1) 42%)",
         transition: "box-shadow 150ms ease, transform 150ms ease, border-color 150ms ease",
         padding: theme.spacing(2),
         display: "flex",
@@ -179,8 +188,8 @@ const useStyles = makeStyles((theme) => ({
         minWidth: 0,
         cursor: "pointer",
         "&:hover": {
-            borderColor: "rgba(15, 23, 42, 0.14)",
-            boxShadow: "0 10px 22px rgba(15, 23, 42, 0.10)",
+            borderColor: isDark ? "rgba(148,163,184,0.32)" : "rgba(15, 23, 42, 0.14)",
+            boxShadow: cardShadow,
             transform: "translateY(-1px)",
         },
     },
@@ -208,7 +217,7 @@ const useStyles = makeStyles((theme) => ({
     },
     cardTitle: {
         fontWeight: 1000,
-        color: "rgba(15, 23, 42, 0.92)",
+        color: theme.palette.text.primary,
         minWidth: 0,
     },
     cardActions: {
@@ -218,12 +227,12 @@ const useStyles = makeStyles((theme) => ({
         flexShrink: 0,
     },
     actionIcon: {
-        background: "rgba(15,23,42,0.04)",
-        border: "1px solid rgba(15,23,42,0.08)",
+        background: isDark ? "rgba(148,163,184,0.10)" : "rgba(15,23,42,0.04)",
+        border,
         borderRadius: 12,
         padding: 6,
         "&:hover": {
-            background: "rgba(15,23,42,0.06)",
+            background: isDark ? "rgba(148,163,184,0.14)" : "rgba(15,23,42,0.06)",
         },
     },
     metaRow: {
@@ -241,9 +250,9 @@ const useStyles = makeStyles((theme) => ({
     },
     emptyWrap: {
         borderRadius: 14,
-        border: "1px solid rgba(15, 23, 42, 0.08)",
-        backgroundColor: "#fff",
-        boxShadow: "0 1px 2px rgba(15, 23, 42, 0.06)",
+        border,
+        backgroundColor: theme.palette.background.paper,
+        boxShadow: isDark ? "0 1px 2px rgba(0,0,0,0.45)" : "0 1px 2px rgba(15, 23, 42, 0.06)",
         padding: theme.spacing(4),
         display: "flex",
         flexDirection: "column",
@@ -255,15 +264,18 @@ const useStyles = makeStyles((theme) => ({
     emptyIcon: {
         width: 52,
         height: 52,
-        color: "rgba(15, 23, 42, 0.22)",
+        color: isDark ? "rgba(148,163,184,0.35)" : "rgba(15, 23, 42, 0.22)",
     },
     skeletonCard: {
         borderRadius: 14,
-        border: "1px solid rgba(15, 23, 42, 0.08)",
-        backgroundColor: "#fff",
+        border,
+        backgroundColor: theme.palette.background.paper,
         height: 140,
     },
-}));
+    searchIcon: { color: theme.palette.text.secondary, opacity: 0.95 },
+    emptyTitle: { fontWeight: 900, fontSize: 16, color: theme.palette.text.primary },
+    emptySub: { color: theme.palette.text.secondary, fontSize: 13 },
+})});
 
 const FileLists = () => {
     const classes = useStyles();
@@ -444,7 +456,7 @@ const FileLists = () => {
                             InputProps={{
                                 startAdornment: (
                                     <InputAdornment position="start">
-                                        <SearchIcon style={{ color: "gray" }} />
+                                        <SearchIcon className={classes.searchIcon} />
                                     </InputAdornment>
                                 ),
                             }}
@@ -460,10 +472,10 @@ const FileLists = () => {
                 {!loading && files.length === 0 && (
                     <div className={classes.emptyWrap}>
                         <InsertDriveFileOutlinedIcon className={classes.emptyIcon} />
-                        <Typography style={{ fontWeight: 900, fontSize: 16 }}>
+                        <Typography className={classes.emptyTitle}>
                             Nenhuma lista cadastrada
                         </Typography>
-                        <Typography style={{ color: "rgba(15, 23, 42, 0.65)", fontSize: 13 }}>
+                        <Typography className={classes.emptySub}>
                             Clique em <strong>Adicionar</strong> para criar sua primeira lista de arquivos.
                         </Typography>
                         <Box style={{ marginTop: 10, width: "min(360px, 100%)" }}>
