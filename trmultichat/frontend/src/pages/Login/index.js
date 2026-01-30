@@ -26,11 +26,32 @@ const useStyles = makeStyles((theme) => ({
     alignItems: "center",
     padding: theme.spacing(2),
     borderRadius: theme.spacing(2),
-    backgroundColor: theme.palette.type === "dark" ? "rgba(15,23,42,0.55)" : "rgba(255,255,255,0.88)",
+    position: "relative",
+    overflow: "hidden",
+    background:
+      theme.palette.type === "dark"
+        ? "linear-gradient(180deg, rgba(15,23,42,0.78), rgba(15,23,42,0.55))"
+        : "linear-gradient(180deg, rgba(255,255,255,0.97), rgba(255,255,255,0.92))",
     backdropFilter: "blur(10px)",
     WebkitBackdropFilter: "blur(10px)",
-    border: theme.palette.type === "dark" ? "1px solid rgba(148,163,184,0.22)" : "1px solid rgba(15,23,42,0.10)",
-    boxShadow: theme.palette.type === "dark" ? "0px 18px 50px rgba(0, 0, 0, 0.55)" : "0px 16px 44px rgba(15, 23, 42, 0.14)",
+    border:
+      theme.palette.type === "dark"
+        ? "1px solid rgba(148,163,184,0.24)"
+        : "1px solid rgba(var(--tr-primary-rgb, 11,76,70), 0.22)",
+    boxShadow:
+      theme.palette.type === "dark"
+        ? "0px 22px 60px rgba(0, 0, 0, 0.60)"
+        : "0px 22px 60px rgba(15, 23, 42, 0.18)",
+    '&::before': {
+      content: '""',
+      position: "absolute",
+      left: 0,
+      right: 0,
+      top: 0,
+      height: 4,
+      background: "linear-gradient(90deg, var(--tr-primary), var(--tr-secondary))",
+      opacity: theme.palette.type === "dark" ? 0.85 : 0.95,
+    },
 
   },
   avatar: {
