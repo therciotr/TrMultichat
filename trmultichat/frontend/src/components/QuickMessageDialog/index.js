@@ -5,6 +5,8 @@ import { Formik, Form, Field } from "formik";
 import { toast } from "react-toastify";
 
 import { makeStyles } from "@material-ui/core/styles";
+import { useTheme } from "@material-ui/core/styles";
+import useMediaQuery from "@material-ui/core/useMediaQuery";
 import { green } from "@material-ui/core/colors";
 import { TrButton } from "../ui";
 import TextField from "@material-ui/core/TextField";
@@ -47,6 +49,11 @@ const useStyles = makeStyles((theme) => ({
         borderRadius: 18,
         overflow: "hidden",
         border: "1px solid rgba(15, 23, 42, 0.10)",
+        maxHeight: "calc(100vh - 72px)",
+        [theme.breakpoints.down("xs")]: {
+            maxHeight: "100vh",
+            borderRadius: 0,
+        },
     },
     titleWrap: {
         display: "flex",
@@ -130,6 +137,41 @@ const useStyles = makeStyles((theme) => ({
         borderRadius: 999,
         fontWeight: 900,
     },
+    actionsBar: {
+        position: "sticky",
+        bottom: 0,
+        zIndex: 2,
+        background: "#fff",
+        borderTop: "1px solid rgba(15,23,42,0.10)",
+        padding: theme.spacing(1.25, 1.5),
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "flex-end",
+        flexWrap: "wrap",
+        gap: theme.spacing(1),
+        "& > *": {
+            margin: 0, // override MUI default spacing
+        },
+        [theme.breakpoints.down("xs")]: {
+            flexDirection: "column",
+            alignItems: "stretch",
+            "& > *": {
+                width: "100%",
+            },
+        },
+    },
+    actionBtn: {
+        borderRadius: 12,
+        fontWeight: 900,
+        textTransform: "none",
+        minHeight: 40,
+    },
+    actionBtnPrimary: {
+        borderRadius: 12,
+        fontWeight: 1000,
+        textTransform: "none",
+        minHeight: 40,
+    },
     multFieldLine: {
         display: "flex",
         "& > *:not(:last-child)": {
@@ -167,6 +209,8 @@ const QuickeMessageSchema = Yup.object().shape({
 const QuickMessageDialog = ({ open, onClose, quickemessageId, reload }) => {
     const classes = useStyles();
     const { user } = useContext(AuthContext);
+    const theme = useTheme();
+    const fullScreen = useMediaQuery(theme.breakpoints.down("xs"));
     const messageInputRef = useRef();
 
     const initialState = {
@@ -338,6 +382,7 @@ const QuickMessageDialog = ({ open, onClose, quickemessageId, reload }) => {
                 fullWidth
                 scroll="paper"
                 classes={{ paper: classes.dialogPaper }}
+                fullScreen={fullScreen}
             >
                 <DialogTitle id="form-dialog-title" disableTypography>
                     <div className={classes.titleWrap}>
@@ -505,21 +550,22 @@ const QuickMessageDialog = ({ open, onClose, quickemessageId, reload }) => {
                                     )}
                                 </Grid>
                             </DialogContent>
-                            <DialogActions>
+                            <DialogActions className={classes.actionsBar}>
                                 {!attachment && !quickemessage.mediaPath && (
                                     <TrButton
                                         onClick={() => attachmentFile.current.click()}
                                         disabled={isSubmitting}
                                         variant="outlined"
                                         startIcon={<CloudUploadOutlinedIcon />}
+                                        className={classes.actionBtn}
                                     >
                                         Anexar
                                     </TrButton>
                                 )}
-                                <TrButton onClick={handleClose} disabled={isSubmitting} variant="outlined">
+                                <TrButton onClick={handleClose} disabled={isSubmitting} variant="outlined" className={classes.actionBtn}>
                                     {i18n.t("quickMessages.buttons.cancel")}
                                 </TrButton>
-                                <TrButton type="submit" disabled={isSubmitting} className={classes.btnWrapper}>
+                                <TrButton type="submit" disabled={isSubmitting} className={classes.actionBtnPrimary}>
                                     {quickemessageId
                                         ? `${i18n.t("quickMessages.buttons.edit")}`
                                         : `${i18n.t("quickMessages.buttons.add")}`}
