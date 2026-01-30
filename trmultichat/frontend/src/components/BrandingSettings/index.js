@@ -33,7 +33,7 @@ import api from "../../services/api";
 import useCompanies from "../../hooks/useCompanies";
 import { useThemeBranding } from "../../context/ThemeContext";
 import { toast } from "react-toastify";
-import Vibrant from "node-vibrant";
+import { Vibrant } from "node-vibrant/browser";
 
 const useStyles = makeStyles((theme) => ({
   root: {
