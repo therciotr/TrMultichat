@@ -97,9 +97,54 @@ async function ensureQuickMessagesMetaSchema() {
     );
     await pgQuery(`CREATE INDEX IF NOT EXISTS "idx_qm_usage_company_msg" ON "QuickMessageUsage" ("companyId", "quickMessageId")`, []);
     await pgQuery(`CREATE INDEX IF NOT EXISTS "idx_qm_pins_company_msg" ON "QuickMessagePins" ("companyId", "quickMessageId")`, []);
+
+    // Event log (enables period-based stats)
+    await pgQuery(
+      `
+        CREATE TABLE IF NOT EXISTS "QuickMessageUsageEvents" (
+          "companyId" INTEGER NOT NULL,
+          "userId" INTEGER NOT NULL,
+          "quickMessageId" INTEGER NOT NULL,
+          delta INTEGER NOT NULL DEFAULT 1,
+          "usedAt" TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+      `,
+      []
+    );
+    await pgQuery(
+      `CREATE INDEX IF NOT EXISTS "idx_qm_usage_events_company_usedat" ON "QuickMessageUsageEvents" ("companyId", "usedAt")`,
+      []
+    );
+    await pgQuery(
+      `CREATE INDEX IF NOT EXISTS "idx_qm_usage_events_company_user_usedat" ON "QuickMessageUsageEvents" ("companyId", "userId", "usedAt")`,
+      []
+    );
+    await pgQuery(
+      `CREATE INDEX IF NOT EXISTS "idx_qm_usage_events_company_msg_usedat" ON "QuickMessageUsageEvents" ("companyId", "quickMessageId", "usedAt")`,
+      []
+    );
   } catch {
     // silent
   }
+}
+
+function parseRangeToStart(range: any): Date | null {
+  const r = String(range || "").toLowerCase().trim();
+  if (!r || r === "total" || r === "all") return null;
+  const now = new Date();
+  if (r === "today" || r === "hoje") {
+    const d = new Date(now);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }
+  if (r === "7d" || r === "7") return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  if (r === "30d" || r === "30") return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const m = r.match(/^(\d{1,3})d$/);
+  if (m?.[1]) {
+    const n = Math.max(1, Math.min(365, Number(m[1])));
+    return new Date(now.getTime() - n * 24 * 60 * 60 * 1000);
+  }
+  return null;
 }
 
 async function ensureQuickMessageBelongsToCompany(companyId: number, quickMessageId: number): Promise<boolean> {
@@ -202,6 +247,15 @@ router.post("/usage", authMiddleware, async (req, res) => {
     const ok = await ensureQuickMessageBelongsToCompany(companyId, qid);
     if (!ok) continue;
 
+    // Event row (for period-based stats)
+    await pgQuery(
+      `
+        INSERT INTO "QuickMessageUsageEvents" ("companyId", "userId", "quickMessageId", delta, "usedAt")
+        VALUES ($1, $2, $3, $4, now())
+      `,
+      [companyId, userId, qid, delta]
+    );
+
     await pgQuery(
       `
         INSERT INTO "QuickMessageUsage" ("companyId", "userId", "quickMessageId", count, "lastUsedAt", "updatedAt")
@@ -273,32 +327,54 @@ router.get("/stats", authMiddleware, async (req, res) => {
 
   if (!isAdminLike) return res.status(403).json({ error: true, message: "Forbidden" });
 
+  const range = (req.query as any)?.range;
+  const startAt = parseRangeToStart(range);
+  const filterUserId = Number((req.query as any)?.userId || 0) || 0;
+
+  const pinsSub =
+    filterUserId > 0
+      ? `SELECT "quickMessageId", COUNT(1) AS total FROM "QuickMessagePins" WHERE "companyId" = $1 AND "userId" = $2 GROUP BY "quickMessageId"`
+      : `SELECT "quickMessageId", COUNT(1) AS total FROM "QuickMessagePins" WHERE "companyId" = $1 GROUP BY "quickMessageId"`;
+
+  let usesSub = "";
+  let params: any[] = [];
+  if (!startAt) {
+    // Total: fast path (cumulative table)
+    usesSub =
+      filterUserId > 0
+        ? `SELECT "quickMessageId", SUM(count) AS total FROM "QuickMessageUsage" WHERE "companyId" = $1 AND "userId" = $2 GROUP BY "quickMessageId"`
+        : `SELECT "quickMessageId", SUM(count) AS total FROM "QuickMessageUsage" WHERE "companyId" = $1 GROUP BY "quickMessageId"`;
+    params = filterUserId > 0 ? [companyId, filterUserId] : [companyId];
+  } else {
+    // Period: accurate path (events table)
+    usesSub =
+      filterUserId > 0
+        ? `SELECT "quickMessageId", SUM(delta) AS total FROM "QuickMessageUsageEvents" WHERE "companyId" = $1 AND "userId" = $2 AND "usedAt" >= $3 GROUP BY "quickMessageId"`
+        : `SELECT "quickMessageId", SUM(delta) AS total FROM "QuickMessageUsageEvents" WHERE "companyId" = $1 AND "usedAt" >= $2 GROUP BY "quickMessageId"`;
+    params = filterUserId > 0 ? [companyId, filterUserId, startAt.toISOString()] : [companyId, startAt.toISOString()];
+  }
+
   const top = await pgQuery<any>(
     `
       SELECT qm.id, qm.shortcode, qm.message, qm.category,
              COALESCE(u.total,0)::int AS "totalUses",
              COALESCE(p.total,0)::int AS "totalPins"
       FROM "QuickMessages" qm
-      LEFT JOIN (
-        SELECT "quickMessageId", SUM(count) AS total
-        FROM "QuickMessageUsage"
-        WHERE "companyId" = $1
-        GROUP BY "quickMessageId"
-      ) u ON u."quickMessageId" = qm.id
-      LEFT JOIN (
-        SELECT "quickMessageId", COUNT(1) AS total
-        FROM "QuickMessagePins"
-        WHERE "companyId" = $1
-        GROUP BY "quickMessageId"
-      ) p ON p."quickMessageId" = qm.id
+      LEFT JOIN (${usesSub}) u ON u."quickMessageId" = qm.id
+      LEFT JOIN (${pinsSub}) p ON p."quickMessageId" = qm.id
       WHERE qm."companyId" = $1
       ORDER BY COALESCE(u.total,0) DESC, qm.id ASC
       LIMIT 20
     `,
-    [companyId]
+    params
   );
 
-  return res.json({ top: Array.isArray(top) ? top : [] });
+  return res.json({
+    range: startAt ? String(range || "custom") : "total",
+    startAt: startAt ? startAt.toISOString() : null,
+    userId: filterUserId || null,
+    top: Array.isArray(top) ? top : [],
+  });
 });
 
 // Legacy/UI compatibility: returns ARRAY

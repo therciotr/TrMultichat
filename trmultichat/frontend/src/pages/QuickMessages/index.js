@@ -19,6 +19,8 @@ import StarOutlinedIcon from "@material-ui/icons/StarOutlined";
 import DeleteOutlineIcon from "@material-ui/icons/DeleteOutline";
 import EditIcon from "@material-ui/icons/Edit";
 import AttachmentOutlinedIcon from "@material-ui/icons/AttachmentOutlined";
+import PersonOutlineOutlinedIcon from "@material-ui/icons/PersonOutlineOutlined";
+import DateRangeOutlinedIcon from "@material-ui/icons/DateRangeOutlined";
 
 import MainContainer from "../../components/MainContainer";
 import MainHeader from "../../components/MainHeader";
@@ -29,7 +31,7 @@ import { i18n } from "../../translate/i18n";
 import QuickMessageDialog from "../../components/QuickMessageDialog";
 import ConfirmationModal from "../../components/ConfirmationModal";
 import toastError from "../../errors/toastError";
-import { Grid, Typography, Chip, Box } from "@material-ui/core";
+import { Grid, Typography, Chip, Box, FormControl, InputLabel, MenuItem, Select } from "@material-ui/core";
 import { isArray } from "lodash";
 import { socketConnection } from "../../services/socket";
 import { AuthContext } from "../../context/Auth/AuthContext";
@@ -296,6 +298,9 @@ const Quickemessages = () => {
   const [companyUsageMap, setCompanyUsageMap] = useState({});
   const [companyPinMap, setCompanyPinMap] = useState({});
   const [companyTop, setCompanyTop] = useState([]);
+  const [statsRange, setStatsRange] = useState("total");
+  const [statsUserId, setStatsUserId] = useState(0);
+  const [users, setUsers] = useState([]);
 
   const readJson = (key, fallback) => {
     try {
@@ -362,9 +367,30 @@ const Quickemessages = () => {
     (async () => {
       try {
         if (!isAdminLike) return;
-        const { data } = await api.get("/quick-messages/stats");
+        const params = {};
+        if (statsRange && statsRange !== "total") params.range = statsRange;
+        if (Number(statsUserId || 0) > 0) params.userId = Number(statsUserId);
+        const { data } = await api.get("/quick-messages/stats", { params });
         if (!alive) return;
         setCompanyTop(Array.isArray(data?.top) ? data.top : []);
+      } catch (_) {
+        // silent
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [isAdminLike, statsRange, statsUserId]);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        if (!isAdminLike) return;
+        const { data } = await api.get("/users/list");
+        if (!alive) return;
+        const arr = Array.isArray(data) ? data : Array.isArray(data?.users) ? data.users : [];
+        setUsers(arr);
       } catch (_) {
         // silent
       }
@@ -581,7 +607,52 @@ const Quickemessages = () => {
               <FlashOnOutlinedIcon style={{ fontSize: 18 }} />
             </div>
             <div className={classes.hintText} style={{ width: "100%" }}>
-              <div style={{ fontWeight: 900, marginBottom: 6 }}>Ranking (empresa) · Mais usados</div>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 10 }}>
+                <div style={{ fontWeight: 900 }}>Ranking (empresa) · Mais usados</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                  <FormControl variant="outlined" size="small" style={{ minWidth: 160 }}>
+                    <InputLabel id="qm-range-label">
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                        <DateRangeOutlinedIcon style={{ fontSize: 16, opacity: 0.8 }} />
+                        Período
+                      </span>
+                    </InputLabel>
+                    <Select
+                      labelId="qm-range-label"
+                      value={statsRange}
+                      onChange={(e) => setStatsRange(String(e.target.value))}
+                      label="Período"
+                    >
+                      <MenuItem value="total">Total</MenuItem>
+                      <MenuItem value="today">Hoje</MenuItem>
+                      <MenuItem value="7d">7 dias</MenuItem>
+                      <MenuItem value="30d">30 dias</MenuItem>
+                    </Select>
+                  </FormControl>
+                  <FormControl variant="outlined" size="small" style={{ minWidth: 220 }}>
+                    <InputLabel id="qm-user-label">
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                        <PersonOutlineOutlinedIcon style={{ fontSize: 16, opacity: 0.8 }} />
+                        Usuário
+                      </span>
+                    </InputLabel>
+                    <Select
+                      labelId="qm-user-label"
+                      value={Number(statsUserId || 0)}
+                      onChange={(e) => setStatsUserId(Number(e.target.value) || 0)}
+                      label="Usuário"
+                    >
+                      <MenuItem value={0}>Todos</MenuItem>
+                      {(users || []).map((u) => (
+                        <MenuItem key={`u-${u.id}`} value={Number(u.id)}>
+                          {u.name || u.email || `Usuário #${u.id}`}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </div>
+              </div>
+
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 {companyTop.slice(0, 8).map((r) => (
                   <Chip
