@@ -199,7 +199,15 @@ const Login = () => {
                     </label>
                   </Grid>
                   <Grid item>
-                    <Link component={RouterLink} to="/forgot-password" variant="body2" style={{ color: '#fff', textDecorationColor: '#fff' }}>
+                    <Link
+                      component={RouterLink}
+                      to="/forgot-password"
+                      variant="body2"
+                      style={{
+                        color: isDark ? '#fff' : 'rgba(15,23,42,0.78)',
+                        textDecorationColor: isDark ? '#fff' : 'rgba(15,23,42,0.45)'
+                      }}
+                    >
                       Esqueceu a senha?
                     </Link>
                   </Grid>
