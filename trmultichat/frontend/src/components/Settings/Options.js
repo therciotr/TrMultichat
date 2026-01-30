@@ -34,6 +34,7 @@ import AccessTimeOutlinedIcon from "@material-ui/icons/AccessTimeOutlined";
 //import 'react-toastify/dist/ReactToastify.css';
  
 const useStyles = makeStyles((theme) => ({
+  // NOTE: keep styles theme-aware for dark/light
   container: {
     paddingTop: theme.spacing(4),
     paddingBottom: theme.spacing(4),
@@ -68,7 +69,7 @@ const useStyles = makeStyles((theme) => ({
   cardAvatar: {
     fontSize: "55px",
     color: grey[500],
-    backgroundColor: "#ffffff",
+    backgroundColor: theme.palette.background.paper,
     width: theme.spacing(7),
     height: theme.spacing(7),
   },
@@ -124,6 +125,18 @@ const useStyles = makeStyles((theme) => ({
     borderRadius: 12,
     border: `1px solid ${theme.palette.divider}`,
     background: theme.palette.type === "dark" ? "rgba(15,23,42,0.55)" : "rgba(15,23,42,0.03)",
+  },
+  idlePanel: {
+    padding: 12,
+    borderRadius: 12,
+    border: `1px solid ${theme.palette.divider}`,
+    background: theme.palette.type === "dark" ? "rgba(15,23,42,0.55)" : "rgba(15,23,42,0.03)",
+  },
+  field: {
+    "& .MuiOutlinedInput-root": {
+      borderRadius: 12,
+      backgroundColor: theme.palette.background.paper,
+    },
   },
 }));
 
@@ -608,20 +621,14 @@ export default function Options(props) {
               </div>
             </Grid>
             <Grid xs={12} md={7} item>
-              <div
-                style={{
-                  padding: 12,
-                  borderRadius: 12,
-                  border: "1px solid rgba(15, 23, 42, 0.08)",
-                  background: "rgba(248, 250, 252, 0.70)",
-                }}
-              >
+              <div className={classes.idlePanel}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
                   <div style={{ display: "inline-flex", alignItems: "center", gap: 8, fontWeight: 900 }}>
                     <AccessTimeOutlinedIcon style={{ fontSize: 18, opacity: 0.85 }} />
                     Tempo de inatividade
                   </div>
                   <TextField
+                    className={classes.field}
                     disabled={!idleLogoutEnabled}
                     variant="outlined"
                     size="small"

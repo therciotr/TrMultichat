@@ -2,7 +2,8 @@
 .loginRoot {
   min-height: 100vh;
   width: 100%;
-  background: radial-gradient(circle at top, var(--tr-secondary) 0%, var(--tr-primary) 55%, #071f1d 100%);
+  /* Use global bg token so login follows dark/light */
+  background: radial-gradient(circle at top, var(--tr-secondary) 0%, var(--tr-primary) 55%, var(--tr-bg) 100%);
   position: relative;
 }
 
@@ -29,5 +30,6 @@
 }
 
 .tr-login-title-group h1 {
+  /* Keep title readable across modes */
   color: var(--tr-primary);
 }

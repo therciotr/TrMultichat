@@ -28,6 +28,8 @@ import AddOutlinedIcon from "@material-ui/icons/AddOutlined";
 import DeleteOutlineOutlinedIcon from "@material-ui/icons/DeleteOutlineOutlined";
 import EditOutlinedIcon from "@material-ui/icons/EditOutlined";
 import StarBorderOutlinedIcon from "@material-ui/icons/StarBorderOutlined";
+import { useTheme } from "@material-ui/core/styles";
+import { fade } from "@material-ui/core/styles/colorManipulator";
 import api from "../../services/api";
 
 const useStyles = makeStyles((theme) => ({
@@ -37,10 +39,15 @@ const useStyles = makeStyles((theme) => ({
   },
   hero: {
     borderRadius: 16,
-    border: "1px solid rgba(15, 23, 42, 0.10)",
-    boxShadow: "0 10px 28px rgba(15, 23, 42, 0.06)",
+    border: `1px solid ${theme.palette.divider}`,
+    boxShadow:
+      theme.palette.type === "dark"
+        ? "0 18px 46px rgba(0,0,0,0.45)"
+        : "0 10px 28px rgba(15, 23, 42, 0.06)",
     background:
-      "linear-gradient(135deg, rgba(14, 116, 144, 0.14), rgba(59, 130, 246, 0.08) 55%, rgba(255,255,255,0.95))",
+      theme.palette.type === "dark"
+        ? "linear-gradient(135deg, rgba(14, 116, 144, 0.18), rgba(59, 130, 246, 0.12) 55%, rgba(15,23,42,0.92))"
+        : "linear-gradient(135deg, rgba(14, 116, 144, 0.14), rgba(59, 130, 246, 0.08) 55%, rgba(255,255,255,0.95))",
     padding: theme.spacing(2),
     marginBottom: theme.spacing(2),
   },
@@ -55,36 +62,42 @@ const useStyles = makeStyles((theme) => ({
     borderRadius: 14,
     display: "grid",
     placeItems: "center",
-    background: "rgba(59, 130, 246, 0.12)",
-    color: "rgba(14, 116, 144, 1)",
-    border: "1px solid rgba(59, 130, 246, 0.16)",
+    background: fade(theme.palette.primary.main, 0.12),
+    color: theme.palette.primary.main,
+    border: `1px solid ${fade(theme.palette.primary.main, 0.16)}`,
     flexShrink: 0,
   },
   heroTitle: {
     fontSize: 16,
     fontWeight: 1000,
     margin: 0,
-    color: "rgba(15, 23, 42, 0.92)",
+    color: theme.palette.text.primary,
   },
   heroSub: {
     marginTop: 4,
     marginBottom: 0,
     fontSize: 13,
-    color: "rgba(15, 23, 42, 0.66)",
+    color: theme.palette.text.secondary,
   },
   card: {
     borderRadius: 16,
-    border: "1px solid rgba(15, 23, 42, 0.10)",
-    boxShadow: "0 10px 28px rgba(15, 23, 42, 0.05)",
-    backgroundColor: "#fff",
+    border: `1px solid ${theme.palette.divider}`,
+    boxShadow:
+      theme.palette.type === "dark"
+        ? "0 18px 46px rgba(0,0,0,0.45)"
+        : "0 10px 28px rgba(15, 23, 42, 0.05)",
+    backgroundColor: theme.palette.background.paper,
     padding: theme.spacing(2),
     height: "100%",
   },
   miniCard: {
     borderRadius: 16,
-    border: "1px solid rgba(15, 23, 42, 0.10)",
-    boxShadow: "0 10px 22px rgba(15, 23, 42, 0.05)",
-    backgroundColor: "#fff",
+    border: `1px solid ${theme.palette.divider}`,
+    boxShadow:
+      theme.palette.type === "dark"
+        ? "0 16px 40px rgba(0,0,0,0.42)"
+        : "0 10px 22px rgba(15, 23, 42, 0.05)",
+    backgroundColor: theme.palette.background.paper,
     padding: theme.spacing(1.5),
     height: "100%",
   },
@@ -99,36 +112,44 @@ const useStyles = makeStyles((theme) => ({
     borderRadius: 12,
     display: "grid",
     placeItems: "center",
-    background: "rgba(59, 130, 246, 0.10)",
-    border: "1px solid rgba(59, 130, 246, 0.14)",
-    color: "rgba(14, 116, 144, 1)",
+    background: fade(theme.palette.primary.main, 0.10),
+    border: `1px solid ${fade(theme.palette.primary.main, 0.14)}`,
+    color: theme.palette.primary.main,
     flexShrink: 0,
   },
   miniLabel: {
     fontSize: 11,
     fontWeight: 1000,
-    color: "rgba(15, 23, 42, 0.55)",
+    color: theme.palette.text.secondary,
     margin: 0,
   },
   miniValue: {
     fontSize: 13,
     fontWeight: 1000,
-    color: "rgba(15, 23, 42, 0.90)",
+    color: theme.palette.text.primary,
     marginTop: 2,
     wordBreak: "break-word",
   },
   profileCard: {
     borderRadius: 18,
-    border: "1px solid rgba(15, 23, 42, 0.10)",
-    boxShadow: "0 16px 40px rgba(15, 23, 42, 0.07)",
+    border: `1px solid ${theme.palette.divider}`,
+    boxShadow:
+      theme.palette.type === "dark"
+        ? "0 18px 46px rgba(0,0,0,0.45)"
+        : "0 16px 40px rgba(15, 23, 42, 0.07)",
     background:
-      "linear-gradient(180deg, rgba(255,255,255,0.96), rgba(255,255,255,1))",
+      theme.palette.type === "dark"
+        ? "linear-gradient(180deg, rgba(15,23,42,0.92), rgba(15,23,42,0.98))"
+        : "linear-gradient(180deg, rgba(255,255,255,0.96), rgba(255,255,255,1))",
     position: "relative",
     overflow: "hidden",
   },
   profileCardActive: {
-    borderColor: "rgba(59, 130, 246, 0.28)",
-    boxShadow: "0 18px 44px rgba(59, 130, 246, 0.12)",
+    borderColor: fade(theme.palette.primary.main, 0.28),
+    boxShadow:
+      theme.palette.type === "dark"
+        ? "0 18px 44px rgba(0,0,0,0.55)"
+        : `0 18px 44px ${fade(theme.palette.primary.main, 0.12)}`,
   },
   profileCardDefault: {
     borderColor: "rgba(16, 185, 129, 0.28)",
@@ -159,22 +180,22 @@ const useStyles = makeStyles((theme) => ({
     borderRadius: 14,
     display: "grid",
     placeItems: "center",
-    background: "rgba(59, 130, 246, 0.10)",
-    border: "1px solid rgba(59, 130, 246, 0.16)",
-    color: "rgba(14, 116, 144, 1)",
+    background: fade(theme.palette.primary.main, 0.10),
+    border: `1px solid ${fade(theme.palette.primary.main, 0.16)}`,
+    color: theme.palette.primary.main,
     flexShrink: 0,
   },
   profileTitle: {
     fontSize: 14,
     fontWeight: 1000,
-    color: "rgba(15, 23, 42, 0.92)",
+    color: theme.palette.text.primary,
     lineHeight: 1.15,
     margin: 0,
   },
   profileSub: {
     marginTop: 3,
     fontSize: 12,
-    color: "rgba(15, 23, 42, 0.64)",
+    color: theme.palette.text.secondary,
     whiteSpace: "nowrap",
     overflow: "hidden",
     textOverflow: "ellipsis",
@@ -194,8 +215,8 @@ const useStyles = makeStyles((theme) => ({
     gap: 10,
     padding: theme.spacing(0.9, 1),
     borderRadius: 14,
-    border: "1px solid rgba(15, 23, 42, 0.08)",
-    background: "rgba(15, 23, 42, 0.02)",
+    border: `1px solid ${theme.palette.divider}`,
+    background: theme.palette.type === "dark" ? "rgba(148,163,184,0.06)" : "rgba(15, 23, 42, 0.02)",
   },
   lineIcon: {
     width: 30,
@@ -203,20 +224,20 @@ const useStyles = makeStyles((theme) => ({
     borderRadius: 12,
     display: "grid",
     placeItems: "center",
-    background: "rgba(15, 23, 42, 0.04)",
-    color: "rgba(15, 23, 42, 0.75)",
+    background: theme.palette.action.hover,
+    color: theme.palette.text.secondary,
     flexShrink: 0,
   },
   lineLabel: {
     fontSize: 11,
     fontWeight: 1000,
-    color: "rgba(15, 23, 42, 0.55)",
+    color: theme.palette.text.secondary,
     margin: 0,
   },
   lineValue: {
     fontSize: 12.5,
     fontWeight: 1000,
-    color: "rgba(15, 23, 42, 0.90)",
+    color: theme.palette.text.primary,
     marginTop: 2,
     wordBreak: "break-word",
   },
@@ -251,7 +272,7 @@ const useStyles = makeStyles((theme) => ({
   sectionTitle: {
     fontWeight: 1000,
     fontSize: 13,
-    color: "rgba(15, 23, 42, 0.82)",
+    color: theme.palette.text.primary,
     display: "flex",
     alignItems: "center",
     gap: 8,
@@ -260,12 +281,12 @@ const useStyles = makeStyles((theme) => ({
   field: {
     "& .MuiOutlinedInput-root": {
       borderRadius: 14,
-      backgroundColor: "#fff",
+      backgroundColor: theme.palette.background.paper,
     },
   },
   banner: {
     borderRadius: 14,
-    border: "1px solid rgba(15, 23, 42, 0.10)",
+    border: `1px solid ${theme.palette.divider}`,
     padding: theme.spacing(1.25, 1.5),
     display: "flex",
     alignItems: "flex-start",
@@ -283,13 +304,13 @@ const useStyles = makeStyles((theme) => ({
   bannerTitle: {
     fontWeight: 1000,
     fontSize: 13,
-    color: "rgba(15, 23, 42, 0.90)",
+    color: theme.palette.text.primary,
     margin: 0,
   },
   bannerText: {
     marginTop: 4,
     fontSize: 12,
-    color: "rgba(15, 23, 42, 0.70)",
+    color: theme.palette.text.secondary,
   },
   actions: {
     display: "flex",
@@ -304,10 +325,15 @@ const useStyles = makeStyles((theme) => ({
     textTransform: "none",
     padding: theme.spacing(1, 2),
   },
+  mutedText: {
+    color: theme.palette.text.secondary,
+  },
 }));
 
 const EmailSettings = () => {
   const classes = useStyles();
+  const theme = useTheme();
+  const isDark = theme.palette.type === "dark";
   const [form, setForm] = useState({
     name: "",
     mail_host: "",
@@ -496,7 +522,7 @@ const EmailSettings = () => {
   if (loading) {
     return (
       <div className={classes.root}>
-        <Typography style={{ color: "rgba(15, 23, 42, 0.70)" }}>
+        <Typography className={classes.mutedText}>
           Carregando configurações de e-mail...
         </Typography>
       </div>
@@ -513,6 +539,7 @@ const EmailSettings = () => {
     Boolean(hasPassword),
   ].filter(Boolean).length;
   const isFullyConfigured = configuredCount >= 5;
+  const lastLoadedLabel = lastLoadedAt ? new Date(lastLoadedAt).toLocaleString() : null;
 
   return (
     <div className={classes.root}>
@@ -530,11 +557,43 @@ const EmailSettings = () => {
           <Box flex={1} />
           <Chip
             size="small"
+            icon={isFullyConfigured ? <CheckCircleOutlineOutlinedIcon /> : <ErrorOutlineOutlinedIcon />}
+            label={isFullyConfigured ? "Configurado" : `Incompleto (${configuredCount}/5)`}
+            style={{
+              fontWeight: 1000,
+              color: theme.palette.text.primary,
+              border: `1px solid ${theme.palette.divider}`,
+              background: isFullyConfigured
+                ? (isDark ? "rgba(16,185,129,0.16)" : "rgba(16,185,129,0.12)")
+                : (isDark ? "rgba(245,158,11,0.18)" : "rgba(245,158,11,0.14)"),
+            }}
+          />
+          {lastLoadedLabel ? (
+            <Tooltip title={`Último carregamento: ${lastLoadedLabel}`} arrow>
+              <Chip
+                size="small"
+                icon={<SaveOutlinedIcon />}
+                label="Carregado"
+                style={{
+                  fontWeight: 1000,
+                  color: theme.palette.text.primary,
+                  border: `1px solid ${theme.palette.divider}`,
+                  background: theme.palette.action.hover,
+                }}
+              />
+            </Tooltip>
+          ) : null}
+          <Chip
+            size="small"
             icon={<SecurityOutlinedIcon />}
             label={secureLabel}
             style={{
               fontWeight: 1000,
-              background: form.mail_secure ? "rgba(16,185,129,0.12)" : "rgba(15,23,42,0.08)",
+              color: theme.palette.text.primary,
+              border: `1px solid ${theme.palette.divider}`,
+              background: form.mail_secure
+                ? (isDark ? "rgba(16,185,129,0.16)" : "rgba(16,185,129,0.12)")
+                : theme.palette.action.hover,
             }}
           />
         </div>
@@ -578,7 +637,9 @@ const EmailSettings = () => {
                           label="Padrão"
                           style={{
                             fontWeight: 1000,
-                            background: "rgba(16,185,129,0.12)",
+                            color: theme.palette.text.primary,
+                            border: `1px solid ${fade("#10B981", 0.25)}`,
+                            background: isDark ? "rgba(16,185,129,0.16)" : "rgba(16,185,129,0.12)",
                           }}
                         />
                       ) : null}
@@ -635,14 +696,19 @@ const EmailSettings = () => {
                             size="small"
                             icon={<SaveOutlinedIcon />}
                             label={`Atualizado: ${new Date(p.updatedAt).toLocaleString()}`}
-                            style={{ fontWeight: 900, background: "rgba(15,23,42,0.06)" }}
+                            style={{ fontWeight: 900, background: theme.palette.action.hover, color: theme.palette.text.primary }}
                           />
                         ) : null}
                         {isActive ? (
                           <Chip
                             size="small"
                             label="Selecionado"
-                            style={{ fontWeight: 1000, background: "rgba(59,130,246,0.10)" }}
+                            style={{
+                              fontWeight: 1000,
+                              background: fade(theme.palette.primary.main, isDark ? 0.18 : 0.10),
+                              color: theme.palette.text.primary,
+                              border: `1px solid ${fade(theme.palette.primary.main, isDark ? 0.35 : 0.20)}`,
+                            }}
                           />
                         ) : null}
                       </div>
@@ -722,10 +788,10 @@ const EmailSettings = () => {
         ) : (
           <Grid item xs={12}>
             <Paper className={classes.card} elevation={0}>
-              <Typography style={{ fontWeight: 1000, color: "rgba(15,23,42,0.85)" }}>
+              <Typography style={{ fontWeight: 1000, color: theme.palette.text.primary }}>
                 Nenhum perfil SMTP cadastrado
               </Typography>
-              <Typography style={{ marginTop: 6, fontSize: 13, color: "rgba(15,23,42,0.65)" }}>
+              <Typography style={{ marginTop: 6, fontSize: 13, color: theme.palette.text.secondary }}>
                 Clique em <strong>Novo</strong> para cadastrar o primeiro perfil.
               </Typography>
             </Paper>

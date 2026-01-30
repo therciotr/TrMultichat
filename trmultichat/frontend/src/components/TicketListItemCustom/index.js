@@ -5,7 +5,7 @@ import { parseISO, format, isSameDay } from "date-fns";
 import clsx from "clsx";
 
 import { makeStyles } from "@material-ui/core/styles";
-import { green, grey, blue } from "@material-ui/core/colors";
+import { green } from "@material-ui/core/colors";
 import ListItem from "@material-ui/core/ListItem";
 import ListItemText from "@material-ui/core/ListItemText";
 import ListItemAvatar from "@material-ui/core/ListItemAvatar";
@@ -29,7 +29,6 @@ import { TicketsContext } from "../../context/Tickets/TicketsContext";
 import toastError from "../../errors/toastError";
 import { v4 as uuidv4 } from "uuid";
 
-import WhatsAppIcon from "@material-ui/icons/WhatsApp";
 import AndroidIcon from "@material-ui/icons/Android";
 import VisibilityIcon from "@material-ui/icons/Visibility";
 import DeleteOutlineIcon from "@material-ui/icons/DeleteOutline";
@@ -38,32 +37,35 @@ import contrastColor from "../../helpers/contrastColor";
 import ContactTag from "../ContactTag";
 import ConfirmationModal from "../ConfirmationModal";
 import { toast } from "react-toastify";
+import { fade } from "@material-ui/core/styles/colorManipulator";
 
 const useStyles = makeStyles((theme) => ({
   ticket: {
     position: "relative",
-    backgroundColor: "#fff",
-    border: "1px solid rgba(15, 23, 42, 0.08)",
+    backgroundColor: theme.palette.background.paper,
+    border: `1px solid ${theme.palette.divider}`,
     borderRadius: 12,
     paddingTop: 10,
     paddingBottom: 10,
     paddingLeft: 12,
     paddingRight: 12,
     marginBottom: 10,
-    boxShadow: "0 1px 2px rgba(15, 23, 42, 0.06)",
+    boxShadow: theme.palette.type === "dark" ? "0 1px 2px rgba(0,0,0,0.45)" : "0 1px 2px rgba(15, 23, 42, 0.06)",
     transition: "box-shadow 150ms ease, transform 150ms ease, border-color 150ms ease",
     "&:hover": {
-      borderColor: "rgba(15, 23, 42, 0.14)",
-      boxShadow: "0 8px 18px rgba(15, 23, 42, 0.08)",
+      borderColor: fade(theme.palette.text.primary, theme.palette.type === "dark" ? 0.28 : 0.18),
+      boxShadow: theme.palette.type === "dark" ? "0 10px 24px rgba(0,0,0,0.55)" : "0 8px 18px rgba(15, 23, 42, 0.08)",
       transform: "translateY(-1px)",
     },
     "&.Mui-selected": {
-      backgroundColor: "rgba(59, 130, 246, 0.06)",
-      borderColor: "rgba(59, 130, 246, 0.28)",
+      backgroundColor: fade(theme.palette.primary.main, theme.palette.type === "dark" ? 0.18 : 0.08),
+      borderColor: fade(theme.palette.primary.main, theme.palette.type === "dark" ? 0.45 : 0.28),
     },
     "&.Mui-focusVisible": {
       boxShadow:
-        "0 0 0 3px rgba(59, 130, 246, 0.22), 0 8px 18px rgba(15, 23, 42, 0.08)",
+        `0 0 0 3px ${fade(theme.palette.primary.main, 0.22)}, 0 8px 18px ${
+          theme.palette.type === "dark" ? "rgba(0,0,0,0.55)" : "rgba(15, 23, 42, 0.08)"
+        }`,
     },
   },
 
@@ -76,8 +78,8 @@ const useStyles = makeStyles((theme) => ({
     },
   },
   queueTag: {
-    background: "#FCFCFC",
-    color: "#000",
+    background: theme.palette.action.hover,
+    color: theme.palette.text.primary,
     marginRight: 1,
     padding: 1,
     fontWeight: 'bold',
@@ -102,15 +104,16 @@ const useStyles = makeStyles((theme) => ({
   },
   noTicketsText: {
     textAlign: "center",
-    color: "rgb(104, 121, 146)",
+    color: theme.palette.text.secondary,
     fontSize: "14px",
     lineHeight: "1.4",
   },
   connectionTag: {
     display: "inline-flex",
     alignItems: "center",
-    background: "rgba(15, 23, 42, 0.08)",
-    color: "rgba(15, 23, 42, 0.82)",
+    background: theme.palette.action.hover,
+    color: theme.palette.text.primary,
+    border: `1px solid ${theme.palette.divider}`,
     marginRight: 6,
     padding: "2px 8px",
     fontWeight: 700,
@@ -118,6 +121,11 @@ const useStyles = makeStyles((theme) => ({
     fontSize: 11,
     letterSpacing: 0.2,
     whiteSpace: "nowrap",
+  },
+  agentTag: {
+    background: fade(theme.palette.primary.main, theme.palette.type === "dark" ? 0.18 : 0.10),
+    borderColor: fade(theme.palette.primary.main, theme.palette.type === "dark" ? 0.35 : 0.20),
+    color: theme.palette.text.primary,
   },
   noTicketsTitle: {
     textAlign: "center",
@@ -137,7 +145,7 @@ const useStyles = makeStyles((theme) => ({
     justifySelf: "flex-end",
     textAlign: "right",
     fontSize: 12,
-    color: "rgba(15, 23, 42, 0.55)",
+    color: theme.palette.text.secondary,
   },
 
   closedBadge: {
@@ -150,7 +158,7 @@ const useStyles = makeStyles((theme) => ({
   contactLastMessage: {
     paddingRight: "0%",
     marginLeft: "5px",
-    color: "rgba(15, 23, 42, 0.70)",
+    color: theme.palette.text.secondary,
   },
 
 
@@ -237,8 +245,14 @@ const useStyles = makeStyles((theme) => ({
     width: 46,
     height: 46,
     borderRadius: 12,
-    border: "1px solid rgba(15, 23, 42, 0.08)",
-    backgroundColor: "rgba(15, 23, 42, 0.06)",
+    border: `1px solid ${theme.palette.divider}`,
+    backgroundColor: theme.palette.action.hover,
+  },
+  primaryIcon: {
+    color: theme.palette.primary.main,
+  },
+  mutedIcon: {
+    color: theme.palette.text.secondary,
   },
   title: {
     fontWeight: 800,
@@ -252,17 +266,14 @@ const useStyles = makeStyles((theme) => ({
     display: "none",
   },
 }));
-  {/*PLW DESIGN INSERIDO O dentro do const handleChangeTab*/}
-  const TicketListItemCustom = ({ ticket, selectionMode = false, selected = false, onToggleSelect }) => {
+/* PLW DESIGN INSERIDO o dentro do const handleChangeTab */
+const TicketListItemCustom = ({ ticket, selectionMode = false, selected = false, onToggleSelect }) => {
   const classes = useStyles();
   const history = useHistory();
   const [loading, setLoading] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [ticketUser, setTicketUser] = useState(null);
-  const [ticketQueueName, setTicketQueueName] = useState(null);
-  const [ticketQueueColor, setTicketQueueColor] = useState(null);
   const [tag, setTag] = useState([]);
-  const [whatsAppName, setWhatsAppName] = useState(null);
 
   const [openTicketMessageDialog, setOpenTicketMessageDialog] = useState(false);
   const { ticketId } = useParams();
@@ -276,12 +287,6 @@ const useStyles = makeStyles((theme) => ({
     if (ticket.userId && ticket.user) {
       setTicketUser(ticket.user?.name?.toUpperCase());
     }
-    setTicketQueueName(ticket.queue?.name?.toUpperCase());
-    setTicketQueueColor(ticket.queue?.color);
-
-    if (ticket.whatsappId && ticket.whatsapp) {
-      setWhatsAppName(ticket.whatsapp.name?.toUpperCase());
-    }
 
     setTag(ticket?.tags);
 
@@ -291,7 +296,7 @@ const useStyles = makeStyles((theme) => ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  {/*CÓDIGO NOVO SAUDAÇÃO*/}
+  /* CÓDIGO NOVO SAUDAÇÃO */
   const handleCloseTicket = async (id) => {
     setTag(ticket?.tags);
     setLoading(true);
@@ -389,7 +394,7 @@ const useStyles = makeStyles((theme) => ({
             
         }
     };
-	{/*CÓDIGO NOVO SAUDAÇÃO*/}
+	/* CÓDIGO NOVO SAUDAÇÃO */
 
   const handleSelectTicket = (ticket) => {
     const code = uuidv4();
@@ -422,7 +427,8 @@ const useStyles = makeStyles((theme) => ({
             <Tooltip title="Chatbot">
               <AndroidIcon
                 fontSize="small"
-                style={{ color: grey[700], marginRight: 5 }}
+                className={classes.mutedIcon}
+                style={{ marginRight: 5 }}
               />
             </Tooltip>
           )}
@@ -437,7 +443,8 @@ const useStyles = makeStyles((theme) => ({
             <Tooltip title="Chatbot">
               <AndroidIcon
                 fontSize="small"
-                style={{ color: grey[700], marginRight: 5 }}
+                className={classes.mutedIcon}
+                style={{ marginRight: 5 }}
               />
             </Tooltip>
           )}
@@ -514,11 +521,12 @@ const useStyles = makeStyles((theme) => ({
                         onClick={() => setOpenTicketMessageDialog(true)}
                         fontSize="small"
                         style={{
-                          color: blue[700],
+                          color: undefined,
                           cursor: "pointer",
                           marginLeft: 10,
                           verticalAlign: "middle"
                         }}
+                        className={classes.primaryIcon}
                       />
                     </Tooltip>
                     {isAdmin && !selectionMode && (
@@ -556,7 +564,7 @@ const useStyles = makeStyles((theme) => ({
               > {String(ticket.lastMessage || "").includes('data:image/png;base64') ? <MarkdownWrapper> Localização</MarkdownWrapper> : <MarkdownWrapper>{ticket.lastMessage || ""}</MarkdownWrapper>}
                 <span className={clsx(classes.secondaryContentSecond, classes.secondaryLine)} >
                   {ticket?.whatsapp?.name ? <span className={classes.connectionTag}>{ticket?.whatsapp?.name?.toUpperCase()}</span> : <br></br>}
-                  {ticketUser ? <span style={{ backgroundColor: "#0F172A", color: "#fff" }} className={classes.connectionTag}>{ticketUser}</span> : <br></br>}
+                  {ticketUser ? <span className={clsx(classes.connectionTag, classes.agentTag)}>{ticketUser}</span> : <br></br>}
                   <span style={{ backgroundColor: ticket.queue?.color || "#7c7c7c", color: contrastColor(ticket.queue?.color || "#7c7c7c") }} className={classes.connectionTag}>{ticket.queue?.name?.toUpperCase() || "SEM FILA"}</span>
                 </span>
                 <span style={{ paddingTop: "2px" }} className={classes.secondaryContentSecond} >

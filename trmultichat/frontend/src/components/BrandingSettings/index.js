@@ -168,6 +168,12 @@ const useStyles = makeStyles((theme) => ({
     padding: theme.spacing(1.4),
     boxShadow: theme.palette.type === "dark" ? "0 18px 46px rgba(0,0,0,0.45)" : "0 12px 28px rgba(15,23,42,0.10)",
   },
+  previewLoginField: {
+    height: 34,
+    borderRadius: 12,
+    border: `1px solid ${theme.palette.divider}`,
+    background: theme.palette.background.default,
+  },
   logoPreview: {
     height: 26,
     width: "auto",
@@ -196,12 +202,15 @@ const useStyles = makeStyles((theme) => ({
   uploadHint: {
     marginTop: 8,
     fontSize: 12,
-    opacity: 0.78,
+    color: theme.palette.text.secondary,
     lineHeight: 1.35,
     borderRadius: 14,
     padding: theme.spacing(1, 1.25),
-    background: "rgba(15, 23, 42, 0.04)",
-    border: "1px solid rgba(15, 23, 42, 0.08)",
+    background: theme.palette.action.hover,
+    border: `1px solid ${theme.palette.divider}`,
+  },
+  muted: {
+    color: theme.palette.text.secondary,
   },
 }));
 
@@ -634,7 +643,7 @@ export default function BrandingSettings({ currentUser }) {
                 </div>
 
               <div className={classes.paletteRow}>
-                <Typography style={{ fontWeight: 1000, fontSize: 12, color: "rgba(15,23,42,0.70)", marginRight: 6 }}>
+                <Typography className={classes.muted} style={{ fontWeight: 1000, fontSize: 12, marginRight: 6 }}>
                   Paletas premium
                 </Typography>
                 {PREMIUM_PALETTES.map((p) => (
@@ -665,7 +674,7 @@ export default function BrandingSettings({ currentUser }) {
               </div>
 
               <div className={classes.paletteRow} style={{ marginTop: 2 }}>
-                <Typography style={{ fontWeight: 1000, fontSize: 12, color: "rgba(15,23,42,0.70)", marginRight: 6 }}>
+                <Typography className={classes.muted} style={{ fontWeight: 1000, fontSize: 12, marginRight: 6 }}>
                   Contraste (acessibilidade)
                 </Typography>
                 <Chip
@@ -804,7 +813,7 @@ export default function BrandingSettings({ currentUser }) {
                 </Grid>
 
                 <Grid item xs={12} sm={6}>
-                  <Typography style={{ fontWeight: 1000, fontSize: 12, color: "rgba(15,23,42,0.70)" }}>
+                  <Typography className={classes.muted} style={{ fontWeight: 1000, fontSize: 12 }}>
                     Raio dos cards/botões
                   </Typography>
                   <Slider
@@ -908,8 +917,8 @@ export default function BrandingSettings({ currentUser }) {
                   <div className={classes.previewLoginCard} style={{ borderRadius: Number(form.borderRadius || 12) }}>
                     <div style={{ fontWeight: 1000, color: form.primaryColor }}>Tela de login (preview)</div>
                     <div style={{ marginTop: 6, display: "grid", gap: 8 }}>
-                      <div style={{ height: 34, borderRadius: 12, border: "1px solid rgba(15,23,42,0.10)", background: "#fff" }} />
-                      <div style={{ height: 34, borderRadius: 12, border: "1px solid rgba(15,23,42,0.10)", background: "#fff" }} />
+                      <div className={classes.previewLoginField} />
+                      <div className={classes.previewLoginField} />
                       <button
                         style={{
                           border: "none",
