@@ -286,11 +286,16 @@ const Quickemessages = () => {
   const { user } = useContext(AuthContext);
   const companyId = user?.companyId;
   const userId = user?.id;
+  const profile = String(user?.profile || "").toLowerCase();
+  const isAdminLike = profile === "admin" || profile === "super" || Boolean(user?.admin) || Boolean(user?.super);
 
   const pinKey = `qm:pins:${companyId}:${userId || "me"}`;
   const usageKey = `qm:usage:${companyId}:${userId || "me"}`;
   const [pinnedMap, setPinnedMap] = useState({});
   const [usageMap, setUsageMap] = useState({});
+  const [companyUsageMap, setCompanyUsageMap] = useState({});
+  const [companyPinMap, setCompanyPinMap] = useState({});
+  const [companyTop, setCompanyTop] = useState([]);
 
   const readJson = (key, fallback) => {
     try {
@@ -314,6 +319,61 @@ const Quickemessages = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [companyId, userId]);
 
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        if (!companyId || !userId) return;
+        const { data } = await api.get("/quick-messages/meta");
+        if (!alive) return;
+        const pinnedIds = Array.isArray(data?.pinnedIds) ? data.pinnedIds : [];
+        const usageById = data?.usageById && typeof data.usageById === "object" ? data.usageById : {};
+        const pinMap = {};
+        for (const id of pinnedIds) {
+          const k = String(Number(id || 0));
+          if (k && k !== "0") pinMap[k] = true;
+        }
+        setPinnedMap(pinMap);
+        setUsageMap({ ...(usageById || {}) });
+        writeJson(pinKey, pinMap);
+        writeJson(usageKey, { ...(usageById || {}) });
+
+        if (isAdminLike) {
+          const cu = data?.companyUsageById && typeof data.companyUsageById === "object" ? data.companyUsageById : {};
+          const cp = data?.companyPinCountById && typeof data.companyPinCountById === "object" ? data.companyPinCountById : {};
+          setCompanyUsageMap({ ...(cu || {}) });
+          setCompanyPinMap({ ...(cp || {}) });
+        } else {
+          setCompanyUsageMap({});
+          setCompanyPinMap({});
+        }
+      } catch (_) {
+        // silent
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [companyId, userId, isAdminLike]);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        if (!isAdminLike) return;
+        const { data } = await api.get("/quick-messages/stats");
+        if (!alive) return;
+        setCompanyTop(Array.isArray(data?.top) ? data.top : []);
+      } catch (_) {
+        // silent
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [isAdminLike]);
+
   const isPinned = (qm) => {
     const id = String(qm?.id ?? qm?.shortcode ?? "");
     return Boolean(pinnedMap?.[id]);
@@ -322,16 +382,40 @@ const Quickemessages = () => {
     const id = String(qm?.id ?? qm?.shortcode ?? "");
     return Number(usageMap?.[id] || 0);
   };
+  const companyUsageCount = (qm) => {
+    const id = String(qm?.id ?? qm?.shortcode ?? "");
+    return Number(companyUsageMap?.[id] || 0);
+  };
+  const companyPinCount = (qm) => {
+    const id = String(qm?.id ?? qm?.shortcode ?? "");
+    return Number(companyPinMap?.[id] || 0);
+  };
   const togglePinned = (qm) => {
     const id = String(qm?.id ?? qm?.shortcode ?? "");
     if (!id) return;
+    const willPin = !Boolean(pinnedMap?.[id]);
     setPinnedMap((prev) => {
       const next = { ...(prev || {}) };
-      next[id] = !next[id];
+      next[id] = willPin;
       if (!next[id]) delete next[id];
       writeJson(pinKey, next);
       return next;
     });
+    (async () => {
+      try {
+        if (willPin) await api.post(`/quick-messages/pins/${Number(id)}`);
+        else await api.delete(`/quick-messages/pins/${Number(id)}`);
+      } catch (_) {
+        // revert on failure
+        setPinnedMap((prev) => {
+          const next = { ...(prev || {}) };
+          next[id] = !willPin;
+          if (!next[id]) delete next[id];
+          writeJson(pinKey, next);
+          return next;
+        });
+      }
+    })();
   };
 
   useEffect(() => {
@@ -491,6 +575,28 @@ const Quickemessages = () => {
           </div>
         </div>
 
+        {isAdminLike && Array.isArray(companyTop) && companyTop.length ? (
+          <div className={classes.hintCard} style={{ marginTop: 10 }}>
+            <div className={classes.hintIcon}>
+              <FlashOnOutlinedIcon style={{ fontSize: 18 }} />
+            </div>
+            <div className={classes.hintText} style={{ width: "100%" }}>
+              <div style={{ fontWeight: 900, marginBottom: 6 }}>Ranking (empresa) · Mais usados</div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {companyTop.slice(0, 8).map((r) => (
+                  <Chip
+                    key={`top-${r.id}`}
+                    size="small"
+                    variant="outlined"
+                    label={`/${r.shortcode} · ${Number(r.totalUses || 0)}`}
+                    style={{ fontWeight: 900 }}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : null}
+
         <Grid container spacing={2} className={classes.headerRow} style={{ marginBottom: 8 }}>
           <Grid item xs={12} md={8}>
             <TextField
@@ -572,10 +678,26 @@ const Quickemessages = () => {
                             ) : null}
                             <Chip
                               size="small"
-                              label={`Usos: ${usageCount(quickemessage)}`}
+                              label={`Usos (você): ${usageCount(quickemessage)}`}
                               variant="outlined"
                               style={{ fontWeight: 900, opacity: 0.9 }}
                             />
+                            {isAdminLike ? (
+                              <>
+                                <Chip
+                                  size="small"
+                                  label={`Usos (empresa): ${companyUsageCount(quickemessage)}`}
+                                  variant="outlined"
+                                  style={{ fontWeight: 900, opacity: 0.9 }}
+                                />
+                                <Chip
+                                  size="small"
+                                  label={`Fixados (empresa): ${companyPinCount(quickemessage)}`}
+                                  variant="outlined"
+                                  style={{ fontWeight: 900, opacity: 0.9 }}
+                                />
+                              </>
+                            ) : null}
                           </div>
                         </div>
                       </div>

@@ -355,6 +355,8 @@ const CustomInput = (props) => {
   };
   const [pinnedMap, setPinnedMap] = useState(() => readJson(pinKey, {}));
   const [usageMap, setUsageMap] = useState(() => readJson(usageKey, {}));
+  const pendingUsageRef = useRef({});
+  const flushTimerRef = useRef(null);
 
   const { list: listQuickMessages } = useQuickMessages();
 
@@ -388,6 +390,37 @@ const CustomInput = (props) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pinKey, usageKey]);
 
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        // authoritative source: backend (falls back to local storage if it fails)
+        const { data } = await api.get("/quick-messages/meta");
+        if (!alive) return;
+        const pinnedIds = Array.isArray(data?.pinnedIds) ? data.pinnedIds : [];
+        const usageById = data?.usageById && typeof data.usageById === "object" ? data.usageById : {};
+
+        const pinMap = {};
+        for (const id of pinnedIds) {
+          const k = String(Number(id || 0));
+          if (k && k !== "0") pinMap[k] = true;
+        }
+        setPinnedMap(pinMap);
+        setUsageMap({ ...(usageById || {}) });
+
+        // keep in localStorage for fast startup
+        writeJson(pinKey, pinMap);
+        writeJson(usageKey, { ...(usageById || {}) });
+      } catch (_) {
+        // silent
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const isPinned = (opt) => {
     const id = String(opt?.id ?? opt?.shortcode ?? "");
     return Boolean(pinnedMap?.[id]);
@@ -396,13 +429,66 @@ const CustomInput = (props) => {
   const togglePinned = (opt) => {
     const id = String(opt?.id ?? opt?.shortcode ?? "");
     if (!id) return;
+    // optimistic update + sync with backend
+    const willPin = !Boolean(pinnedMap?.[id]);
     setPinnedMap((prev) => {
       const next = { ...(prev || {}) };
-      next[id] = !next[id];
+      next[id] = willPin;
       if (!next[id]) delete next[id];
       writeJson(pinKey, next);
       return next;
     });
+    (async () => {
+      try {
+        if (willPin) await api.post(`/quick-messages/pins/${Number(id)}`);
+        else await api.delete(`/quick-messages/pins/${Number(id)}`);
+      } catch (_) {
+        // revert on failure
+        setPinnedMap((prev) => {
+          const next = { ...(prev || {}) };
+          next[id] = !willPin;
+          if (!next[id]) delete next[id];
+          writeJson(pinKey, next);
+          return next;
+        });
+      }
+    })();
+  };
+
+  const flushUsage = async () => {
+    const pending = pendingUsageRef.current || {};
+    const keys = Object.keys(pending);
+    if (!keys.length) return;
+    pendingUsageRef.current = {};
+    try {
+      const increments = keys
+        .map((k) => ({ id: Number(k), delta: Number(pending[k] || 0) }))
+        .filter((x) => x.id && x.delta > 0)
+        .slice(0, 50);
+      if (!increments.length) return;
+      await api.post("/quick-messages/usage", { increments });
+    } catch (_) {
+      // restore pending to retry next time
+      const restore = pendingUsageRef.current || {};
+      for (const k of keys) {
+        restore[k] = (Number(restore[k]) || 0) + (Number(pending[k]) || 0);
+      }
+      pendingUsageRef.current = restore;
+    }
+  };
+
+  const queueUsage = (idStr, delta = 1) => {
+    const id = String(idStr || "").trim();
+    if (!id) return;
+    const pending = pendingUsageRef.current || {};
+    pending[id] = (Number(pending[id]) || 0) + (Number(delta) || 1);
+    pendingUsageRef.current = pending;
+
+    if (flushTimerRef.current) return;
+    flushTimerRef.current = setTimeout(async () => {
+      flushTimerRef.current = null;
+      await flushUsage();
+    }, 1500);
   };
 
   const bumpUsage = (opt) => {
@@ -414,6 +500,7 @@ const CustomInput = (props) => {
       writeJson(usageKey, next);
       return next;
     });
+    queueUsage(id, 1);
   };
 
   const sortPremium = (arr) => {

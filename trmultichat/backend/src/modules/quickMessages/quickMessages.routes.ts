@@ -9,6 +9,41 @@ function tenantIdFromReq(req: any): number {
   return Number(req?.tenantId || 0);
 }
 
+function userIdFromReq(req: any): number {
+  return Number(req?.userId || (req as any)?.userId || 0);
+}
+
+function isAdminProfile(profile: any): boolean {
+  const p = String(profile || "").toLowerCase();
+  return p === "admin" || p === "super";
+}
+
+async function getRequester(req: any): Promise<{
+  id: number;
+  companyId: number;
+  profile: string;
+  super: boolean;
+}> {
+  const id = userIdFromReq(req);
+  const companyId = tenantIdFromReq(req);
+  if (!id || !companyId) return { id, companyId, profile: "user", super: false };
+  try {
+    const rows = await pgQuery<any>(
+      `SELECT id, "companyId", profile, COALESCE(super,false) as super FROM "Users" WHERE id = $1 LIMIT 1`,
+      [id]
+    );
+    const u = rows?.[0] || {};
+    return {
+      id,
+      companyId: Number(u.companyId || companyId),
+      profile: String(u.profile || "user"),
+      super: Boolean(u.super),
+    };
+  } catch {
+    return { id, companyId, profile: "user", super: false };
+  }
+}
+
 async function ensureQuickMessagesSchema() {
   // Adds "category" if missing (non-breaking)
   try {
@@ -30,6 +65,241 @@ async function ensureQuickMessagesSchema() {
     // silent (avoid startup failing if permissions differ)
   }
 }
+
+async function ensureQuickMessagesMetaSchema() {
+  // Non-breaking: create auxiliary tables for pins/usage if missing
+  try {
+    await pgQuery(
+      `
+        CREATE TABLE IF NOT EXISTS "QuickMessagePins" (
+          "companyId" INTEGER NOT NULL,
+          "userId" INTEGER NOT NULL,
+          "quickMessageId" INTEGER NOT NULL,
+          "createdAt" TIMESTAMPTZ NOT NULL DEFAULT now(),
+          PRIMARY KEY ("companyId", "userId", "quickMessageId")
+        )
+      `,
+      []
+    );
+    await pgQuery(
+      `
+        CREATE TABLE IF NOT EXISTS "QuickMessageUsage" (
+          "companyId" INTEGER NOT NULL,
+          "userId" INTEGER NOT NULL,
+          "quickMessageId" INTEGER NOT NULL,
+          count INTEGER NOT NULL DEFAULT 0,
+          "lastUsedAt" TIMESTAMPTZ,
+          "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT now(),
+          PRIMARY KEY ("companyId", "userId", "quickMessageId")
+        )
+      `,
+      []
+    );
+    await pgQuery(`CREATE INDEX IF NOT EXISTS "idx_qm_usage_company_msg" ON "QuickMessageUsage" ("companyId", "quickMessageId")`, []);
+    await pgQuery(`CREATE INDEX IF NOT EXISTS "idx_qm_pins_company_msg" ON "QuickMessagePins" ("companyId", "quickMessageId")`, []);
+  } catch {
+    // silent
+  }
+}
+
+async function ensureQuickMessageBelongsToCompany(companyId: number, quickMessageId: number): Promise<boolean> {
+  if (!companyId || !quickMessageId) return false;
+  try {
+    const rows = await pgQuery<any>(
+      `SELECT id FROM "QuickMessages" WHERE id = $1 AND "companyId" = $2 LIMIT 1`,
+      [quickMessageId, companyId]
+    );
+    return Boolean(rows?.[0]?.id);
+  } catch {
+    return false;
+  }
+}
+
+// GET /quick-messages/meta - user pins + usage; admin-like also receives company totals
+router.get("/meta", authMiddleware, async (req, res) => {
+  await ensureQuickMessagesSchema();
+  await ensureQuickMessagesMetaSchema();
+
+  const companyId = tenantIdFromReq(req);
+  const userId = userIdFromReq(req);
+  if (!companyId || !userId) return res.status(401).json({ error: true, message: "missing auth context" });
+
+  const requester = await getRequester(req);
+  const isAdminLike = Boolean(requester.super) || isAdminProfile(requester.profile);
+
+  const pinnedRows = await pgQuery<any>(
+    `SELECT "quickMessageId" FROM "QuickMessagePins" WHERE "companyId" = $1 AND "userId" = $2`,
+    [companyId, userId]
+  );
+  const usageRows = await pgQuery<any>(
+    `SELECT "quickMessageId", count FROM "QuickMessageUsage" WHERE "companyId" = $1 AND "userId" = $2`,
+    [companyId, userId]
+  );
+
+  const pinnedIds = (Array.isArray(pinnedRows) ? pinnedRows : []).map((r) => Number(r.quickMessageId || 0)).filter(Boolean);
+  const usageById: Record<string, number> = {};
+  for (const r of Array.isArray(usageRows) ? usageRows : []) {
+    const id = Number(r.quickMessageId || 0);
+    if (!id) continue;
+    usageById[String(id)] = Number(r.count || 0);
+  }
+
+  if (!isAdminLike) return res.json({ pinnedIds, usageById });
+
+  // Company totals for admin dashboard and management UI
+  const totals = await pgQuery<any>(
+    `
+      SELECT "quickMessageId", SUM(count)::int AS total
+      FROM "QuickMessageUsage"
+      WHERE "companyId" = $1
+      GROUP BY "quickMessageId"
+    `,
+    [companyId]
+  );
+  const pinCounts = await pgQuery<any>(
+    `
+      SELECT "quickMessageId", COUNT(1)::int AS total
+      FROM "QuickMessagePins"
+      WHERE "companyId" = $1
+      GROUP BY "quickMessageId"
+    `,
+    [companyId]
+  );
+  const companyUsageById: Record<string, number> = {};
+  const companyPinCountById: Record<string, number> = {};
+  for (const r of Array.isArray(totals) ? totals : []) {
+    const id = Number(r.quickMessageId || 0);
+    if (!id) continue;
+    companyUsageById[String(id)] = Number(r.total || 0);
+  }
+  for (const r of Array.isArray(pinCounts) ? pinCounts : []) {
+    const id = Number(r.quickMessageId || 0);
+    if (!id) continue;
+    companyPinCountById[String(id)] = Number(r.total || 0);
+  }
+
+  return res.json({ pinnedIds, usageById, companyUsageById, companyPinCountById });
+});
+
+// POST /quick-messages/usage - batch increments (used by chat slash)
+router.post("/usage", authMiddleware, async (req, res) => {
+  await ensureQuickMessagesSchema();
+  await ensureQuickMessagesMetaSchema();
+
+  const companyId = tenantIdFromReq(req);
+  const userId = userIdFromReq(req);
+  if (!companyId || !userId) return res.status(401).json({ error: true, message: "missing auth context" });
+
+  const body: any = req.body || {};
+  const increments = Array.isArray(body.increments) ? body.increments : [];
+  if (!increments.length) return res.json({ ok: true, applied: 0 });
+
+  let applied = 0;
+  for (const item of increments.slice(0, 50)) {
+    const qid = Number(item?.id || item?.quickMessageId || 0);
+    const delta = Math.max(1, Math.min(999, Number(item?.delta || 1)));
+    if (!qid) continue;
+    const ok = await ensureQuickMessageBelongsToCompany(companyId, qid);
+    if (!ok) continue;
+
+    await pgQuery(
+      `
+        INSERT INTO "QuickMessageUsage" ("companyId", "userId", "quickMessageId", count, "lastUsedAt", "updatedAt")
+        VALUES ($1, $2, $3, $4, now(), now())
+        ON CONFLICT ("companyId", "userId", "quickMessageId")
+        DO UPDATE SET
+          count = "QuickMessageUsage".count + EXCLUDED.count,
+          "lastUsedAt" = now(),
+          "updatedAt" = now()
+      `,
+      [companyId, userId, qid, delta]
+    );
+    applied += 1;
+  }
+
+  return res.json({ ok: true, applied });
+});
+
+// Pins: POST/DELETE
+router.post("/pins/:id", authMiddleware, async (req, res) => {
+  await ensureQuickMessagesSchema();
+  await ensureQuickMessagesMetaSchema();
+  const companyId = tenantIdFromReq(req);
+  const userId = userIdFromReq(req);
+  const qid = Number(req.params.id || 0);
+  if (!companyId || !userId) return res.status(401).json({ error: true, message: "missing auth context" });
+  if (!qid) return res.status(400).json({ error: true, message: "invalid id" });
+  const ok = await ensureQuickMessageBelongsToCompany(companyId, qid);
+  if (!ok) return res.status(404).json({ error: true, message: "not found" });
+
+  await pgQuery(
+    `
+      INSERT INTO "QuickMessagePins" ("companyId", "userId", "quickMessageId", "createdAt")
+      VALUES ($1, $2, $3, now())
+      ON CONFLICT ("companyId", "userId", "quickMessageId") DO NOTHING
+    `,
+    [companyId, userId, qid]
+  );
+  return res.json({ ok: true });
+});
+
+router.delete("/pins/:id", authMiddleware, async (req, res) => {
+  await ensureQuickMessagesSchema();
+  await ensureQuickMessagesMetaSchema();
+  const companyId = tenantIdFromReq(req);
+  const userId = userIdFromReq(req);
+  const qid = Number(req.params.id || 0);
+  if (!companyId || !userId) return res.status(401).json({ error: true, message: "missing auth context" });
+  if (!qid) return res.status(400).json({ error: true, message: "invalid id" });
+
+  await pgQuery(
+    `DELETE FROM "QuickMessagePins" WHERE "companyId" = $1 AND "userId" = $2 AND "quickMessageId" = $3`,
+    [companyId, userId, qid]
+  );
+  return res.json({ ok: true });
+});
+
+// GET /quick-messages/stats - admin-like: company ranking
+router.get("/stats", authMiddleware, async (req, res) => {
+  await ensureQuickMessagesSchema();
+  await ensureQuickMessagesMetaSchema();
+
+  const companyId = tenantIdFromReq(req);
+  const userId = userIdFromReq(req);
+  if (!companyId || !userId) return res.status(401).json({ error: true, message: "missing auth context" });
+
+  const requester = await getRequester(req);
+  const isAdminLike = Boolean(requester.super) || isAdminProfile(requester.profile);
+
+  if (!isAdminLike) return res.status(403).json({ error: true, message: "Forbidden" });
+
+  const top = await pgQuery<any>(
+    `
+      SELECT qm.id, qm.shortcode, qm.message, qm.category,
+             COALESCE(u.total,0)::int AS "totalUses",
+             COALESCE(p.total,0)::int AS "totalPins"
+      FROM "QuickMessages" qm
+      LEFT JOIN (
+        SELECT "quickMessageId", SUM(count) AS total
+        FROM "QuickMessageUsage"
+        WHERE "companyId" = $1
+        GROUP BY "quickMessageId"
+      ) u ON u."quickMessageId" = qm.id
+      LEFT JOIN (
+        SELECT "quickMessageId", COUNT(1) AS total
+        FROM "QuickMessagePins"
+        WHERE "companyId" = $1
+        GROUP BY "quickMessageId"
+      ) p ON p."quickMessageId" = qm.id
+      WHERE qm."companyId" = $1
+      ORDER BY COALESCE(u.total,0) DESC, qm.id ASC
+      LIMIT 20
+    `,
+    [companyId]
+  );
+
+  return res.json({ top: Array.isArray(top) ? top : [] });
+});
 
 // Legacy/UI compatibility: returns ARRAY
 router.get("/list", authMiddleware, async (req, res) => {
