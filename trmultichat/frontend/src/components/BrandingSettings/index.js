@@ -233,6 +233,7 @@ const normalizeBranding = (b) => ({
   faviconUrl: b?.faviconUrl || "/favicon.ico",
   primaryColor: b?.primaryColor || "#0B4C46",
   secondaryColor: b?.secondaryColor || "#2BA9A5",
+  headingColor: b?.headingColor || b?.primaryColor || "#0B4C46",
   buttonColor: b?.buttonColor || b?.secondaryColor || "#2BA9A5",
   textColor: b?.textColor || "#1F2937",
   backgroundType: b?.backgroundType || "color",
@@ -988,6 +989,20 @@ export default function BrandingSettings({ currentUser }) {
                     size="small"
                     value={form.textColor}
                     onChange={setFormKey("textColor", normalizeHex)}
+                  />
+                </Grid>
+
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    className={classes.field}
+                    type="color"
+                    label="Títulos e destaques (Indicadores/Rankings)"
+                    fullWidth
+                    variant="outlined"
+                    size="small"
+                    value={form.headingColor}
+                    onChange={setFormKey("headingColor", normalizeHex)}
+                    helperText="Cor dos títulos de seções e cabeçalhos (não interfere na cor primária do sistema)."
                   />
                 </Grid>
 

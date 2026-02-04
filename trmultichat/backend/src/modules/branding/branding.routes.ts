@@ -17,6 +17,7 @@ type Branding = {
   // Theme
   primaryColor: string;
   secondaryColor: string;
+  headingColor?: string;
   buttonColor: string;
   textColor: string;
   backgroundType: "color" | "image";
@@ -47,6 +48,7 @@ function defaultBranding(): Branding {
     faviconUrl: "/favicon.ico",
     primaryColor: "#0B4C46",
     secondaryColor: "#2BA9A5",
+    headingColor: "#0B4C46",
     buttonColor: "#2BA9A5",
     textColor: "#1F2937",
     backgroundType: "color",

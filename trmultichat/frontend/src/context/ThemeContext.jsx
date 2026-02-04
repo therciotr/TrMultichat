@@ -7,6 +7,7 @@ const defaultBranding = {
   faviconUrl: "/favicon.ico",
   primaryColor: "#0B4C46",
   secondaryColor: "#2BA9A5",
+  headingColor: "#0B4C46",
   buttonColor: "#2BA9A5",
   textColor: "#1F2937",
   backgroundType: "color",
@@ -219,6 +220,8 @@ export const ThemeProvider = ({ children }) => {
       root.setAttribute("data-tr-mode", isDark ? "dark" : "light");
       root.style.setProperty("--tr-primary", b.primaryColor || defaultBranding.primaryColor);
       root.style.setProperty("--tr-secondary", b.secondaryColor || defaultBranding.secondaryColor);
+      const headingBase = b.headingColor || b.primaryColor || defaultBranding.headingColor || defaultBranding.primaryColor;
+      root.style.setProperty("--tr-heading", headingBase);
       root.style.setProperty("--tr-button", b.buttonColor || b.primaryColor || defaultBranding.buttonColor);
       root.style.setProperty("--tr-text", b.textColor || defaultBranding.textColor);
       root.style.setProperty("--tr-bg", isDark ? "#0B1220" : (b.backgroundColor || defaultBranding.backgroundColor));
@@ -228,8 +231,11 @@ export const ThemeProvider = ({ children }) => {
       // RGB tokens (used by CSS for premium gradients/overlays)
       const pr = hexToRgb(b.primaryColor || defaultBranding.primaryColor);
       const sr = hexToRgb(b.secondaryColor || defaultBranding.secondaryColor);
+      const hr = hexToRgb(headingBase);
       if (pr) root.style.setProperty("--tr-primary-rgb", `${pr.r},${pr.g},${pr.b}`);
       if (sr) root.style.setProperty("--tr-secondary-rgb", `${sr.r},${sr.g},${sr.b}`);
+      if (hr) root.style.setProperty("--tr-heading-rgb", `${hr.r},${hr.g},${hr.b}`);
+      root.style.setProperty("--tr-heading-soft", toRgba(headingBase, isDark ? 0.18 : 0.08));
       // tokens premium de superfície
       const surfaceBase = !isDark && String(b.backgroundType || "color") === "color"
         ? mixHex(b.backgroundColor || defaultBranding.backgroundColor, "#FFFFFF", 0.88)

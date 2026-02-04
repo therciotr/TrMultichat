@@ -17,12 +17,12 @@ const TrSectionTitle = ({
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        {icon ? <span style={{ color: "var(--tr-primary)" }}>{icon}</span> : null}
+        {icon ? <span style={{ color: "var(--tr-heading, var(--tr-primary))" }}>{icon}</span> : null}
         <Typography
           variant="h5"
           align={align}
           style={{
-            color: "var(--tr-primary)",
+            color: "var(--tr-heading, var(--tr-primary))",
             fontWeight: 700,
             letterSpacing: "-0.01em",
           }}

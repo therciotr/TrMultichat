@@ -6,7 +6,11 @@ const TrCard = ({ title, elevation = 1, className = "", children, titleAlign = "
     <Paper elevation={elevation} className={`${className} tr-card-border`.trim()} {...rest}>
       {title ? (
         <div style={{ padding: 12 }}>
-          <Typography variant="h6" align={titleAlign} style={{ color: "var(--tr-primary)", fontWeight: 600 }}>
+          <Typography
+            variant="h6"
+            align={titleAlign}
+            style={{ color: "var(--tr-heading, var(--tr-primary))", fontWeight: 600 }}
+          >
             {title}
           </Typography>
         </div>
