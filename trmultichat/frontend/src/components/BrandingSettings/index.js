@@ -562,7 +562,8 @@ export default function BrandingSettings({ currentUser }) {
     try {
       await api.put("/branding", form, { params: companyId ? { companyId } : {} });
       // Apply immediately if editing current company
-      if (Number(companyId) === Number(currentCompanyId)) {
+      // companyId=0 (sem seletor) significa "minha empresa atual"
+      if (!canPickCompany || Number(companyId) === Number(currentCompanyId)) {
         await refreshBranding();
       }
     } finally {

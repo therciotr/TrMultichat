@@ -48,7 +48,10 @@ const useStyles = makeStyles((theme) => ({
   root: {
     "& .MuiListItemIcon-root": {
       minWidth: 38,
-      color: "var(--tr-menu-icon)",
+      color: "var(--tr-menu-icon, rgba(255,255,255,0.88))",
+    },
+    "& .MuiListItemIcon-root .MuiSvgIcon-root": {
+      color: "inherit",
     },
     "& .MuiListItemText-primary": {
       color: "rgba(255,255,255,0.92)",
@@ -63,7 +66,7 @@ const useStyles = makeStyles((theme) => ({
       background: "rgba(255,255,255,0.14)",
     },
     "& .MuiListItem-root.Mui-selected .MuiListItemIcon-root": {
-      color: "var(--tr-menu-icon-active)",
+      color: "var(--tr-menu-icon-active, #FFFFFF)",
     },
   },
   ListSubheader: {
