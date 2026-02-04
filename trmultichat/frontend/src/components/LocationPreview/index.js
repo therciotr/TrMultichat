@@ -25,7 +25,18 @@ const LocationPreview = ({ image, link, description }) => {
 					</div>
 					{ description && (
 					<div style={{ display: "flex", flexWrap: "wrap" }}>
-						<Typography style={{ marginTop: "12px", marginLeft: "15px", marginRight: "15px", float: "left" }} variant="subtitle1" color="primary" gutterBottom>
+						<Typography
+							style={{
+								marginTop: "12px",
+								marginLeft: "15px",
+								marginRight: "15px",
+								float: "left",
+								color: "var(--tr-heading, var(--tr-primary))",
+								fontWeight: 800,
+							}}
+							variant="subtitle1"
+							gutterBottom
+						>
 							<div dangerouslySetInnerHTML={{ __html: description.replace('\\n', '<br />') }}></div>
 						</Typography>
 					</div>
