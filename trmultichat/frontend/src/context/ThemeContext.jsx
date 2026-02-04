@@ -19,11 +19,30 @@ const defaultBranding = {
   loginBackgroundType: "image"
 };
 
-const ThemeContext = createContext({ branding: defaultBranding, setBranding: () => {}, refreshBranding: async () => {}, updateBranding: async () => {}, muiTheme: null });
+const ThemeContext = createContext({
+  branding: defaultBranding,
+  setBranding: () => {},
+  refreshBranding: async () => {},
+  updateBranding: async () => {},
+  muiTheme: null,
+  brandingReady: false,
+});
 
 export const ThemeProvider = ({ children }) => {
-  const [branding, setBranding] = useState(defaultBranding);
+  const [branding, setBranding] = useState(() => {
+    try {
+      const cid = Number(localStorage.getItem("companyId") || 0);
+      if (!cid) return defaultBranding;
+      const cached = localStorage.getItem(`tr-branding-cache:${cid}`);
+      if (!cached) return defaultBranding;
+      const parsed = JSON.parse(cached);
+      return { ...defaultBranding, ...(parsed || {}) };
+    } catch {
+      return defaultBranding;
+    }
+  });
   const [muiTheme, setMuiTheme] = useState(createMuiTheme());
+  const [brandingReady, setBrandingReady] = useState(false);
   const parentTheme = useMuiTheme();
 
   const parentMode =
@@ -65,16 +84,32 @@ export const ThemeProvider = ({ children }) => {
 
   const buildMuiTheme = (b) => {
     // Importante: herdar o tema base (inclui dark/light e superfícies).
+    const isDark = String(parentMode || "").toLowerCase() === "dark";
+    const bgDefault =
+      !isDark && b
+        ? (b.backgroundType === "color" ? (b.backgroundColor || defaultBranding.backgroundColor) : (b.backgroundColor || parentTheme?.palette?.background?.default))
+        : (parentTheme?.palette?.background?.default || "#0B1220");
+    const bgPaper =
+      !isDark && b
+        ? (parentTheme?.palette?.background?.paper || "#FFFFFF")
+        : (parentTheme?.palette?.background?.paper || "#0F172A");
     return createMuiTheme(parentTheme || {}, {
       palette: {
         type: parentMode === "dark" ? "dark" : "light",
         primary: { main: b.primaryColor || (parentTheme?.palette?.primary?.main || defaultBranding.primaryColor) },
         secondary: { main: b.secondaryColor || (parentTheme?.palette?.secondary?.main || defaultBranding.secondaryColor) },
+        background: {
+          // aplica o fundo da empresa (modo claro) para refletir em telas que usam theme.palette.background.*
+          default: bgDefault,
+          paper: bgPaper,
+        },
         // não sobrescrever background/text do tema base no dark (evita "quebrar" o modo)
         text: {
           primary: parentMode === "dark" ? (parentTheme?.palette?.text?.primary || "#E5E7EB") : (b.textColor || parentTheme?.palette?.text?.primary || defaultBranding.textColor),
           secondary: parentTheme?.palette?.text?.secondary || (parentMode === "dark" ? "#94A3B8" : "#475569")
-        }
+        },
+        // compat: alguns lugares usam esse token customizado
+        fancyBackground: bgDefault,
       },
       typography: {
         fontFamily: b.fontFamily || parentTheme?.typography?.fontFamily || defaultBranding.fontFamily,
@@ -217,19 +252,25 @@ export const ThemeProvider = ({ children }) => {
       const normalized = {
         ...merged,
         logoUrl: toAbsoluteUrl(merged.logoUrl),
+        faviconUrl: merged.faviconUrl ? toAbsoluteUrl(merged.faviconUrl) : merged.faviconUrl,
         backgroundImage: merged.backgroundImage ? toAbsoluteUrl(merged.backgroundImage) : merged.backgroundImage
       };
+      try {
+        if (cid) localStorage.setItem(`tr-branding-cache:${cid}`, JSON.stringify(normalized));
+      } catch (_) {}
       setBranding(normalized);
       applyBackground(normalized);
       applyCssVars(normalized);
       applyMeta(normalized);
       setMuiTheme(buildMuiTheme(normalized));
+      setBrandingReady(true);
     } catch (_) {
       setBranding(defaultBranding);
       applyBackground(defaultBranding);
       applyCssVars(defaultBranding);
       applyMeta(defaultBranding);
       setMuiTheme(buildMuiTheme(defaultBranding));
+      setBrandingReady(true);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [parentMode]);
@@ -240,13 +281,19 @@ export const ThemeProvider = ({ children }) => {
     const normalized = {
       ...merged,
       logoUrl: toAbsoluteUrl(merged.logoUrl),
+      faviconUrl: merged.faviconUrl ? toAbsoluteUrl(merged.faviconUrl) : merged.faviconUrl,
       backgroundImage: merged.backgroundImage ? toAbsoluteUrl(merged.backgroundImage) : merged.backgroundImage
     };
+    try {
+      const cid = Number(localStorage.getItem("companyId") || 0);
+      if (cid) localStorage.setItem(`tr-branding-cache:${cid}`, JSON.stringify(normalized));
+    } catch (_) {}
     setBranding(normalized);
     applyBackground(normalized);
     applyCssVars(normalized);
     applyMeta(normalized);
     setMuiTheme(buildMuiTheme(normalized));
+    setBrandingReady(true);
     return data;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [parentMode]);
@@ -257,6 +304,22 @@ export const ThemeProvider = ({ children }) => {
 
   useEffect(() => {
     const onAuthUpdated = () => {
+      // aplica cache imediatamente (evita "flash" da logo/cor padrão)
+      try {
+        const cid = Number(localStorage.getItem("companyId") || 0);
+        if (cid) {
+          const cached = localStorage.getItem(`tr-branding-cache:${cid}`);
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            const merged = { ...defaultBranding, ...(parsed || {}) };
+            setBranding(merged);
+            applyBackground(merged);
+            applyCssVars(merged);
+            applyMeta(merged);
+            setMuiTheme(buildMuiTheme(merged));
+          }
+        }
+      } catch (_) {}
       refreshBranding();
     };
     window.addEventListener("tr-auth-updated", onAuthUpdated);
@@ -272,8 +335,8 @@ export const ThemeProvider = ({ children }) => {
   }, [parentMode]);
 
   const value = useMemo(
-    () => ({ branding, setBranding, refreshBranding, updateBranding, muiTheme }),
-    [branding, muiTheme, refreshBranding, updateBranding]
+    () => ({ branding, setBranding, refreshBranding, updateBranding, muiTheme, brandingReady }),
+    [branding, muiTheme, refreshBranding, updateBranding, brandingReady]
   );
   return (
     <ThemeContext.Provider value={value}>

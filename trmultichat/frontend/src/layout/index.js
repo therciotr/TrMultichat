@@ -193,7 +193,7 @@ const LoggedInLayout = ({ children }) => {
   const currentUserId = Number(user?.id || 0);
 
   const theme = useTheme();
-  const { branding } = useThemeBranding();
+  const { branding, brandingReady } = useThemeBranding();
   const { toggleColorMode } = useContext(ColorModeContext);
   const greaterThenSm = useMediaQuery(theme.breakpoints.up("sm"));
 
@@ -565,7 +565,9 @@ const LoggedInLayout = ({ children }) => {
     return <BackdropLoading />;
   }
 
-  const resolvedLogo = branding?.logoUrl || logo;
+  const hasCompany = Boolean(Number(localStorage.getItem("companyId") || 0));
+  // Evita mostrar a logo padrão (TR) em contas de clientes durante o carregamento inicial.
+  const resolvedLogo = branding?.logoUrl || (hasCompany ? "" : logo);
   return (
     <div className={classes.root}>
       <Drawer
@@ -593,7 +595,13 @@ const LoggedInLayout = ({ children }) => {
         }}
       >
         <div className={classes.toolbarIcon}>
-          <img src={resolvedLogo} className={classes.logo} alt="logo" />
+          {resolvedLogo ? (
+            <img src={resolvedLogo} className={classes.logo} alt="logo" />
+          ) : (
+            <div style={{ width: "80%", maxWidth: 180, opacity: brandingReady ? 0.7 : 0.5, fontWeight: 1000, fontSize: 12, paddingLeft: 8 }}>
+              {brandingReady ? (branding?.appTitle || " ") : "Carregando..."}
+            </div>
+          )}
           <IconButton onClick={() => setDrawerOpen(!drawerOpen)}>
             <ChevronLeftIcon />
           </IconButton>

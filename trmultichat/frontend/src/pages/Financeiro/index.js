@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useContext } from "react";
-import { makeStyles } from "@material-ui/core/styles";
+import { makeStyles, useTheme } from "@material-ui/core/styles";
 import { motion } from "framer-motion";
 import {
   Paper,
@@ -56,7 +56,10 @@ const useStyles = makeStyles((theme) => ({
     borderRadius: 12,
     padding: theme.spacing(4),
     color: "#fff",
-    background: "linear-gradient(135deg, #3f51b5 0%, #7c4dff 100%)",
+    background:
+      theme.palette.type === "dark"
+        ? "linear-gradient(135deg, rgba(15,23,42,0.92) 0%, rgba(2,6,23,0.92) 100%)"
+        : `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.secondary.main} 100%)`,
     marginBottom: theme.spacing(3),
   },
   headerTitle: {
@@ -145,6 +148,7 @@ const COLORS = ["#2e7d32", "#0288d1", "#d32f2f"];
 
 const Financeiro = () => {
   const classes = useStyles();
+  const theme = useTheme();
   const { user } = useContext(AuthContext);
   const email = String(user?.email || "").toLowerCase();
   const isMasterEmail = email === "thercio@trtecnologias.com.br";
@@ -214,6 +218,8 @@ const Financeiro = () => {
       return inStatus && inMonth && inCompany && inText;
     });
   }, [invoices, filters, isSuper]);
+
+  const chartPrimary = theme?.palette?.primary?.main || "#3f51b5";
 
   const companyOptions = useMemo(() => {
     if (!isSuper) return [];
@@ -511,7 +517,7 @@ const Financeiro = () => {
                     <XAxis dataKey="month" />
                     <YAxis />
                     <RTooltip formatter={(v) => currencyBRL(v)} />
-                    <Line type="monotone" dataKey="valor" stroke="#3f51b5" strokeWidth={3} dot={false} />
+                    <Line type="monotone" dataKey="valor" stroke={chartPrimary} strokeWidth={3} dot={false} />
                   </LineChart>
                 </ResponsiveContainer>
               </CardContent>

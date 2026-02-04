@@ -11,10 +11,10 @@ import ChatBubbleOutlineIcon from "@material-ui/icons/ChatBubbleOutline";
 import TicketsManagerTabs from "../../components/TicketsManagerTabs/";
 import Ticket from "../../components/Ticket/";
 import TicketAdvancedLayout from "../../components/TicketAdvancedLayout";
-import logo from "../../assets/logo-tr.png"; //PLW DESIGN LOGO//
 import { TicketsContext } from "../../context/Tickets/TicketsContext";
 import TechBackground from "../../components/TechBackground";
 import Typography from "@material-ui/core/Typography";
+import { useThemeBranding } from "../../context/ThemeContext";
 
 import { i18n } from "../../translate/i18n";
 
@@ -30,9 +30,10 @@ const useStyles = makeStyles(theme => ({
         alignItems: "center",
         justifyContent: "center",
         height: "100%",
-		backgroundColor: "#f0f7f6",
-        background:
-            "linear-gradient(135deg, #f0f7f6 0%, #eaf5f3 50%, #f6fbfa 100%)",
+		backgroundColor: "transparent",
+        background: theme.palette.type === "dark"
+            ? "linear-gradient(135deg, rgba(15,23,42,0.92) 0%, rgba(2,6,23,0.92) 60%, rgba(15,23,42,0.88) 100%)"
+            : "linear-gradient(135deg, rgba(var(--tr-primary-rgb, 11,76,70),0.10) 0%, rgba(var(--tr-secondary-rgb, 43,169,165),0.10) 55%, rgba(255,255,255,0.92) 100%)",
         padding: theme.spacing(2),
     },
     placeholderItem: {
@@ -44,6 +45,9 @@ const TicketAdvanced = (props) => {
 	const { ticketId } = useParams();
 	const [option, setOption] = useState(0);
     const { currentTicket, setCurrentTicket } = useContext(TicketsContext)
+    const { branding } = useThemeBranding();
+    const logoSrc = branding?.logoUrl;
+    const title = branding?.appTitle || "TR Multichat";
 
     useEffect(() => {
         if(currentTicket.id !== null) {
@@ -68,7 +72,13 @@ const TicketAdvanced = (props) => {
 		return <Box className={classes.placeholderContainer}>
             <TechBackground>
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
-                    <img style={{ width: "min(360px, 75%)", height: "auto" }} src={logo} alt="logologin" />
+                    {logoSrc ? (
+                        <img style={{ width: "min(360px, 75%)", height: "auto" }} src={logoSrc} alt={title} />
+                    ) : (
+                        <div style={{ fontWeight: 1000, fontSize: 22, color: "rgba(15,23,42,0.55)" }}>
+                            {title}
+                        </div>
+                    )}
                     <Typography style={{ maxWidth: 420, color: "rgba(15, 23, 42, 0.65)", fontSize: 14, lineHeight: 1.5 }}>
                         {i18n.t("chat.noTicketMessage")}
                     </Typography>

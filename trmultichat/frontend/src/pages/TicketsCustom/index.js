@@ -6,10 +6,10 @@ import { makeStyles } from "@material-ui/core/styles";
 
 import TicketsManager from "../../components/TicketsManagerTabs/";
 import Ticket from "../../components/Ticket/";
-import logo from "../../assets/logo-tr.png"; //PLW DESIGN LOGO//
 import { i18n } from "../../translate/i18n";
 import TechBackground from "../../components/TechBackground";
 import Typography from "@material-ui/core/Typography";
+import { useThemeBranding } from "../../context/ThemeContext";
 
 const useStyles = makeStyles((theme) => {
   const isDark = theme.palette.type === "dark";
@@ -18,7 +18,8 @@ const useStyles = makeStyles((theme) => {
   return ({
 	chatContainer: {
 		flex: 1,
-		backgroundColor: theme.palette.background.default,
+		// deixa o fundo do body (branding) aparecer por trás
+		backgroundColor: "transparent",
 		padding: theme.spacing(2),
 		height: `calc(100% - 48px)`,
 		overflowY: "hidden",
@@ -54,7 +55,7 @@ const useStyles = makeStyles((theme) => {
 		padding: theme.spacing(3),
 		background: isDark
 			? "linear-gradient(135deg, rgba(15,23,42,0.92) 0%, rgba(2,6,23,0.92) 60%, rgba(15,23,42,0.88) 100%)"
-			: "linear-gradient(135deg, #f0f7f6 0%, #eaf5f3 50%, #f6fbfa 100%)",
+			: "linear-gradient(135deg, rgba(var(--tr-primary-rgb, 11,76,70),0.10) 0%, rgba(var(--tr-secondary-rgb, 43,169,165),0.10) 55%, rgba(255,255,255,0.92) 100%)",
 	},
 	logoWrap: {
 		display: "flex",
@@ -79,6 +80,9 @@ const useStyles = makeStyles((theme) => {
 const TicketsCustom = () => {
 	const classes = useStyles();
 	const { ticketId } = useParams();
+  const { branding } = useThemeBranding();
+  const logoSrc = branding?.logoUrl;
+  const title = branding?.appTitle || "TR Multichat";
 
 	return (
 		<div className={classes.chatContainer}>
@@ -96,7 +100,13 @@ const TicketsCustom = () => {
 							<Paper square elevation={0} className={classes.welcomeMsg}>
 								<TechBackground>
 									<div className={classes.logoWrap}>
-										<img className={classes.logoImg} src={logo} alt="logologin" />
+										{logoSrc ? (
+											<img className={classes.logoImg} src={logoSrc} alt={title} />
+										) : (
+											<div style={{ fontWeight: 1000, fontSize: 22, color: "rgba(15,23,42,0.55)" }}>
+												{title}
+											</div>
+										)}
 										<Typography className={classes.helperText}>
 											{i18n.t("chat.noTicketMessage")}
 										</Typography>

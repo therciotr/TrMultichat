@@ -180,10 +180,19 @@ const useStyles = makeStyles((theme) => ({
     background: theme.palette.background.default,
   },
   logoPreview: {
-    height: 26,
+    height: 44,
     width: "auto",
     objectFit: "contain",
     filter: "drop-shadow(0 4px 10px rgba(0,0,0,0.18))",
+  },
+  logoPreviewBox: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    padding: theme.spacing(1, 1.25),
+    borderRadius: 14,
+    border: `1px solid ${theme.palette.divider}`,
+    background: theme.palette.type === "dark" ? "rgba(15,23,42,0.55)" : "rgba(15,23,42,0.03)",
   },
   actions: {
     display: "flex",
@@ -235,6 +244,18 @@ const normalizeBranding = (b) => ({
   sidebarVariant: b?.sidebarVariant || "gradient",
   loginBackgroundType: b?.loginBackgroundType || "image",
 });
+
+function toAbsoluteUrlFromApi(url) {
+  try {
+    if (!url) return url;
+    if (/^https?:\/\//i.test(url)) return url;
+    const base = String(api?.defaults?.baseURL || "").replace(/\/+$/, "");
+    const p = String(url).startsWith("/") ? url : `/${url}`;
+    return base ? `${base}${p}` : url;
+  } catch {
+    return url;
+  }
+}
 
 function normalizeHex(hex) {
   const h = String(hex || "").trim();
@@ -723,10 +744,41 @@ export default function BrandingSettings({ currentUser }) {
 
                   {(form.logoUrl || form.faviconUrl) && (
                     <Grid item xs={12}>
-                      <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-                        {form.logoUrl ? <img alt="logo" src={form.logoUrl} className={classes.logoPreview} /> : null}
-                        {form.faviconUrl ? (
-                          <div style={{ fontSize: 12, opacity: 0.78, wordBreak: "break-word" }}>{String(form.faviconUrl)}</div>
+                      <div className={classes.logoPreviewBox}>
+                        {form.logoUrl ? (
+                          <>
+                            <img
+                              alt="logo"
+                              src={toAbsoluteUrlFromApi(form.logoUrl)}
+                              className={classes.logoPreview}
+                            />
+                            <div style={{ minWidth: 0, flex: 1 }}>
+                              <div style={{ fontWeight: 1000, fontSize: 12, marginBottom: 2 }}>
+                                Logo carregada
+                              </div>
+                              <div style={{ fontSize: 12, opacity: 0.78, wordBreak: "break-word" }}>
+                                {String(form.logoUrl)}
+                              </div>
+                            </div>
+                            <TrButton
+                              variant="outlined"
+                              size="small"
+                              onClick={() =>
+                                window.open(
+                                  toAbsoluteUrlFromApi(form.logoUrl),
+                                  "_blank",
+                                  "noopener,noreferrer"
+                                )
+                              }
+                            >
+                              Abrir
+                            </TrButton>
+                          </>
+                        ) : null}
+                        {form.faviconUrl && !form.logoUrl ? (
+                          <div style={{ fontSize: 12, opacity: 0.78, wordBreak: "break-word" }}>
+                            {String(form.faviconUrl)}
+                          </div>
                         ) : null}
                       </div>
                     </Grid>
