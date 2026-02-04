@@ -47,20 +47,20 @@ const useStyles = makeStyles((theme) => ({
     border: `1px solid ${theme.palette.divider}`,
     boxShadow: theme.palette.type === "dark" ? "0 18px 46px rgba(0,0,0,0.45)" : "0 10px 28px rgba(15, 23, 42, 0.06)",
     background: theme.palette.type === "dark"
-      ? "linear-gradient(135deg, rgba(14,116,144,0.18), rgba(59,130,246,0.12) 55%, rgba(15,23,42,0.92))"
-      : "linear-gradient(135deg, rgba(14, 116, 144, 0.14), rgba(59, 130, 246, 0.08) 55%, rgba(255,255,255,0.95))",
+      ? "linear-gradient(135deg, rgba(var(--tr-heading-rgb, 11, 76, 70), 0.22), rgba(var(--tr-secondary-rgb, 43, 169, 165), 0.14) 55%, rgba(15,23,42,0.92))"
+      : "linear-gradient(135deg, rgba(var(--tr-heading-rgb, 11, 76, 70), 0.16), rgba(var(--tr-secondary-rgb, 43, 169, 165), 0.10) 55%, rgba(255,255,255,0.95))",
   },
   heroTitle: {
     fontSize: 18,
     fontWeight: 900,
     margin: 0,
-    color: theme.palette.text.primary,
+    color: "var(--tr-heading, var(--tr-primary))",
   },
   heroSub: {
     marginTop: 4,
     marginBottom: 0,
     fontSize: 13,
-    color: theme.palette.text.secondary,
+    color: "var(--tr-muted, rgba(15,23,42,0.65))",
   },
   filtersCard: {
     padding: theme.spacing(2),
@@ -98,8 +98,8 @@ const useStyles = makeStyles((theme) => ({
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
-    background: "rgba(59, 130, 246, 0.12)",
-    color: "rgba(14, 116, 144, 1)",
+    background: "rgba(var(--tr-heading-rgb, 11, 76, 70), 0.12)",
+    color: "var(--tr-heading, var(--tr-primary))",
   },
   tableCard: {
     borderRadius: 16,

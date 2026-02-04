@@ -56,8 +56,8 @@ const useStyles = makeStyles((theme) => {
     border,
     boxShadow: softShadow,
     background: isDark
-      ? "linear-gradient(135deg, rgba(59, 130, 246, 0.10), rgba(16, 185, 129, 0.08) 52%, rgba(15,23,42,0.88))"
-      : "linear-gradient(135deg, rgba(59, 130, 246, 0.10), rgba(16, 185, 129, 0.08) 52%, rgba(255,255,255,0.96))",
+      ? "linear-gradient(135deg, rgba(var(--tr-heading-rgb, 11, 76, 70), 0.18), rgba(var(--tr-secondary-rgb, 43, 169, 165), 0.12) 52%, rgba(15,23,42,0.88))"
+      : "linear-gradient(135deg, rgba(var(--tr-heading-rgb, 11, 76, 70), 0.14), rgba(var(--tr-secondary-rgb, 43, 169, 165), 0.10) 52%, rgba(255,255,255,0.96))",
     padding: theme.spacing(2),
     margin: theme.spacing(2, 2, 1.5, 2),
   },
@@ -73,22 +73,22 @@ const useStyles = makeStyles((theme) => {
     borderRadius: 14,
     display: "grid",
     placeItems: "center",
-    background: "rgba(59, 130, 246, 0.12)",
-    border: "1px solid rgba(59, 130, 246, 0.16)",
-    color: "rgba(14, 116, 144, 1)",
+    background: "rgba(var(--tr-heading-rgb, 11, 76, 70), 0.12)",
+    border: "1px solid rgba(var(--tr-heading-rgb, 11, 76, 70), 0.16)",
+    color: "var(--tr-heading, var(--tr-primary))",
     flexShrink: 0,
   },
   heroTitle: {
     fontSize: 16,
     fontWeight: 1000,
     margin: 0,
-    color: theme.palette.text.primary,
+    color: "var(--tr-heading, var(--tr-primary))",
   },
   heroSub: {
     marginTop: 4,
     marginBottom: 0,
     fontSize: 13,
-    color: theme.palette.text.secondary,
+    color: "var(--tr-muted, rgba(15,23,42,0.65))",
   },
   card: {
     borderRadius: 18,
@@ -140,7 +140,7 @@ const useStyles = makeStyles((theme) => {
       "--fc-border-color": theme.palette.divider,
       "--fc-page-bg-color": theme.palette.background.paper,
       "--fc-neutral-bg-color": isDark ? "rgba(148,163,184,0.08)" : "rgba(15,23,42,0.03)",
-      "--fc-today-bg-color": isDark ? "rgba(59,130,246,0.14)" : "rgba(59,130,246,0.08)",
+      "--fc-today-bg-color": isDark ? "rgba(var(--tr-heading-rgb, 11, 76, 70), 0.14)" : "rgba(var(--tr-heading-rgb, 11, 76, 70), 0.08)",
       "--fc-list-event-hover-bg-color": isDark ? "rgba(148,163,184,0.10)" : "rgba(15,23,42,0.03)",
       color: theme.palette.text.primary,
     },
@@ -166,8 +166,8 @@ const useStyles = makeStyles((theme) => {
     borderRadius: 14,
     display: "grid",
     placeItems: "center",
-    background: "rgba(59, 130, 246, 0.12)",
-    border: "1px solid rgba(59, 130, 246, 0.16)",
+    background: "rgba(var(--tr-heading-rgb, 11, 76, 70), 0.12)",
+    border: "1px solid rgba(var(--tr-heading-rgb, 11, 76, 70), 0.16)",
   },
   field: {
     "& .MuiOutlinedInput-root": {
@@ -574,7 +574,7 @@ export default function Agenda() {
               icon={<ViewModuleOutlinedIcon />}
               label={`Mês`}
               onClick={() => setView("dayGridMonth")}
-              style={{ background: view === "dayGridMonth" ? "rgba(59,130,246,0.14)" : undefined }}
+              style={{ background: view === "dayGridMonth" ? "rgba(var(--tr-heading-rgb, 11, 76, 70), 0.14)" : undefined }}
             />
             <Chip
               className={classes.viewChip}
@@ -583,7 +583,7 @@ export default function Agenda() {
               icon={<ViewWeekOutlinedIcon />}
               label={`Semana`}
               onClick={() => setView("timeGridWeek")}
-              style={{ background: view === "timeGridWeek" ? "rgba(59,130,246,0.14)" : undefined }}
+              style={{ background: view === "timeGridWeek" ? "rgba(var(--tr-heading-rgb, 11, 76, 70), 0.14)" : undefined }}
             />
             <Chip
               className={classes.viewChip}
@@ -592,7 +592,7 @@ export default function Agenda() {
               icon={<EventOutlinedIcon />}
               label={`Dia`}
               onClick={() => setView("timeGridDay")}
-              style={{ background: view === "timeGridDay" ? "rgba(59,130,246,0.14)" : undefined }}
+              style={{ background: view === "timeGridDay" ? "rgba(var(--tr-heading-rgb, 11, 76, 70), 0.14)" : undefined }}
             />
             <Chip
               className={classes.viewChip}
@@ -601,7 +601,7 @@ export default function Agenda() {
               icon={<ListAltOutlinedIcon />}
               label={`Agenda`}
               onClick={() => setView("listWeek")}
-              style={{ background: view === "listWeek" ? "rgba(59,130,246,0.14)" : undefined }}
+              style={{ background: view === "listWeek" ? "rgba(var(--tr-heading-rgb, 11, 76, 70), 0.14)" : undefined }}
             />
 
             <TrButton variant="outlined" startIcon={<AddOutlinedIcon />} onClick={() => openCreate()}>

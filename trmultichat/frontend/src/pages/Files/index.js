@@ -91,8 +91,8 @@ const useStyles = makeStyles((theme) => {
         border,
         boxShadow: softShadow,
         background: isDark
-            ? "linear-gradient(135deg, rgba(59, 130, 246, 0.10), rgba(16, 185, 129, 0.08) 52%, rgba(15,23,42,0.88))"
-            : "linear-gradient(135deg, rgba(59, 130, 246, 0.10), rgba(16, 185, 129, 0.08) 52%, rgba(255,255,255,0.96))",
+            ? "linear-gradient(135deg, rgba(var(--tr-heading-rgb, 11, 76, 70), 0.18), rgba(var(--tr-secondary-rgb, 43, 169, 165), 0.12) 52%, rgba(15,23,42,0.88))"
+            : "linear-gradient(135deg, rgba(var(--tr-heading-rgb, 11, 76, 70), 0.14), rgba(var(--tr-secondary-rgb, 43, 169, 165), 0.10) 52%, rgba(255,255,255,0.96))",
         padding: theme.spacing(2),
         marginBottom: theme.spacing(2),
     },
@@ -108,22 +108,22 @@ const useStyles = makeStyles((theme) => {
         borderRadius: 14,
         display: "grid",
         placeItems: "center",
-        background: "rgba(59, 130, 246, 0.12)",
-        border: "1px solid rgba(59, 130, 246, 0.16)",
-        color: "rgba(14, 116, 144, 1)",
+        background: "rgba(var(--tr-heading-rgb, 11, 76, 70), 0.12)",
+        border: "1px solid rgba(var(--tr-heading-rgb, 11, 76, 70), 0.16)",
+        color: "var(--tr-heading, var(--tr-primary))",
         flexShrink: 0,
     },
     heroTitle: {
         fontSize: 16,
         fontWeight: 1000,
         margin: 0,
-        color: theme.palette.text.primary,
+        color: "var(--tr-heading, var(--tr-primary))",
     },
     heroSub: {
         marginTop: 4,
         marginBottom: 0,
         fontSize: 13,
-        color: theme.palette.text.secondary,
+        color: "var(--tr-muted, rgba(15,23,42,0.65))",
     },
     mainPaper: {
         flex: 1,
@@ -162,8 +162,8 @@ const useStyles = makeStyles((theme) => {
         borderRadius: 12,
         display: "grid",
         placeItems: "center",
-        background: "rgba(59, 130, 246, 0.10)",
-        color: "rgba(30, 64, 175, 0.95)",
+        background: "rgba(var(--tr-heading-rgb, 11, 76, 70), 0.10)",
+        color: "var(--tr-heading, var(--tr-primary))",
         flex: "0 0 auto",
     },
     hintText: {
@@ -178,8 +178,8 @@ const useStyles = makeStyles((theme) => {
         boxShadow: isDark ? "0 1px 2px rgba(0,0,0,0.45)" : "0 1px 2px rgba(15, 23, 42, 0.06)",
         background:
             isDark
-                ? "linear-gradient(180deg, rgba(59, 130, 246, 0.10), rgba(15,23,42,0.92) 42%)"
-                : "linear-gradient(180deg, rgba(59, 130, 246, 0.05), rgba(255,255,255,1) 42%)",
+                ? "linear-gradient(180deg, rgba(var(--tr-heading-rgb, 11, 76, 70), 0.12), rgba(15,23,42,0.92) 42%)"
+                : "linear-gradient(180deg, rgba(var(--tr-heading-rgb, 11, 76, 70), 0.06), rgba(255,255,255,1) 42%)",
         transition: "box-shadow 150ms ease, transform 150ms ease, border-color 150ms ease",
         padding: theme.spacing(2),
         display: "flex",
@@ -211,8 +211,8 @@ const useStyles = makeStyles((theme) => {
         borderRadius: 12,
         display: "grid",
         placeItems: "center",
-        backgroundColor: "rgba(59, 130, 246, 0.10)",
-        color: "rgba(30, 64, 175, 0.95)",
+        backgroundColor: "rgba(var(--tr-heading-rgb, 11, 76, 70), 0.10)",
+        color: "var(--tr-heading, var(--tr-primary))",
         flex: "none",
     },
     cardTitle: {
