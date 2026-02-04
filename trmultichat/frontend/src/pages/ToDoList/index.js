@@ -52,18 +52,18 @@ const useStyles = makeStyles((theme) => {
     borderRadius: 14,
     display: "grid",
     placeItems: "center",
-    backgroundColor: "rgba(16, 185, 129, 0.12)",
-    color: "rgba(5, 150, 105, 0.95)",
+    backgroundColor: "rgba(var(--tr-heading-rgb, 11, 76, 70), 0.12)",
+    color: "var(--tr-heading, var(--tr-primary))",
     flex: "none",
   },
   title: {
     fontWeight: 900,
     letterSpacing: 0,
-    color: theme.palette.text.primary,
+    color: "var(--tr-heading, var(--tr-primary))",
   },
   subtitle: {
     marginTop: 2,
-    color: theme.palette.text.secondary,
+    color: "var(--tr-muted, rgba(15,23,42,0.65))",
     fontSize: 13,
   },
   inputRow: {
