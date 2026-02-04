@@ -1,5 +1,5 @@
 import React, { useContext, useEffect, useReducer, useState } from "react";
-import { Link as RouterLink, useHistory } from "react-router-dom";
+import { Link as RouterLink, useHistory, useLocation } from "react-router-dom";
 
 import ListItem from "@material-ui/core/ListItem";
 import ListItemIcon from "@material-ui/core/ListItemIcon";
@@ -45,6 +45,27 @@ import { AllInclusive, AttachFile, BlurCircular, DeviceHubOutlined, Schedule } f
 import usePlans from "../hooks/usePlans";
 
 const useStyles = makeStyles((theme) => ({
+  root: {
+    "& .MuiListItemIcon-root": {
+      minWidth: 38,
+      color: "var(--tr-menu-icon)",
+    },
+    "& .MuiListItemText-primary": {
+      color: "rgba(255,255,255,0.92)",
+      fontWeight: 800,
+      fontSize: 13,
+      letterSpacing: 0.1,
+    },
+    "& .MuiListItem-root:hover": {
+      background: "rgba(255,255,255,0.10)",
+    },
+    "& .MuiListItem-root.Mui-selected, & .MuiListItem-root.Mui-selected:hover": {
+      background: "rgba(255,255,255,0.14)",
+    },
+    "& .MuiListItem-root.Mui-selected .MuiListItemIcon-root": {
+      color: "var(--tr-menu-icon-active)",
+    },
+  },
   ListSubheader: {
     height: 26,
     marginTop: "-15px",
@@ -55,6 +76,11 @@ const useStyles = makeStyles((theme) => ({
 
 function ListItemLink(props) {
   const { icon, primary, to, className } = props;
+  const location = useLocation();
+  const selected =
+    to === "/"
+      ? String(location?.pathname || "") === "/"
+      : String(location?.pathname || "").startsWith(String(to || ""));
 
   const renderLink = React.useMemo(
     () =>
@@ -66,7 +92,7 @@ function ListItemLink(props) {
 
   return (
     <li>
-      <ListItem button dense component={renderLink} className={className}>
+      <ListItem button dense component={renderLink} className={className} selected={selected}>
         {icon ? <ListItemIcon>{icon}</ListItemIcon> : null}
         <ListItemText primary={primary} />
       </ListItem>
@@ -279,7 +305,7 @@ const MainListItems = (props) => {
   };
 
   return (
-    <div onClick={drawerClose}>
+    <div onClick={drawerClose} className={classes.root}>
       <Can
         role={user?.profile || "user"}
         perform={"drawer-service-items:view"}

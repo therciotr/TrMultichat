@@ -26,6 +26,8 @@ type Branding = {
   borderRadius?: number;
   sidebarVariant?: "solid" | "gradient";
   loginBackgroundType?: "color" | "image";
+  menuIconColor?: string;
+  menuIconActiveColor?: string;
 };
 
 const router = Router();
@@ -54,7 +56,9 @@ function defaultBranding(): Branding {
     fontFamily: "Inter, sans-serif",
     borderRadius: 12,
     sidebarVariant: "gradient",
-    loginBackgroundType: "image"
+    loginBackgroundType: "image",
+    menuIconColor: "#FFFFFF",
+    menuIconActiveColor: "#FFFFFF",
   };
 }
 

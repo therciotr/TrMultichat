@@ -243,6 +243,8 @@ const normalizeBranding = (b) => ({
   borderRadius: Number(b?.borderRadius ?? 12),
   sidebarVariant: b?.sidebarVariant || "gradient",
   loginBackgroundType: b?.loginBackgroundType || "image",
+  menuIconColor: b?.menuIconColor || "#FFFFFF",
+  menuIconActiveColor: b?.menuIconActiveColor || b?.menuIconColor || "#FFFFFF",
 });
 
 function toAbsoluteUrlFromApi(url) {
@@ -1027,6 +1029,33 @@ export default function BrandingSettings({ currentUser }) {
                       onChange={setFormKey("backgroundColor", normalizeHex)}
                     />
                   )}
+                </Grid>
+
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    className={classes.field}
+                    type="color"
+                    label="Ícones do menu (normal)"
+                    fullWidth
+                    variant="outlined"
+                    size="small"
+                    value={form.menuIconColor}
+                    onChange={setFormKey("menuIconColor", normalizeHex)}
+                    helperText="Cor padrão dos ícones no menu lateral."
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    className={classes.field}
+                    type="color"
+                    label="Ícones do menu (ativo)"
+                    fullWidth
+                    variant="outlined"
+                    size="small"
+                    value={form.menuIconActiveColor}
+                    onChange={setFormKey("menuIconActiveColor", normalizeHex)}
+                    helperText="Cor do ícone do item selecionado."
+                  />
                 </Grid>
 
                 <Grid item xs={12} sm={6}>

@@ -16,7 +16,9 @@ const defaultBranding = {
   fontFamily: "Inter, sans-serif",
   borderRadius: 12,
   sidebarVariant: "gradient",
-  loginBackgroundType: "image"
+  loginBackgroundType: "image",
+  menuIconColor: "#FFFFFF",
+  menuIconActiveColor: "#FFFFFF",
 };
 
 const ThemeContext = createContext({
@@ -82,6 +84,29 @@ export const ThemeProvider = ({ children }) => {
     }
   };
 
+  const rgbToHex = ({ r, g, b }) => {
+    const toHex = (n) => Number(n).toString(16).padStart(2, "0");
+    return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+  };
+
+  const mixHex = (a, b, t = 0.5) => {
+    const ra = hexToRgb(a);
+    const rb = hexToRgb(b);
+    if (!ra || !rb) return a || b;
+    const clamp = (n) => Math.max(0, Math.min(255, Math.round(n)));
+    const r = clamp(ra.r + (rb.r - ra.r) * t);
+    const g = clamp(ra.g + (rb.g - ra.g) * t);
+    const bl = clamp(ra.b + (rb.b - ra.b) * t);
+    return rgbToHex({ r, g, b: bl });
+  };
+
+  const toRgba = (hex, alpha = 1) => {
+    const rgb = hexToRgb(hex);
+    if (!rgb) return hex;
+    const a = Math.max(0, Math.min(1, Number(alpha)));
+    return `rgba(${rgb.r},${rgb.g},${rgb.b},${a})`;
+  };
+
   const buildMuiTheme = (b) => {
     // Importante: herdar o tema base (inclui dark/light e superfícies).
     const isDark = String(parentMode || "").toLowerCase() === "dark";
@@ -89,9 +114,13 @@ export const ThemeProvider = ({ children }) => {
       !isDark && b
         ? (b.backgroundType === "color" ? (b.backgroundColor || defaultBranding.backgroundColor) : (b.backgroundColor || parentTheme?.palette?.background?.default))
         : (parentTheme?.palette?.background?.default || "#0B1220");
+    const paperBaseHex =
+      !isDark && b && String(b.backgroundType || "color") === "color"
+        ? mixHex(bgDefault, "#FFFFFF", 0.88)
+        : (parentTheme?.palette?.background?.paper || "#FFFFFF");
     const bgPaper =
-      !isDark && b
-        ? (parentTheme?.palette?.background?.paper || "#FFFFFF")
+      !isDark
+        ? toRgba(paperBaseHex, 0.86)
         : (parentTheme?.palette?.background?.paper || "#0F172A");
     return createMuiTheme(parentTheme || {}, {
       palette: {
@@ -115,6 +144,14 @@ export const ThemeProvider = ({ children }) => {
         fontFamily: b.fontFamily || parentTheme?.typography?.fontFamily || defaultBranding.fontFamily,
       },
       overrides: {
+        MuiPaper: {
+          root: {
+            backgroundColor: bgPaper,
+            backdropFilter: !isDark ? "blur(14px)" : "none",
+            WebkitBackdropFilter: !isDark ? "blur(14px)" : "none",
+            border: isDark ? "1px solid rgba(148,163,184,0.16)" : "1px solid rgba(15,23,42,0.08)",
+          },
+        },
         MuiButton: {
           root: { borderRadius: 8, textTransform: 'none' },
           containedPrimary: {
@@ -135,7 +172,9 @@ export const ThemeProvider = ({ children }) => {
           root: {
             borderRadius: 12,
             border: `1px solid ${b.primaryColor}20`,
-            backgroundColor: parentTheme?.palette?.background?.paper
+            backgroundColor: bgPaper,
+            backdropFilter: !isDark ? "blur(14px)" : "none",
+            WebkitBackdropFilter: !isDark ? "blur(14px)" : "none",
           }
         },
         MuiChip: { colorPrimary: { backgroundColor: b.secondaryColor, color: '#fff' } },
@@ -192,10 +231,22 @@ export const ThemeProvider = ({ children }) => {
       if (pr) root.style.setProperty("--tr-primary-rgb", `${pr.r},${pr.g},${pr.b}`);
       if (sr) root.style.setProperty("--tr-secondary-rgb", `${sr.r},${sr.g},${sr.b}`);
       // tokens premium de superfície
-      root.style.setProperty("--tr-surface", isDark ? "#0F172A" : "#FFFFFF");
-      root.style.setProperty("--tr-surface2", isDark ? "rgba(15,23,42,0.92)" : "rgba(15,23,42,0.03)");
+      const surfaceBase = !isDark && String(b.backgroundType || "color") === "color"
+        ? mixHex(b.backgroundColor || defaultBranding.backgroundColor, "#FFFFFF", 0.88)
+        : "#FFFFFF";
+      root.style.setProperty("--tr-surface", isDark ? "#0F172A" : toRgba(surfaceBase, 0.86));
+      root.style.setProperty(
+        "--tr-surface2",
+        isDark ? "rgba(15,23,42,0.92)" : toRgba(surfaceBase, 0.60)
+      );
       root.style.setProperty("--tr-border", isDark ? "rgba(148,163,184,0.18)" : "rgba(15,23,42,0.10)");
       root.style.setProperty("--tr-muted", isDark ? "rgba(148,163,184,0.85)" : "rgba(15,23,42,0.65)");
+
+      // Menu icons (sidebar)
+      const iconBase = b.menuIconColor || "#FFFFFF";
+      const iconActiveBase = b.menuIconActiveColor || b.menuIconColor || "#FFFFFF";
+      root.style.setProperty("--tr-menu-icon", toRgba(iconBase, 0.88));
+      root.style.setProperty("--tr-menu-icon-active", toRgba(iconActiveBase, 1));
     } catch (_) {}
   };
 
