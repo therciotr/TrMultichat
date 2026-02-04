@@ -235,6 +235,9 @@ const LoggedInLayout = ({ children }) => {
         if (now - last < msLimit) return;
         didIdleLogoutRef.current = true;
         try {
+          localStorage.setItem("tr-idle-logout", String(Date.now()));
+        } catch (_) {}
+        try {
           toast.info("Sessão encerrada por inatividade.");
         } catch (_) {}
         // Preferir logout padrão, mas garantir fallback caso falhe (API /auth/logout pode falhar)
@@ -371,20 +374,75 @@ const LoggedInLayout = ({ children }) => {
     }
 
     const onActivity = () => {
-      lastActivityAtRef.current = Date.now();
+      // throttle to avoid excessive writes on mousemove
+      const now = Date.now();
+      const last = Number(lastActivityAtRef.current || 0);
+      if (now - last < 800) return;
+      lastActivityAtRef.current = now;
       didIdleLogoutRef.current = false;
     };
-    const events = ["mousemove", "mousedown", "keydown", "touchstart"];
-    events.forEach((ev) => window.addEventListener(ev, onActivity, { passive: true }));
+
+    const activityEvents = [
+      "mousemove",
+      "mousedown",
+      "keydown",
+      "touchstart",
+      "touchmove",
+      "wheel",
+      "scroll",
+      "pointerdown",
+    ];
+    activityEvents.forEach((ev) =>
+      window.addEventListener(ev, onActivity, { passive: true })
+    );
+
+    // Cross-tab: if any tab logs out by idle, all tabs follow.
+    const onStorage = (e) => {
+      try {
+        if (!e) return;
+        if (String(e.key || "") !== "tr-idle-logout") return;
+        if (String(window.location.pathname || "").startsWith("/login")) return;
+        didIdleLogoutRef.current = true;
+        if (typeof handleLogout === "function") {
+          handleLogout();
+        } else {
+          try {
+            localStorage.removeItem("token");
+            localStorage.removeItem("refreshToken");
+            localStorage.removeItem("companyId");
+            localStorage.removeItem("userId");
+            localStorage.removeItem("cshow");
+          } catch (_) {}
+          try {
+            window.location.href = "/login";
+          } catch (_) {}
+        }
+      } catch (_) {}
+    };
+    window.addEventListener("storage", onStorage);
+
+    // When user returns to the app (focus/visible), count as activity.
+    // Leaving the app (blur/hidden) does not reset the timer, so it still counts as inactivity.
+    const onFocus = () => onActivity();
+    const onVisibility = () => {
+      try {
+        if (!document.hidden) onActivity();
+      } catch (_) {}
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
 
     // Start watcher immediately
     startIdleWatch({ enabled, minutes });
 
     return () => {
-      events.forEach((ev) => window.removeEventListener(ev, onActivity));
+      activityEvents.forEach((ev) => window.removeEventListener(ev, onActivity));
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
       clearIdleTimer();
     };
-  }, [idleEnabled, idleMinutes, startIdleWatch, clearIdleTimer]);
+  }, [idleEnabled, idleMinutes, startIdleWatch, clearIdleTimer, handleLogout]);
 
   useEffect(() => {
     if (document.body.offsetWidth < 600) {

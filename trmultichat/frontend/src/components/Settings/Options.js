@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useContext } from "react";
 
 import Grid from "@material-ui/core/Grid";
 import MenuItem from "@material-ui/core/MenuItem";
@@ -30,6 +30,7 @@ import EmojiObjectsIcon from "@material-ui/icons/EmojiObjects";
 import CodeIcon from "@material-ui/icons/Code";
 import PlayArrowIcon from "@material-ui/icons/PlayArrow";
 import AccessTimeOutlinedIcon from "@material-ui/icons/AccessTimeOutlined";
+import { AuthContext } from "../../context/Auth/AuthContext";
 
 //import 'react-toastify/dist/ReactToastify.css';
  
@@ -143,6 +144,12 @@ const useStyles = makeStyles((theme) => ({
 export default function Options(props) {
   const { settings, scheduleTypeChanged } = props;
   const classes = useStyles();
+  const { user: loggedInUser } = useContext(AuthContext);
+  const canEditSecurity =
+    Boolean(loggedInUser?.admin) ||
+    Boolean(loggedInUser?.super) ||
+    String(loggedInUser?.profile || "").toLowerCase() === "admin" ||
+    String(loggedInUser?.profile || "").toLowerCase() === "super";
   const [userRating, setUserRating] = useState("disabled");
   const [scheduleType, setScheduleType] = useState("disabled");
   const [callType, setCallType] = useState("enabled");
@@ -611,12 +618,14 @@ export default function Options(props) {
                       checked={Boolean(idleLogoutEnabled)}
                       onChange={(e) => setIdleLogoutEnabled(Boolean(e.target.checked))}
                       color="primary"
+                      disabled={!canEditSecurity}
                     />
                   }
                   label="Logout por inatividade"
                 />
                 <FormHelperText>
-                  Quando ligado, o sistema encerra a sessão se não houver atividade (mouse/teclado).
+                  Quando ligado, o sistema encerra a sessão se não houver atividade (mouse/teclado/aba).
+                  {!canEditSecurity ? " Apenas administradores podem alterar esta configuração." : ""}
                 </FormHelperText>
               </div>
             </Grid>
@@ -629,7 +638,7 @@ export default function Options(props) {
                   </div>
                   <TextField
                     className={classes.field}
-                    disabled={!idleLogoutEnabled}
+                    disabled={!idleLogoutEnabled || !canEditSecurity}
                     variant="outlined"
                     size="small"
                     value={Number(idleLogoutMinutes || 0)}
@@ -651,7 +660,7 @@ export default function Options(props) {
                     min={1}
                     max={240}
                     step={1}
-                    disabled={!idleLogoutEnabled}
+                    disabled={!idleLogoutEnabled || !canEditSecurity}
                     valueLabelDisplay="auto"
                     marks={[
                       { value: 5, label: "5" },

@@ -628,6 +628,18 @@ router.put("/:key", async (req, res) => {
   const value = String((req.body && req.body.value) ?? "");
   const tenantId = extractTenantIdFromAuth(req.headers.authorization as string) || 1;
   try {
+    // Restrict security-sensitive keys to admins
+    if (key === "idleLogoutEnabled" || key === "idleLogoutMinutes") {
+      const auth = req.headers.authorization as string;
+      const adminCheck = await ensureAdminFromAuth(auth);
+      if (!adminCheck.ok) {
+        const err = adminCheck as any;
+        return res
+          .status(Number(err.status || 403))
+          .json({ error: true, message: String(err.message || "forbidden") });
+      }
+    }
+
     ensureLegacyDbBooted();
     const Setting = getLegacyModel("Setting");
     if (Setting && typeof Setting.findOne === "function") {
