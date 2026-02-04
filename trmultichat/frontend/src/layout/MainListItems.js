@@ -84,6 +84,9 @@ function ListItemLink(props) {
     to === "/"
       ? String(location?.pathname || "") === "/"
       : String(location?.pathname || "").startsWith(String(to || ""));
+  const iconColor = selected
+    ? "var(--tr-menu-icon-active, #FFFFFF)"
+    : "var(--tr-menu-icon, rgba(255,255,255,0.88))";
 
   const renderLink = React.useMemo(
     () =>
@@ -96,7 +99,7 @@ function ListItemLink(props) {
   return (
     <li>
       <ListItem button dense component={renderLink} className={className} selected={selected}>
-        {icon ? <ListItemIcon>{icon}</ListItemIcon> : null}
+        {icon ? <ListItemIcon style={{ color: iconColor }}>{icon}</ListItemIcon> : null}
         <ListItemText primary={primary} />
       </ListItem>
     </li>
