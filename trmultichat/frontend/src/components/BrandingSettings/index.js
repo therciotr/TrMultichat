@@ -992,11 +992,11 @@ export default function BrandingSettings({ currentUser }) {
                   />
                 </Grid>
 
-                <Grid item xs={12} sm={6}>
+                <Grid item xs={12}>
                   <TextField
                     className={classes.field}
                     type="color"
-                    label="Títulos e destaques (Indicadores/Rankings)"
+                    label="Cor dos títulos (Indicadores/Rankings)"
                     fullWidth
                     variant="outlined"
                     size="small"
