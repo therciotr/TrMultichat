@@ -209,7 +209,9 @@ export const ThemeProvider = ({ children }) => {
 
   const refreshBranding = useCallback(async () => {
     try {
-      const { data } = await api.get("/branding");
+      const cid = Number(localStorage.getItem("companyId") || 0);
+      // Passa companyId por query para evitar "voltar ao padrão" quando o request roda antes do token existir.
+      const { data } = await api.get("/branding", { params: cid ? { companyId: cid } : {} });
       const merged = { ...defaultBranding, ...(data || {}) };
       // normalize asset URLs to absolute (backend origin)
       const normalized = {
@@ -251,6 +253,14 @@ export const ThemeProvider = ({ children }) => {
 
   useEffect(() => {
     refreshBranding();
+  }, [refreshBranding]);
+
+  useEffect(() => {
+    const onAuthUpdated = () => {
+      refreshBranding();
+    };
+    window.addEventListener("tr-auth-updated", onAuthUpdated);
+    return () => window.removeEventListener("tr-auth-updated", onAuthUpdated);
   }, [refreshBranding]);
 
   useEffect(() => {

@@ -207,6 +207,10 @@ const useAuth = () => {
         });
         setIsAuth(true);
         toast.success(i18n.t("auth.toasts.success"));
+        // Notifica listeners globais (ex.: identidade visual) para recarregar config após login.
+        try {
+          window.dispatchEvent(new Event("tr-auth-updated"));
+        } catch (_) {}
         // Aviso de vencimento só faz sentido quando existe dueDate válido e não é super
         if (dueDateValid && !isSuper) {
           const diff = moment(dueDate).diff(moment(moment()).format());
@@ -244,6 +248,9 @@ Entre em contato com o Suporte para mais informações! `);
       localStorage.removeItem("userId");
       localStorage.removeItem("cshow");
       api.defaults.headers.Authorization = undefined;
+      try {
+        window.dispatchEvent(new Event("tr-auth-updated"));
+      } catch (_) {}
       setLoading(false);
       history.push("/login");
     } catch (err) {
