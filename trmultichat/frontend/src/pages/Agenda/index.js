@@ -35,9 +35,6 @@ import CloudUploadOutlinedIcon from "@material-ui/icons/CloudUploadOutlined";
 import ChatBubbleOutlineOutlinedIcon from "@material-ui/icons/ChatBubbleOutlineOutlined";
 
 import MainContainer from "../../components/MainContainer";
-import MainHeader from "../../components/MainHeader";
-import MainHeaderButtonsWrapper from "../../components/MainHeaderButtonsWrapper";
-import Title from "../../components/Title";
 import { TrButton } from "../../components/ui";
 import api from "../../services/api";
 import toastError from "../../errors/toastError";
@@ -526,11 +523,6 @@ export default function Agenda() {
 
   return (
     <MainContainer className={classes.root}>
-      <MainHeader>
-        <Title>Agenda</Title>
-        <MainHeaderButtonsWrapper />
-      </MainHeader>
-
       <div className={classes.hero}>
         <div className={classes.heroRow}>
           <div className={classes.heroIcon}>
