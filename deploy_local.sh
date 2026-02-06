@@ -28,6 +28,24 @@ fi
 echo "[LOCAL] Estado do repositório:"
 git status
 
+#
+# Push para GitHub (não-interativo):
+# - Se você definir GITHUB_TOKEN (PAT do GitHub) no .deploy.local.env/.deploy_local.env/deploy_local.env
+#   o push funciona sem pedir usuário/senha no terminal.
+#
+if [ -n "${GITHUB_TOKEN:-}" ]; then
+  export GITHUB_TOKEN
+  export GIT_USERNAME="${GIT_USERNAME:-therciotr}"
+  export GIT_ASKPASS="$(cd "$(dirname "$0")" && pwd)/infrastructure/git_askpass.sh"
+  export GIT_TERMINAL_PROMPT=0
+
+  # Se o remote for https://github.com/..., injeta usuário para evitar prompt de Username
+  origin_url="$(git remote get-url origin 2>/dev/null || true)"
+  if [[ "$origin_url" == https://github.com/* ]]; then
+    git remote set-url origin "https://${GIT_USERNAME}@${origin_url#https://}"
+  fi
+fi
+
 echo "[LOCAL] Enviando código para origin main..."
 git push origin main
 
