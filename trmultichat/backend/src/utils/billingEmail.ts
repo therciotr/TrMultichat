@@ -5,6 +5,7 @@ import { createSubscriptionPreference } from "../services/mercadoPagoService";
 import { getCompanyAccessToken } from "../services/mercadoPagoService";
 import fs from "fs";
 import path from "path";
+import QRCode from "qrcode";
 
 export type BillingEmailConfig = {
   enabled: boolean;
@@ -307,10 +308,20 @@ export async function sendBillingEmailForInvoice(opts: {
       }
     }
 
-    const pixQrSrc =
-      pixQrCodeBase64
-        ? (pixQrCodeBase64.startsWith("data:") ? pixQrCodeBase64 : `data:image/png;base64,${pixQrCodeBase64}`)
-        : "";
+    let pixQrSrc = "";
+    if (pixQrCodeBase64) {
+      pixQrSrc = pixQrCodeBase64.startsWith("data:")
+        ? pixQrCodeBase64
+        : `data:image/png;base64,${pixQrCodeBase64}`;
+    } else if (pixCopyPaste) {
+      try {
+        pixQrSrc = await QRCode.toDataURL(pixCopyPaste, {
+          errorCorrectionLevel: "M",
+          margin: 1,
+          width: 220,
+        });
+      } catch {}
+    }
 
     const varsPay = {
       ...vars,
