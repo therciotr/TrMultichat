@@ -574,7 +574,9 @@ export async function sendBillingEmailForInvoice(opts: {
     `;
 
     await sendMail(
-      { to, subject, text, html, attachments: attachments.length ? attachments : undefined },
+      // NOTE: Roundcube may prefer text/plain even when HTML exists.
+      // Send HTML-only for billing emails to ensure consistent rendering.
+      { to, subject, html, attachments: attachments.length ? attachments : undefined },
       masterCompanyId
     );
 
