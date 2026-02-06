@@ -2,6 +2,7 @@ import { pgQuery } from "./pgClient";
 import { getSettingValue, setSettingValue } from "./settingsStore";
 import { sendMail } from "./mailer";
 import { createSubscriptionPreference } from "../services/mercadoPagoService";
+import { getCompanyAccessToken } from "../services/mercadoPagoService";
 import fs from "fs";
 import path from "path";
 
@@ -109,6 +110,29 @@ function formatBRL(v: any) {
   } catch {
     return `R$ ${n.toFixed(2)}`;
   }
+}
+
+function formatDateBR(isoLike: any) {
+  const s = String(isoLike || "").slice(0, 10);
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return s;
+  return `${m[3]}/${m[2]}/${m[1]}`;
+}
+
+function invoiceStatusPt(raw: any) {
+  const s = String(raw || "").trim().toLowerCase();
+  if (!s) return "";
+  const map: Record<string, string> = {
+    open: "Aberto",
+    opened: "Aberto",
+    pending: "Pendente",
+    paid: "Pago",
+    overdue: "Vencido",
+    expired: "Vencido",
+    canceled: "Cancelado",
+    cancelled: "Cancelado",
+  };
+  return map[s] || s;
 }
 
 function interpolate(tpl: string, vars: Record<string, any>) {
@@ -231,9 +255,9 @@ export async function sendBillingEmailForInvoice(opts: {
     const vars = {
       companyName: String(inv.companyName || ""),
       invoiceId: String(inv.id || ""),
-      dueDate: String(inv.dueDate || "").slice(0, 10),
+      dueDate: formatDateBR(inv.dueDate),
       value: formatBRL(inv.value),
-      status: String(inv.status || ""),
+      status: invoiceStatusPt(inv.status),
       detail: String(inv.detail || ""),
     };
     // Ensure we have payment data (PIX copy/paste + QR) for this invoice
@@ -249,6 +273,8 @@ export async function sendBillingEmailForInvoice(opts: {
       const payerFirstName = parts[0] || "Cliente";
       const payerLastName = parts.slice(1).join(" ");
 
+      // If MercadoPago is configured, we should not send an incomplete email without PIX
+      const mpToken = await getCompanyAccessToken(Number(masterCompanyId || 1));
       try {
         const mp = await createSubscriptionPreference({
           companyId: Number(masterCompanyId || 1),
@@ -272,8 +298,12 @@ export async function sendBillingEmailForInvoice(opts: {
             [pixCopyPaste || null, pixQrCodeBase64 || null, mpPaymentId || null, mpPaymentUrl || null, Number(inv.id)]
           );
         } catch {}
-      } catch {
-        // If MercadoPago is not configured, still send the billing email without PIX details
+      } catch (e: any) {
+        // If MP is configured but failed, surface the error (don't send incomplete billing email)
+        if (mpToken) {
+          throw new Error(e?.message || "Falha ao gerar PIX no Mercado Pago");
+        }
+        // If MP is not configured, still send the billing email without PIX details
       }
     }
 
