@@ -144,6 +144,17 @@ function chunkEvery(s: string, size = 48): string[] {
   return out;
 }
 
+function safeDataUrlFromFile(absPath: string, mime = "image/png"): string {
+  try {
+    const buf = fs.readFileSync(absPath);
+    // Avoid extremely large HTML in case of unexpected images
+    if (!buf || buf.length < 32 || buf.length > 450_000) return "";
+    return `data:${mime};base64,${buf.toString("base64")}`;
+  } catch {
+    return "";
+  }
+}
+
 function interpolate(tpl: string, vars: Record<string, any>) {
   return String(tpl || "").replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_m, k) => {
     const v = vars[String(k)] ?? "";
@@ -425,6 +436,7 @@ export async function sendBillingEmailForInvoice(opts: {
     ];
     const qrPublicUrl = pixQrAttachment?.publicUrl || "";
     const logoPublicUrl = logoAttachment?.publicUrl || "";
+    const logoDataUrl = logoAttachment?.path ? safeDataUrlFromFile(logoAttachment.path, "image/png") : "";
     const statusColor = String(vars.status || "").toLowerCase() === "aberto" ? "#d97706" : "#0f172a";
     const pixHtmlLines = pixLines.length ? pixLines.map((l) => escHtml(l)).join("<br/>") : "";
     const html = `
@@ -442,7 +454,7 @@ export async function sendBillingEmailForInvoice(opts: {
                     <td style="padding:18px 22px;background:#2a7b77;">
                       ${
                         logoAttachment
-                          ? `<img src="cid:${logoAttachment.cid}" alt="TR Multichat" style="height:54px;max-width:100%;display:block;" />`
+                          ? `<img src="${logoDataUrl || `cid:${logoAttachment.cid}`}" alt="TR Multichat" style="height:54px;max-width:100%;display:block;" />`
                           : `<div style="font-family:Arial,Helvetica,sans-serif;font-size:34px;font-weight:800;color:#ffffff;line-height:1;">Multichat</div>`
                       }
                     </td>
