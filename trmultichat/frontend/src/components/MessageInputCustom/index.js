@@ -227,19 +227,19 @@ const SignSwitch = (props) => {
 };
 
 const FileInput = (props) => {
-  const { handleChangeMedias, disableOption } = props;
+  const { handleChangeMedias, disableOption, inputId } = props;
   const classes = useStyles();
   return (
     <>
       <input
         multiple
         type="file"
-        id="upload-button"
+        id={inputId}
         disabled={disableOption()}
         className={classes.uploadInput}
         onChange={handleChangeMedias}
       />
-      <label htmlFor="upload-button">
+      <label htmlFor={inputId}>
         <IconButton
           aria-label="upload"
           component="span"
@@ -797,6 +797,10 @@ const MessageInputCustom = (props) => {
 
     const selectedMedias = Array.from(e.target.files);
     setMedias(selectedMedias);
+    // Allow selecting the same file again without page refresh (mobile/desktop)
+    try {
+      e.target.value = "";
+    } catch {}
   };
 
   const handleInputPaste = (e) => {
@@ -1112,6 +1116,7 @@ const MessageInputCustom = (props) => {
           <FileInput
             disableOption={disableOption}
             handleChangeMedias={handleChangeMedias}
+            inputId={`upload-button-${ticketId}`}
           />
 
           <SignSwitch

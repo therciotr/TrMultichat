@@ -210,6 +210,10 @@ const MessageInput = ({ ticketStatus }) => {
 
 		const selectedMedias = Array.from(e.target.files);
 		setMedias(selectedMedias);
+		// Allow selecting the same file again without refresh (mobile/desktop)
+		try {
+			e.target.value = "";
+		} catch {}
 	};
 
 	const handleInputPaste = e => {
@@ -399,12 +403,12 @@ const MessageInput = ({ ticketStatus }) => {
 					<input
 						multiple
 						type="file"
-						id="upload-button"
+						id={`upload-button-${ticketId}`}
 						disabled={loading || recording || ticketStatus !== "open"}
 						className={classes.uploadInput}
 						onChange={handleChangeMedias}
 					/>
-					<label htmlFor="upload-button">
+					<label htmlFor={`upload-button-${ticketId}`}>
 						<IconButton
 							aria-label="upload"
 							component="span"
