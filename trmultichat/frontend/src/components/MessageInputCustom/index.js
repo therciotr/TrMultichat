@@ -660,7 +660,8 @@ const CustomInput = (props) => {
         }}
         onInputChange={(event, opt, reason) => {
           if (reason === "input") {
-            const v = event && event.target ? event.target.value : "";
+            // Use MUI's provided "opt" (input value). On mobile/blur/reset, "event" may be null.
+            const v = isObject(opt) ? "" : String(opt || "");
             setInputMessage(v);
           }
         }}
