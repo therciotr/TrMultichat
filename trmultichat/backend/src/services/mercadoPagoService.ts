@@ -6,6 +6,10 @@ export type MpPixLikeResponse = {
   valor: { original: string };
   // qrcode.qrcode conterá o código PIX (copia e cola) ou, em fallback, o link de checkout
   qrcode: { qrcode: string };
+  // Quando disponível no MP, mantém separado para uso em e-mail/UX
+  pixCopyPaste?: string;
+  pixQrCodeBase64?: string;
+  ticketUrl?: string;
   // ID do pagamento no Mercado Pago (útil para consulta de status/polling)
   paymentId?: number | string;
   // Mantém a resposta original para debug/uso futuro
@@ -137,8 +141,8 @@ export async function createSubscriptionPreference(
             data.point_of_interaction &&
             data.point_of_interaction.transaction_data;
 
-          const qrCodePix: string =
-            (txData && (txData.qr_code || txData.qr_code_base64)) || "";
+          const qrCodeCopyPaste: string = (txData && txData.qr_code) || "";
+          const qrCodeBase64: string = (txData && txData.qr_code_base64) || "";
 
           // Fallback: se por algum motivo não vier qr_code, tenta usar ticket_url / init_point
           const fallbackUrl: string =
@@ -147,7 +151,7 @@ export async function createSubscriptionPreference(
             data?.sandbox_init_point ||
             "";
 
-          if (!qrCodePix && !fallbackUrl) {
+          if (!qrCodeCopyPaste && !qrCodeBase64 && !fallbackUrl) {
             const mpMsg =
               (data && (data.message || data.error || data.description)) ||
               (resp && resp.statusCode && `status ${resp.statusCode}`) ||
@@ -155,9 +159,13 @@ export async function createSubscriptionPreference(
             return reject(new Error(`Mercado Pago PIX error: ${mpMsg}`));
           }
 
+          const qrcodeCompat = String(qrCodeCopyPaste || fallbackUrl || qrCodeBase64 || "");
           const response: MpPixLikeResponse = {
             valor: { original: priceStr },
-            qrcode: { qrcode: String(qrCodePix || fallbackUrl) },
+            qrcode: { qrcode: qrcodeCompat },
+            pixCopyPaste: qrCodeCopyPaste ? String(qrCodeCopyPaste) : undefined,
+            pixQrCodeBase64: qrCodeBase64 ? String(qrCodeBase64) : undefined,
+            ticketUrl: fallbackUrl ? String(fallbackUrl) : undefined,
             paymentId: data?.id ?? undefined,
             raw: data
           };

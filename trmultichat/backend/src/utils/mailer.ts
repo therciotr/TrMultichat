@@ -20,6 +20,8 @@ type MailOptions = {
     filename: string;
     path: string;
     contentType?: string;
+    // Allow inline images (e.g., logo) via cid
+    cid?: string;
   }>;
 };
 
