@@ -33,15 +33,10 @@ export default function AudioUnlock() {
       // eslint-disable-next-line no-undef
       const Ctx = window.AudioContext || window.webkitAudioContext;
       if (!Ctx) return;
-      // If previously unlocked, skip UI
-      if (prev) return;
-      const ctx = new Ctx();
-      if (ctx.state !== "running") {
-        setNeedsUnlock(true);
-      } else {
-        localStorage.setItem("audioUnlocked", "1");
-      }
-      ctx.close().catch(() => {});
+      // Do NOT create/resume AudioContext here.
+      // Chrome blocks AudioContext start without user gesture and logs warnings.
+      // We only unlock on explicit button click.
+      if (!prev) setNeedsUnlock(true);
     } catch (_) {}
   }, []);
 

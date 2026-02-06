@@ -8,6 +8,10 @@ function getAudioContext() {
   // eslint-disable-next-line no-undef
   const Ctx = window.AudioContext || window.webkitAudioContext;
   if (!Ctx) return null;
+  // Only create audio context after an explicit user gesture/unlock
+  try {
+    if (localStorage.getItem("audioUnlocked") !== "1") return null;
+  } catch {}
   // Reuse a singleton context to reduce delays
   if (!window.__tr_audio_ctx) {
     try {
