@@ -873,6 +873,10 @@ const Financeiro = () => {
                             variant="outlined"
                             startIcon={<MailOutlineOutlinedIcon />}
                             onClick={async () => {
+                              if (!billingCfg?.enabled) {
+                                toast.info('Ative "Cobranças por e-mail" e salve as configurações para liberar o envio.');
+                                return;
+                              }
                               try {
                                 const r = await api.post(`/invoices/admin/${inv.id}/send-email`, {});
                                 if (r?.data?.skipped) {
@@ -885,6 +889,7 @@ const Financeiro = () => {
                               }
                             }}
                             style={{ marginRight: 8 }}
+                            disabled={!billingCfg?.enabled}
                           >
                             E-mail
                           </TrButton>

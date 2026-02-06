@@ -161,7 +161,13 @@ export async function sendBillingEmailForInvoice(opts: {
   const { masterCompanyId, invoiceId } = opts;
   try {
     const cfg = await getBillingEmailConfig(masterCompanyId);
-    if (!cfg.enabled) return { ok: false, message: "billing email is disabled" };
+    if (!cfg.enabled) {
+      return {
+        ok: false,
+        message:
+          'Cobrança por e-mail está desativada. Ative em "Financeiro → Cobranças por e-mail (Admin Master)" e clique em "Salvar configurações".',
+      };
+    }
 
     const rows = await pgQuery<any>(
       `
