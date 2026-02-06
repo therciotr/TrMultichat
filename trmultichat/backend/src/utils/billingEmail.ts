@@ -155,11 +155,159 @@ function safeDataUrlFromFile(absPath: string, mime = "image/png"): string {
   }
 }
 
+function paidMethodPt(raw: any) {
+  const s = String(raw || "").trim().toLowerCase();
+  const map: Record<string, string> = {
+    dinheiro: "Dinheiro",
+    cash: "Dinheiro",
+    pix: "PIX",
+    mercadopago: "Mercado Pago",
+    mercado_pago: "Mercado Pago",
+    card: "Cartão",
+    cartao: "Cartão",
+    boleto: "Boleto",
+    transferencia: "Transferência",
+    transfer: "Transferência",
+  };
+  return map[s] || (s ? s : "-");
+}
+
 function interpolate(tpl: string, vars: Record<string, any>) {
   return String(tpl || "").replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_m, k) => {
     const v = vars[String(k)] ?? "";
     return String(v);
   });
+}
+
+export async function sendPaymentConfirmationEmailForInvoice(opts: {
+  masterCompanyId: number;
+  invoiceId: number;
+  toEmail?: string | null;
+  force?: boolean;
+}): Promise<{ ok: true; skipped?: boolean; reason?: string } | { ok: false; message: string }> {
+  const { masterCompanyId, invoiceId } = opts;
+  try {
+    await ensureInvoiceEmailLogsSchema();
+    const rows = await pgQuery<any>(
+      `
+        SELECT
+          i.id, i.detail, i.status, i.value, i."dueDate", i."companyId",
+          i."paidAt", i."paidMethod", i."paidNote",
+          c.name as "companyName", c.email as "companyEmail"
+        FROM "Invoices" i
+        JOIN "Companies" c ON c.id = i."companyId"
+        WHERE i.id = $1
+        LIMIT 1
+      `,
+      [invoiceId]
+    );
+    const inv = rows?.[0];
+    if (!inv) return { ok: false, message: "invoice not found" };
+
+    const statusRaw = String(inv.status || "").toLowerCase();
+    if (statusRaw !== "paid") {
+      return { ok: false, message: "invoice is not paid" };
+    }
+
+    const to = String(opts.toEmail || inv.companyEmail || "").trim();
+    if (!to) return { ok: false, message: "company has no email" };
+
+    if (!opts.force) {
+      const sent = await alreadySentRecently(Number(inv.id), to, "payment_confirmation", 72);
+      if (sent) return { ok: true, skipped: true, reason: "already sent recently" };
+    }
+
+    const paidAtIso = inv.paidAt ? String(inv.paidAt) : "";
+    const paidAtDate = paidAtIso ? formatDateBR(paidAtIso) : "-";
+    const method = paidMethodPt(inv.paidMethod);
+    const note = inv.paidNote ? String(inv.paidNote) : "";
+
+    const logoAttachment = await getMasterLogoAttachment(masterCompanyId);
+    const logoDataUrl = logoAttachment?.path ? safeDataUrlFromFile(logoAttachment.path, "image/png") : "";
+
+    const subject = `Pagamento confirmado - Fatura #${Number(inv.id)}`;
+    const html = `
+      <!doctype html>
+      <html>
+        <body style="margin:0;padding:0;background:#f3f6fb;">
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#f3f6fb;padding:24px 0;">
+            <tr>
+              <td align="center">
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="width:600px;max-width:600px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:14px;overflow:hidden;">
+                  <tr>
+                    <td style="padding:18px 22px;background:#2a7b77;">
+                      ${
+                        logoAttachment
+                          ? `<img src="${logoDataUrl || `cid:${logoAttachment.cid}`}" alt="TR Multichat" style="height:54px;max-width:100%;display:block;" />`
+                          : `<div style="font-family:Arial,Helvetica,sans-serif;font-size:34px;font-weight:800;color:#ffffff;line-height:1;">Multichat</div>`
+                      }
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="padding:18px 22px;">
+                      <div style="font-family:Arial,Helvetica,sans-serif;font-size:18px;font-weight:800;color:#0f172a;margin:0 0 6px 0;">
+                        Olá, ${escHtml(String(inv.companyName || "").toUpperCase())},
+                      </div>
+                      <div style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#334155;margin:0 0 14px 0;">
+                        Confirmamos o recebimento do pagamento da fatura abaixo.
+                      </div>
+
+                      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border:1px solid #e5e7eb;border-radius:12px;background:#ffffff;">
+                        <tr><td style="padding:14px 14px 0 14px;">
+                          <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#0f172a;">
+                            <tr><td style="padding:6px 0;color:#111827;"><strong>Fatura:</strong></td><td align="left" style="padding:6px 0;">&nbsp;#${escHtml(String(inv.id))}</td></tr>
+                            <tr><td style="padding:6px 0;color:#111827;"><strong>Descrição:</strong></td><td align="left" style="padding:6px 0;">&nbsp;${escHtml(String(inv.detail || "-"))}</td></tr>
+                            <tr><td style="padding:6px 0;color:#111827;"><strong>Valor:</strong></td><td align="left" style="padding:6px 0;">&nbsp;${escHtml(formatBRL(inv.value))}</td></tr>
+                            <tr><td style="padding:6px 0;color:#111827;"><strong>Vencimento:</strong></td><td align="left" style="padding:6px 0;">&nbsp;${escHtml(formatDateBR(inv.dueDate))}</td></tr>
+                            <tr><td style="padding:6px 0;color:#111827;"><strong>Status:</strong></td><td align="left" style="padding:6px 0;">&nbsp;<span style="color:#15803d;font-weight:800;">Pago</span></td></tr>
+                            <tr><td style="padding:6px 0;color:#111827;"><strong>Pago em:</strong></td><td align="left" style="padding:6px 0;">&nbsp;${escHtml(paidAtDate)}</td></tr>
+                            <tr><td style="padding:6px 0;color:#111827;"><strong>Método:</strong></td><td align="left" style="padding:6px 0;">&nbsp;${escHtml(method)}</td></tr>
+                            ${note ? `<tr><td style="padding:6px 0;color:#111827;"><strong>Obs.:</strong></td><td align="left" style="padding:6px 0;">&nbsp;${escHtml(note)}</td></tr>` : ""}
+                          </table>
+                        </td></tr>
+                        <tr><td style="height:14px;"></td></tr>
+                      </table>
+
+                      <div style="height:12px;"></div>
+                      <div style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#334155;">
+                        Obrigado por utilizar o TR Multichat.
+                      </div>
+                      <div style="height:8px;"></div>
+                      <div style="font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:700;color:#0f172a;">
+                        Equipe TR Multichat
+                      </div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="padding:14px 22px;border-top:1px solid #e5e7eb;background:#f8fafc;">
+                      <div style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#94a3b8;text-align:center;">
+                        © 2026 TR Tecnologias - Todos os direitos reservados
+                      </div>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+        </body>
+      </html>
+    `;
+
+    const attachments = [...(logoAttachment ? [logoAttachment] : [])];
+    await sendMail(
+      { to, subject, html, attachments: attachments.length ? attachments : undefined },
+      masterCompanyId
+    );
+
+    await pgQuery(
+      'INSERT INTO "InvoiceEmailLogs" ("invoiceId","companyId","toEmail",kind,subject,"createdAt") VALUES ($1,$2,$3,$4,$5,now())',
+      [Number(inv.id), Number(inv.companyId), to, "payment_confirmation", subject]
+    );
+
+    return { ok: true };
+  } catch (e: any) {
+    return { ok: false, message: e?.message || "send payment confirmation failed" };
+  }
 }
 
 async function ensureInvoicePaymentColumns() {
@@ -281,7 +429,12 @@ async function ensureInvoiceEmailLogsSchema() {
   await pgQuery('CREATE INDEX IF NOT EXISTS "InvoiceEmailLogs_createdAt_idx" ON "InvoiceEmailLogs" ("createdAt")');
 }
 
-async function alreadySentRecently(invoiceId: number, toEmail: string, hours = 20): Promise<boolean> {
+async function alreadySentRecently(
+  invoiceId: number,
+  toEmail: string,
+  kind: "billing" | "payment_confirmation" = "billing",
+  hours = 20
+): Promise<boolean> {
   try {
     await ensureInvoiceEmailLogsSchema();
     const rows = await pgQuery<{ c: number }>(
@@ -290,10 +443,10 @@ async function alreadySentRecently(invoiceId: number, toEmail: string, hours = 2
         FROM "InvoiceEmailLogs"
         WHERE "invoiceId" = $1
           AND lower("toEmail") = lower($2)
-          AND kind = 'billing'
-          AND "createdAt" >= (now() - ($3::text || ' hours')::interval)
+          AND kind = $3
+          AND "createdAt" >= (now() - ($4::text || ' hours')::interval)
       `,
-      [invoiceId, toEmail, String(hours)]
+      [invoiceId, toEmail, kind, String(hours)]
     );
     return Number(rows?.[0]?.c || 0) > 0;
   } catch {
@@ -339,7 +492,7 @@ export async function sendBillingEmailForInvoice(opts: {
     if (!to) return { ok: false, message: "company has no email" };
 
     if (!opts.force) {
-      const sent = await alreadySentRecently(Number(inv.id), to, 20);
+      const sent = await alreadySentRecently(Number(inv.id), to, "billing", 20);
       if (sent) return { ok: true, skipped: true, reason: "already sent recently" };
     }
 

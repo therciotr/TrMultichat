@@ -3,7 +3,13 @@ import { authMiddleware } from "../../middleware/authMiddleware";
 import { findAllSafe } from "../../utils/legacyModel";
 import { pgQuery } from "../../utils/pgClient";
 import { renewCompanyLicenseFromDueDate } from "../../utils/license";
-import { getBillingEmailConfig, runBillingEmailAuto, saveBillingEmailConfig, sendBillingEmailForInvoice } from "../../utils/billingEmail";
+import {
+  getBillingEmailConfig,
+  runBillingEmailAuto,
+  saveBillingEmailConfig,
+  sendBillingEmailForInvoice,
+  sendPaymentConfirmationEmailForInvoice,
+} from "../../utils/billingEmail";
 
 const router = Router();
 
@@ -290,6 +296,20 @@ router.patch("/admin/:id/manual-settlement", async (req, res) => {
       params
     );
     const row = Array.isArray(rows) && rows[0];
+
+    // Enviar confirmação de pagamento por e-mail (best-effort) quando transicionar para pago
+    if (markPaid && currentStatus !== "paid") {
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        await sendPaymentConfirmationEmailForInvoice({
+          masterCompanyId,
+          invoiceId: id,
+          force: true,
+        });
+      } catch {
+        // não bloquear baixa manual por falha no e-mail
+      }
+    }
     // Se marcou como pago, também renova token de licença para manter sincronia com pagamento.
     if (markPaid && companyId) {
       try {

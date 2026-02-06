@@ -5,6 +5,7 @@ import { getCompanyAccessToken } from "../../services/mercadoPagoService";
 import { authMiddleware } from "../../middleware/authMiddleware";
 import { pgQuery } from "../../utils/pgClient";
 import { renewCompanyLicenseFromDueDate } from "../../utils/license";
+import { sendPaymentConfirmationEmailForInvoice } from "../../utils/billingEmail";
 
 const router = Router();
 
@@ -18,8 +19,8 @@ async function markInvoicePaidAndExtendDueDate(params: {
 
   // Marcar fatura como paga no Postgres
   await pgQuery(
-    'UPDATE "Invoices" SET status = $1, "updatedAt" = now() WHERE id = $2 AND "companyId" = $3',
-    ["paid", invoiceId, companyId]
+    'UPDATE "Invoices" SET status = $1, "paidAt" = now(), "paidMethod" = $2, "paidNote" = $3, "updatedAt" = now() WHERE id = $4 AND "companyId" = $5',
+    ["paid", "mercadopago", paymentId ? `MP:${paymentId}` : null, invoiceId, companyId]
   );
 
   // Estender vencimento da licença/empresa em 30 dias (campo dueDate na Companies)
@@ -78,6 +79,18 @@ async function markInvoicePaidAndExtendDueDate(params: {
     }
   } catch {
     // ignore socket errors
+  }
+
+  // Enviar e-mail de confirmação de pagamento (best-effort)
+  try {
+    const masterCompanyId = Number(process.env.MASTER_COMPANY_ID || 1);
+    await sendPaymentConfirmationEmailForInvoice({
+      masterCompanyId,
+      invoiceId,
+      force: false,
+    });
+  } catch {
+    // não bloquear fluxo de pagamento por falha no e-mail
   }
 
   return { updated: true, dueDate: nextDue };
