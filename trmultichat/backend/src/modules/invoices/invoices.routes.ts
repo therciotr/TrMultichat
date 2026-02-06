@@ -3,6 +3,7 @@ import { authMiddleware } from "../../middleware/authMiddleware";
 import { findAllSafe } from "../../utils/legacyModel";
 import { pgQuery } from "../../utils/pgClient";
 import { renewCompanyLicenseFromDueDate } from "../../utils/license";
+import { getBillingEmailConfig, runBillingEmailAuto, saveBillingEmailConfig, sendBillingEmailForInvoice } from "../../utils/billingEmail";
 
 const router = Router();
 
@@ -138,6 +139,62 @@ router.get("/admin/all", async (req, res) => {
     return res.json(Array.isArray(rows) ? rows : []);
   } catch (e: any) {
     return res.status(200).json([]);
+  }
+});
+
+// ===== Billing by e-mail (MASTER only) =====
+router.get("/admin/billing-email-config", async (req, res) => {
+  const ok = await isMasterFromAuth(req);
+  if (!ok) return res.status(403).json({ error: true, message: "forbidden" });
+  try {
+    const masterCompanyId = Number(process.env.MASTER_COMPANY_ID || 1);
+    const cfg = await getBillingEmailConfig(masterCompanyId);
+    return res.json({ ok: true, config: cfg });
+  } catch (e: any) {
+    return res.status(400).json({ error: true, message: e?.message || "get config error" });
+  }
+});
+
+router.put("/admin/billing-email-config", async (req, res) => {
+  const ok = await isMasterFromAuth(req);
+  if (!ok) return res.status(403).json({ error: true, message: "forbidden" });
+  try {
+    const masterCompanyId = Number(process.env.MASTER_COMPANY_ID || 1);
+    const cfg = await saveBillingEmailConfig(masterCompanyId, req.body || {});
+    return res.json({ ok: true, config: cfg });
+  } catch (e: any) {
+    return res.status(400).json({ error: true, message: e?.message || "save config error" });
+  }
+});
+
+// Send billing e-mail for a single invoice
+router.post("/admin/:id/send-email", async (req, res) => {
+  const ok = await isMasterFromAuth(req);
+  if (!ok) return res.status(403).json({ error: true, message: "forbidden" });
+  try {
+    const masterCompanyId = Number(process.env.MASTER_COMPANY_ID || 1);
+    const id = Number(req.params.id || 0);
+    if (!id) return res.status(400).json({ error: true, message: "invalid invoice id" });
+    const toEmail = req.body?.toEmail ? String(req.body.toEmail) : null;
+    const force = Boolean(req.body?.force);
+    const r = await sendBillingEmailForInvoice({ masterCompanyId, invoiceId: id, toEmail, force });
+    if (!r.ok) return res.status(400).json({ error: true, message: (r as any).message || "send error" });
+    return res.json(r);
+  } catch (e: any) {
+    return res.status(400).json({ error: true, message: e?.message || "send email error" });
+  }
+});
+
+// Manual run (same as auto), useful for immediate dispatch
+router.post("/admin/billing-email/run-now", async (req, res) => {
+  const ok = await isMasterFromAuth(req);
+  if (!ok) return res.status(403).json({ error: true, message: "forbidden" });
+  try {
+    const masterCompanyId = Number(process.env.MASTER_COMPANY_ID || 1);
+    const r = await runBillingEmailAuto(masterCompanyId);
+    return res.json(r);
+  } catch (e: any) {
+    return res.status(400).json({ error: true, message: e?.message || "run error" });
   }
 });
 

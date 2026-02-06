@@ -20,7 +20,8 @@ import ClearIcon from "@material-ui/icons/Clear";
 import MicIcon from "@material-ui/icons/Mic";
 import CheckCircleOutlineIcon from "@material-ui/icons/CheckCircleOutline";
 import HighlightOffIcon from "@material-ui/icons/HighlightOff";
-import { FormControlLabel, Switch } from "@material-ui/core";
+import MailOutlineOutlinedIcon from "@material-ui/icons/MailOutlineOutlined";
+import { Button, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, Switch, TextField } from "@material-ui/core";
 import Autocomplete from "@material-ui/lab/Autocomplete";
 import { isString, isEmpty, isObject, has } from "lodash";
 import StarBorderOutlinedIcon from "@material-ui/icons/StarBorderOutlined";
@@ -35,6 +36,7 @@ import { ReplyMessageContext } from "../../context/ReplyingMessage/ReplyingMessa
 import { AuthContext } from "../../context/Auth/AuthContext";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import toastError from "../../errors/toastError";
+import { toast } from "react-toastify";
 
 import useQuickMessages from "../../hooks/useQuickMessages";
 
@@ -744,6 +746,15 @@ const MessageInputCustom = (props) => {
 
   const [signMessage, setSignMessage] = useLocalStorage("signOption", true);
 
+  const contactEmail = String(props?.contact?.email || "").trim();
+  const contactName = String(props?.contact?.name || "").trim();
+  const [emailOpen, setEmailOpen] = useState(false);
+  const [emailForm, setEmailForm] = useState({
+    toEmail: contactEmail,
+    subject: "",
+    message: "",
+  });
+
   useEffect(() => {
     inputRef.current.focus();
   }, [replyingMessage]);
@@ -844,6 +855,34 @@ const MessageInputCustom = (props) => {
 
     setLoading(false);
     setMedias([]);
+  };
+
+  const handleSendEmailWithAttachment = async () => {
+    if (!medias.length) return;
+    const toEmail = String(emailForm.toEmail || "").trim();
+    if (!toEmail) {
+      toastError("Informe o e-mail do destinatário.");
+      return;
+    }
+    setLoading(true);
+    try {
+      const formData = new FormData();
+      formData.append("toEmail", toEmail);
+      formData.append(
+        "subject",
+        String(emailForm.subject || "").trim() ||
+          `Anexo do atendimento #${ticketId}${contactName ? ` - ${contactName}` : ""}`
+      );
+      formData.append("message", String(emailForm.message || "").trim());
+      medias.forEach((m) => formData.append("medias", m));
+      await api.post(`/tickets/${ticketId}/email`, formData);
+      toast.success("Anexo enviado por e-mail com sucesso.");
+      setEmailOpen(false);
+      setMedias([]);
+    } catch (err) {
+      toastError(err);
+    }
+    setLoading(false);
   };
 
   const handleSendMessage = async (overrideMessage) => {
@@ -982,6 +1021,72 @@ const MessageInputCustom = (props) => {
         >
           <SendIcon className={classes.sendMessageIcons} />
         </IconButton>
+
+        <IconButton
+          aria-label="send-email-attachment"
+          component="span"
+          disabled={loading}
+          onClick={() => {
+            setEmailForm((prev) => ({
+              toEmail: String(prev?.toEmail || contactEmail || "").trim(),
+              subject:
+                String(prev?.subject || "").trim() ||
+                `Anexo do atendimento #${ticketId}${contactName ? ` - ${contactName}` : ""}`,
+              message: String(prev?.message || "").trim(),
+            }));
+            setEmailOpen(true);
+          }}
+          title="Enviar este anexo por e-mail"
+        >
+          <MailOutlineOutlinedIcon className={classes.sendMessageIcons} />
+        </IconButton>
+
+        <Dialog open={emailOpen} onClose={() => setEmailOpen(false)} maxWidth="xs" fullWidth>
+          <DialogTitle>Enviar anexo por e-mail</DialogTitle>
+          <DialogContent dividers>
+            <TextField
+              fullWidth
+              variant="outlined"
+              size="small"
+              label="Destinatário (e-mail)"
+              value={emailForm.toEmail}
+              onChange={(e) => setEmailForm((p) => ({ ...p, toEmail: e.target.value }))}
+              style={{ marginBottom: 12 }}
+              placeholder="cliente@empresa.com.br"
+            />
+            <TextField
+              fullWidth
+              variant="outlined"
+              size="small"
+              label="Assunto"
+              value={emailForm.subject}
+              onChange={(e) => setEmailForm((p) => ({ ...p, subject: e.target.value }))}
+              style={{ marginBottom: 12 }}
+            />
+            <TextField
+              fullWidth
+              variant="outlined"
+              size="small"
+              label="Mensagem (opcional)"
+              value={emailForm.message}
+              onChange={(e) => setEmailForm((p) => ({ ...p, message: e.target.value }))}
+              multiline
+              minRows={3}
+            />
+            <div style={{ marginTop: 10, fontSize: 12, opacity: 0.75 }}>
+              Anexo: <strong>{medias?.[0]?.name}</strong>
+              {medias.length > 1 ? ` (+${medias.length - 1})` : ""}
+            </div>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setEmailOpen(false)} disabled={loading}>
+              Cancelar
+            </Button>
+            <Button color="primary" variant="contained" onClick={handleSendEmailWithAttachment} disabled={loading}>
+              {loading ? "Enviando..." : "Enviar e-mail"}
+            </Button>
+          </DialogActions>
+        </Dialog>
       </Paper>
     );
   else {

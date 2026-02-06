@@ -33,6 +33,7 @@ import queueListRoutes from "./modules/queueList/queueList.routes";
 import companiesRoutes from "./modules/companies/companies.routes";
 import plansRoutes from "./modules/plans/plans.routes";
 import invoicesRoutes from "./modules/invoices/invoices.routes";
+import { getBillingEmailConfig, runBillingEmailAuto } from "./utils/billingEmail";
 import helpsRoutes from "./modules/helps/helps.routes";
 import whatsappSessionRoutes from "./modules/whatsappSession/whatsappSession.routes";
 import mercadoPagoRoutes from "./modules/payments/mercadopago.routes";
@@ -1039,6 +1040,29 @@ server.listen(env.PORT, async () => {
   } catch (e) {
     logger.warn("Queue start skipped", e);
   }
+
+  // Billing e-mail auto dispatcher (MASTER only settings)
+  try {
+    const masterCompanyId = Number(process.env.MASTER_COMPANY_ID || 1);
+    let lastRunKey = "";
+    setInterval(async () => {
+      try {
+        const cfg = await getBillingEmailConfig(masterCompanyId);
+        if (!cfg.enabled || !cfg.autoEnabled) return;
+        const t = String(cfg.autoTime || "09:00");
+        const now = new Date();
+        const hh = String(now.getHours()).padStart(2, "0");
+        const mm = String(now.getMinutes()).padStart(2, "0");
+        const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+        const runKey = `${todayKey}@${t}`;
+        // Run once per day at the configured minute (best-effort)
+        if (`${hh}:${mm}` !== t) return;
+        if (lastRunKey === runKey) return;
+        lastRunKey = runKey;
+        await runBillingEmailAuto(masterCompanyId);
+      } catch {}
+    }, 60 * 1000);
+  } catch {}
 });
 
 gracefulShutdown(server);

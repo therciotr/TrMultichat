@@ -4,6 +4,8 @@ import { pgQuery } from "../../utils/pgClient";
 import { getIO } from "../../libs/socket";
 import { getInlineSock, getInlineSnapshot, startOrRefreshInlineSession } from "../../libs/waInlineManager";
 import { getSettingValue } from "../../utils/settingsStore";
+import { sendMail } from "../../utils/mailer";
+import multer from "multer";
 import fs from "fs";
 import path from "path";
 
@@ -12,6 +14,40 @@ const router = Router();
 function tenantIdFromReq(req: any): number {
   return Number(req?.tenantId || 0);
 }
+
+function ensureDir(p: string) {
+  try {
+    fs.mkdirSync(p, { recursive: true });
+  } catch {}
+}
+
+function safeFileName(input: string): string {
+  const s = String(input || "file").trim() || "file";
+  return s.replace(/[^\w.\-]+/g, "_").slice(0, 140);
+}
+
+const emailUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, _file, cb) => {
+      try {
+        const companyId = tenantIdFromReq(req);
+        const ticketId = Number((req as any)?.params?.ticketId || 0);
+        const dir = path.join(process.cwd(), "public", "uploads", "email", String(companyId || 0), String(ticketId || 0));
+        ensureDir(dir);
+        cb(null, dir);
+      } catch {
+        cb(null, path.join(process.cwd(), "public", "uploads"));
+      }
+    },
+    filename: (_req, file, cb) => {
+      const orig = String(file?.originalname || "file").trim() || "file";
+      const ext = path.extname(orig) || "";
+      const base = safeFileName(orig.replace(ext, "")) || "file";
+      const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+      cb(null, `${base}-${unique}${ext}`);
+    }
+  }),
+});
 
 function setNoCache(res: any) {
   try {
@@ -262,6 +298,63 @@ router.get("/", authMiddleware, async (req, res) => {
   });
 
   return res.json(list);
+});
+
+// POST /tickets/:ticketId/email (send attachment by e-mail)
+router.post("/:ticketId/email", authMiddleware, emailUpload.any(), async (req, res) => {
+  try {
+    setNoCache(res);
+    const companyId = tenantIdFromReq(req);
+    if (!companyId) return res.status(401).json({ error: true, message: "missing tenantId" });
+
+    const ticketId = Number(req.params.ticketId || 0);
+    if (!ticketId) return res.status(400).json({ error: true, message: "invalid ticketId" });
+
+    const body: any = req.body || {};
+    const toEmail = String(body?.toEmail || "").trim();
+    const subject = String(body?.subject || "").trim();
+    const message = String(body?.message || body?.body || "").trim();
+
+    if (!toEmail) return res.status(400).json({ error: true, message: "toEmail is required" });
+
+    const ticket = await loadTicketWithRelations(ticketId, companyId);
+    if (!ticket) return res.status(404).json({ error: true, message: "ticket not found" });
+
+    const files = Array.isArray((req as any)?.files) ? ((req as any).files as any[]) : [];
+    if (!files.length) return res.status(400).json({ error: true, message: "attachment is required" });
+
+    const defaultSubject = `Anexo do atendimento #${ticketId} - ${ticket?.contact?.name || "Cliente"}`;
+    const safeSubject = subject || defaultSubject;
+
+    const text = message || `Segue anexo do atendimento #${ticketId}.`;
+    const html = `
+      <div style="font-family:Arial,Helvetica,sans-serif;line-height:1.45;color:#0f172a;">
+        <p style="margin:0 0 10px 0;">${text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br/>")}</p>
+        <p style="margin:10px 0 0 0;font-size:12px;color:#64748b;">TR Multichat • Atendimento #${ticketId}</p>
+      </div>
+    `;
+
+    const attachments = files.map((f) => ({
+      filename: String(f.originalname || path.basename(String(f.path || "")) || "arquivo"),
+      path: String(f.path || ""),
+      contentType: f.mimetype ? String(f.mimetype) : undefined,
+    }));
+
+    await sendMail(
+      {
+        to: toEmail,
+        subject: safeSubject,
+        text,
+        html,
+        attachments,
+      },
+      companyId
+    );
+
+    return res.json({ ok: true });
+  } catch (e: any) {
+    return res.status(400).json({ error: true, message: e?.message || "send email error" });
+  }
 });
 
 // GET /tickets/u/:uuid (frontend uses this when opening a ticket)

@@ -16,6 +16,11 @@ type MailOptions = {
   subject: string;
   text?: string;
   html?: string;
+  attachments?: Array<{
+    filename: string;
+    path: string;
+    contentType?: string;
+  }>;
 };
 
 function buildFromEnv(): MailConfig | null {
@@ -136,7 +141,8 @@ export async function sendMail(
       to: options.to,
       subject: options.subject,
       text: options.text,
-      html: options.html
+      html: options.html,
+      attachments: Array.isArray(options.attachments) ? options.attachments : undefined
     });
     // eslint-disable-next-line no-console
     console.info("[mailer] E-mail enviado com sucesso", {

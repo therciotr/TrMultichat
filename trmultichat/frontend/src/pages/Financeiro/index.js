@@ -22,6 +22,8 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
+  FormControlLabel,
+  Switch,
 } from "@material-ui/core";
 import SearchIcon from "@material-ui/icons/Search";
 import MonetizationOnIcon from "@material-ui/icons/MonetizationOn";
@@ -33,6 +35,7 @@ import AccessTimeIcon from "@material-ui/icons/AccessTime";
 import WarningIcon from "@material-ui/icons/Warning";
 import ExpandMoreIcon from "@material-ui/icons/ExpandMore";
 import EditIcon from "@material-ui/icons/Edit";
+import MailOutlineOutlinedIcon from "@material-ui/icons/MailOutlineOutlined";
 import { LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip as RTooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts";
 import moment from "moment";
 
@@ -40,6 +43,7 @@ import MainContainer from "../../components/MainContainer";
 import SubscriptionModal from "../../components/SubscriptionModal";
 import api from "../../services/api";
 import toastError from "../../errors/toastError";
+import { toast } from "react-toastify";
 import { TrButton } from "../../components/ui";
 import { AuthContext } from "../../context/Auth/AuthContext";
 import { Dialog, DialogTitle, DialogContent, DialogActions, Button, FormControl, InputLabel, Select } from "@material-ui/core";
@@ -168,6 +172,22 @@ const Financeiro = () => {
   const [manualInv, setManualInv] = useState(null);
   const [manualForm, setManualForm] = useState({ discountValue: "", markPaid: false, paidMethod: "dinheiro", paidNote: "" });
 
+  const [billingCfg, setBillingCfg] = useState(null);
+  const [billingSaving, setBillingSaving] = useState(false);
+  const [billingLoading, setBillingLoading] = useState(false);
+
+  const loadBillingCfg = async () => {
+    if (!isMasterEmail) return;
+    setBillingLoading(true);
+    try {
+      const { data } = await api.get("/invoices/admin/billing-email-config");
+      setBillingCfg(data?.config || null);
+    } catch (e) {
+      toastError(e);
+    }
+    setBillingLoading(false);
+  };
+
   const reloadInvoices = async () => {
     setLoading(true);
     try {
@@ -189,6 +209,11 @@ const Financeiro = () => {
     reloadInvoices();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSuper]);
+
+  useEffect(() => {
+    loadBillingCfg();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMasterEmail]);
 
   const monthsOptions = useMemo(() => {
     const months = new Set();
@@ -545,6 +570,183 @@ const Financeiro = () => {
         </Grid>
       </Grid>
 
+      {isMasterEmail ? (
+        <div style={{ marginTop: 10, marginBottom: 10 }}>
+          <Accordion elevation={3} defaultExpanded={false} className={classes.companyCard}>
+            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+              <div className={classes.companyHeader}>
+                <Typography variant="h6" className={classes.companyTitle}>
+                  Cobranças por e-mail (Admin Master)
+                </Typography>
+                <Chip
+                  size="small"
+                  className={classes.chip}
+                  style={{
+                    background: billingCfg?.enabled ? "rgba(16,185,129,0.14)" : "rgba(245,158,11,0.14)",
+                    border: "1px solid rgba(15,23,42,0.10)",
+                    fontWeight: 900,
+                  }}
+                  label={billingCfg?.enabled ? "Ativado" : "Desativado"}
+                />
+                <Chip
+                  size="small"
+                  className={classes.chip}
+                  style={{
+                    background: billingCfg?.autoEnabled ? "rgba(59,130,246,0.12)" : "rgba(148,163,184,0.14)",
+                    border: "1px solid rgba(15,23,42,0.10)",
+                    fontWeight: 900,
+                  }}
+                  label={billingCfg?.autoEnabled ? "Automático" : "Manual"}
+                />
+              </div>
+            </AccordionSummary>
+            <AccordionDetails style={{ display: "block" }}>
+              <Typography variant="body2" style={{ opacity: 0.85, marginBottom: 12 }}>
+                Configure o envio de cobranças por e-mail para as empresas (usa o SMTP configurado no seu tenant master).
+              </Typography>
+
+              <Grid container spacing={2}>
+                <Grid item xs={12} md={6}>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        color="primary"
+                        checked={Boolean(billingCfg?.enabled)}
+                        onChange={(e) => setBillingCfg((p) => ({ ...(p || {}), enabled: e.target.checked }))}
+                      />
+                    }
+                    label="Ativar cobranças por e-mail"
+                  />
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        color="primary"
+                        checked={Boolean(billingCfg?.autoEnabled)}
+                        onChange={(e) => setBillingCfg((p) => ({ ...(p || {}), autoEnabled: e.target.checked }))}
+                        disabled={!billingCfg?.enabled}
+                      />
+                    }
+                    label="Envio automático"
+                  />
+                </Grid>
+
+                <Grid item xs={12} md={6}>
+                  <Grid container spacing={2}>
+                    <Grid item xs={6}>
+                      <TextField
+                        fullWidth
+                        variant="outlined"
+                        size="small"
+                        label="Horário (HH:MM)"
+                        value={billingCfg?.autoTime || "09:00"}
+                        onChange={(e) => setBillingCfg((p) => ({ ...(p || {}), autoTime: e.target.value }))}
+                        disabled={!billingCfg?.enabled || !billingCfg?.autoEnabled}
+                      />
+                    </Grid>
+                    <Grid item xs={6}>
+                      <TextField
+                        fullWidth
+                        variant="outlined"
+                        size="small"
+                        type="number"
+                        label="Dias antes"
+                        helperText="0 = só vencidas/hoje (ou conforme abaixo)"
+                        value={billingCfg?.daysBefore ?? 0}
+                        onChange={(e) => setBillingCfg((p) => ({ ...(p || {}), daysBefore: Number(e.target.value || 0) }))}
+                        disabled={!billingCfg?.enabled}
+                      />
+                    </Grid>
+                    <Grid item xs={12}>
+                      <FormControlLabel
+                        control={
+                          <Switch
+                            color="primary"
+                            checked={Boolean(billingCfg?.includeOverdue)}
+                            onChange={(e) => setBillingCfg((p) => ({ ...(p || {}), includeOverdue: e.target.checked }))}
+                            disabled={!billingCfg?.enabled}
+                          />
+                        }
+                        label="Incluir vencidas (overdue) no automático"
+                      />
+                    </Grid>
+                  </Grid>
+                </Grid>
+
+                <Grid item xs={12} md={6}>
+                  <TextField
+                    fullWidth
+                    variant="outlined"
+                    size="small"
+                    label="Assunto (template)"
+                    value={billingCfg?.subjectTemplate || ""}
+                    onChange={(e) => setBillingCfg((p) => ({ ...(p || {}), subjectTemplate: e.target.value }))}
+                    disabled={!billingCfg?.enabled}
+                    helperText="Variáveis: {{companyName}} {{invoiceId}} {{dueDate}} {{value}} {{status}} {{detail}}"
+                  />
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <TextField
+                    fullWidth
+                    variant="outlined"
+                    size="small"
+                    label="Mensagem (template)"
+                    value={billingCfg?.bodyTemplate || ""}
+                    onChange={(e) => setBillingCfg((p) => ({ ...(p || {}), bodyTemplate: e.target.value }))}
+                    disabled={!billingCfg?.enabled}
+                    multiline
+                    minRows={6}
+                    helperText="Use as mesmas variáveis. Quebras de linha serão preservadas."
+                  />
+                </Grid>
+              </Grid>
+
+              <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 14, flexWrap: "wrap" }}>
+                <TrButton
+                  variant="outlined"
+                  onClick={loadBillingCfg}
+                  disabled={billingLoading || billingSaving}
+                >
+                  Recarregar
+                </TrButton>
+                <TrButton
+                  variant="outlined"
+                  startIcon={<MailOutlineOutlinedIcon />}
+                  onClick={async () => {
+                    try {
+                      await api.post("/invoices/admin/billing-email/run-now");
+                      toast.success("Disparo manual iniciado.");
+                    } catch (e) {
+                      toastError(e);
+                    }
+                  }}
+                  disabled={!billingCfg?.enabled || billingSaving}
+                >
+                  Enviar agora
+                </TrButton>
+                <TrButton
+                  color="primary"
+                  variant="contained"
+                  onClick={async () => {
+                    setBillingSaving(true);
+                    try {
+                      const { data } = await api.put("/invoices/admin/billing-email-config", billingCfg || {});
+                      setBillingCfg(data?.config || billingCfg);
+                      toast.success("Configurações salvas.");
+                    } catch (e) {
+                      toastError(e);
+                    }
+                    setBillingSaving(false);
+                  }}
+                  disabled={billingSaving || billingLoading}
+                >
+                  {billingSaving ? "Salvando..." : "Salvar configurações"}
+                </TrButton>
+              </div>
+            </AccordionDetails>
+          </Accordion>
+        </div>
+      ) : null}
+
       <Grid container spacing={2} className={classes.filtersBar}>
         <Grid item xs={12} md={6}>
           <TextField
@@ -666,6 +868,26 @@ const Financeiro = () => {
                             <TableCell align="center">{moment(inv.dueDate).format("DD/MM/YYYY")}</TableCell>
                             <TableCell align="center">{statusChip(inv)}</TableCell>
                         <TableCell align="center">
+                          <TrButton
+                            size="small"
+                            variant="outlined"
+                            startIcon={<MailOutlineOutlinedIcon />}
+                            onClick={async () => {
+                              try {
+                                const r = await api.post(`/invoices/admin/${inv.id}/send-email`, {});
+                                if (r?.data?.skipped) {
+                                  toast.info("Já enviado recentemente para este e-mail (evitado duplicidade).");
+                                } else {
+                                  toast.success("Cobrança enviada por e-mail.");
+                                }
+                              } catch (e) {
+                                toastError(e);
+                              }
+                            }}
+                            style={{ marginRight: 8 }}
+                          >
+                            E-mail
+                          </TrButton>
                           <TrButton
                             size="small"
                             variant="outlined"
