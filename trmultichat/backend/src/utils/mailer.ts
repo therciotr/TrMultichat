@@ -70,7 +70,9 @@ export async function resolveMailConfig(
 ): Promise<MailConfig> {
   if (companyId) {
     const s = await getCompanyMailSettings(companyId);
-    if (s.mail_host && s.mail_from) {
+    // Allow "from" fallback to the SMTP user (common configuration)
+    const fromResolved = s.mail_from || s.mail_user || null;
+    if (s.mail_host && fromResolved) {
       const port = s.mail_port ?? 587;
       const secure =
         typeof s.mail_secure === "boolean"
@@ -103,7 +105,7 @@ export async function resolveMailConfig(
         port,
         secure,
         user: s.mail_user ? "***" : undefined,
-        from: s.mail_from
+        from: fromResolved ? "***" : undefined
       });
 
       return {
@@ -112,7 +114,7 @@ export async function resolveMailConfig(
         secure,
         user: s.mail_user || undefined,
         pass,
-        from: s.mail_from
+        from: fromResolved
       };
     }
   }
