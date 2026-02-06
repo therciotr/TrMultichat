@@ -185,11 +185,12 @@ async function ensureAdminFromAuth(auth: string): Promise<{ ok: true; tenantId: 
 async function syncDefaultProfileToLegacy(companyId: number, profile: any) {
   // Keep backwards compatibility with old single-config keys used by mailer/settingsMail
   try {
+    const fromResolved = profile?.from ?? profile?.user ?? null;
     await saveCompanyMailSettings(companyId, {
       mail_host: profile?.host ?? null,
       mail_port: profile?.port ?? null,
       mail_user: profile?.user ?? null,
-      mail_from: profile?.from ?? null,
+      mail_from: fromResolved,
       mail_secure: profile?.secure ?? null,
       mail_pass: profile?.pass ?? ""
     } as any);
@@ -466,7 +467,7 @@ router.post("/email/profiles", async (req, res) => {
     const host = body?.mail_host ?? null;
     const port = body?.mail_port ?? null;
     const user = body?.mail_user ?? null;
-    const from = body?.mail_from ?? null;
+    const from = body?.mail_from ?? user ?? null;
     const secure = body?.mail_secure ?? null;
     const pass = body?.mail_pass ?? "";
     const makeDefault = Boolean(body?.isDefault);
