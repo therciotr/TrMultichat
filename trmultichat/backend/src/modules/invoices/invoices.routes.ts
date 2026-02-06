@@ -176,7 +176,8 @@ router.post("/admin/:id/send-email", async (req, res) => {
     const id = Number(req.params.id || 0);
     if (!id) return res.status(400).json({ error: true, message: "invalid invoice id" });
     const toEmail = req.body?.toEmail ? String(req.body.toEmail) : null;
-    const force = Boolean(req.body?.force);
+    // Manual send from UI should always send (avoid silent "already sent recently")
+    const force = req.body?.force === undefined ? true : Boolean(req.body?.force);
     const r = await sendBillingEmailForInvoice({ masterCompanyId, invoiceId: id, toEmail, force });
     if (!r.ok) return res.status(400).json({ error: true, message: (r as any).message || "send error" });
     return res.json(r);

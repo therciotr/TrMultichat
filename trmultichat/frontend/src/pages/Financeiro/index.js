@@ -892,7 +892,7 @@ const Financeiro = () => {
                                 return;
                               }
                               try {
-                                const r = await api.post(`/invoices/admin/${inv.id}/send-email`, {});
+                                const r = await api.post(`/invoices/admin/${inv.id}/send-email`, { force: true });
                                 if (r?.data?.skipped) {
                                   toast.info("Já enviado recentemente para este e-mail (evitado duplicidade).");
                                 } else {
