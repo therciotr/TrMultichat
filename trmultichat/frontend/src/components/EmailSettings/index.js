@@ -441,9 +441,14 @@ const EmailSettings = () => {
     };
   }, []);
 
-  const handleChange = field => e => {
-    const value = field === "mail_secure" ? e.target.checked : e.target.value;
-    setForm(prev => ({ ...prev, [field]: value }));
+  const handleChange = (field) => (e) => {
+    // Switch/checkbox uses `checked`, not `value` ("on")
+    const isCheckboxLike =
+      field === "mail_secure" ||
+      field === "isDefault" ||
+      String(e?.target?.type || "").toLowerCase() === "checkbox";
+    const value = isCheckboxLike ? Boolean(e?.target?.checked) : e?.target?.value;
+    setForm((prev) => ({ ...prev, [field]: value }));
   };
 
   const handleSave = async () => {
