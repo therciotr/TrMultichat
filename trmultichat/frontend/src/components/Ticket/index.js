@@ -117,12 +117,23 @@ const Ticket = () => {
 
     socket.on(`company-${companyId}-ticket`, (data) => {
       if (data.action === "update") {
-        setTicket(data.ticket);
+        // Backend may emit partial ticket payloads (e.g. only lastMessage/updatedAt).
+        // Merge into current ticket to avoid losing fields like "status" (which would disable MessageInput).
+        setTicket((prev) => {
+          const prevId = Number(prev?.id || 0);
+          const nextId = Number(data?.ticket?.id || 0);
+          if (prevId && nextId && prevId !== nextId) return prev;
+          return { ...(prev || {}), ...(data?.ticket || {}) };
+        });
       }
 
       if (data.action === "delete") {
-        toast.success("Ticket deleted sucessfully.");
-        history.push("/tickets");
+        const deletedId = Number(data?.ticket?.id || 0);
+        const currentId = Number(ticket?.id || 0);
+        if (!deletedId || (currentId && deletedId === currentId)) {
+          toast.success("Ticket deleted sucessfully.");
+          history.push("/tickets");
+        }
       }
     });
 
