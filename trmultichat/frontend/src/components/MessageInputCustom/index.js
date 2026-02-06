@@ -660,7 +660,8 @@ const CustomInput = (props) => {
         }}
         onInputChange={(event, opt, reason) => {
           if (reason === "input") {
-            setInputMessage(event.target.value);
+            const v = event && event.target ? event.target.value : "";
+            setInputMessage(v);
           }
         }}
         onPaste={onPaste}
@@ -754,6 +755,13 @@ const MessageInputCustom = (props) => {
     subject: "",
     message: "",
   });
+  // Safe setter for pooled events / nullable events (prevents "Cannot read properties of null (reading 'value')")
+  const setEmailKey = (key, parser) => (eOrValue) => {
+    const t = eOrValue && eOrValue.target ? eOrValue.target : null;
+    const raw = t ? t.value : eOrValue;
+    const nextVal = typeof parser === "function" ? parser(raw) : raw;
+    setEmailForm((p) => ({ ...(p || {}), [key]: nextVal }));
+  };
 
   useEffect(() => {
     inputRef.current.focus();
@@ -1050,7 +1058,7 @@ const MessageInputCustom = (props) => {
               size="small"
               label="Destinatário (e-mail)"
               value={emailForm.toEmail}
-              onChange={(e) => setEmailForm((p) => ({ ...p, toEmail: e.target.value }))}
+              onChange={setEmailKey("toEmail", (v) => String(v || ""))}
               style={{ marginBottom: 12 }}
               placeholder="cliente@empresa.com.br"
             />
@@ -1060,7 +1068,7 @@ const MessageInputCustom = (props) => {
               size="small"
               label="Assunto"
               value={emailForm.subject}
-              onChange={(e) => setEmailForm((p) => ({ ...p, subject: e.target.value }))}
+              onChange={setEmailKey("subject", (v) => String(v || ""))}
               style={{ marginBottom: 12 }}
             />
             <TextField
@@ -1069,7 +1077,7 @@ const MessageInputCustom = (props) => {
               size="small"
               label="Mensagem (opcional)"
               value={emailForm.message}
-              onChange={(e) => setEmailForm((p) => ({ ...p, message: e.target.value }))}
+              onChange={setEmailKey("message", (v) => String(v || ""))}
               multiline
               minRows={3}
             />
