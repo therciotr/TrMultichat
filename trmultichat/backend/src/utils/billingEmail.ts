@@ -417,31 +417,11 @@ export async function sendBillingEmailForInvoice(opts: {
       .join("\n");
 
     const logoAttachment = await getMasterLogoAttachment(masterCompanyId);
-    // Roundcube sometimes hides inline parts in attachment list.
-    // Send both inline (cid) and "attachment" copies for maximum compatibility.
+    // IMPORTANT: don't duplicate the same file twice.
+    // Some webmails may drop the CID-part when duplicates exist, causing inline images not to render.
     const attachments = [
       ...(logoAttachment ? [logoAttachment] : []),
-      ...(logoAttachment
-        ? [
-            {
-              filename: logoAttachment.filename,
-              path: logoAttachment.path,
-              contentType: logoAttachment.contentType,
-              contentDisposition: "attachment"
-            } as any
-          ]
-        : []),
       ...(pixQrAttachment ? [pixQrAttachment] : []),
-      ...(pixQrAttachment
-        ? [
-            {
-              filename: pixQrAttachment.filename,
-              path: pixQrAttachment.path,
-              contentType: pixQrAttachment.contentType,
-              contentDisposition: "attachment"
-            } as any
-          ]
-        : []),
     ];
     const qrPublicUrl = pixQrAttachment?.publicUrl || "";
     const logoPublicUrl = logoAttachment?.publicUrl || "";
@@ -460,20 +440,11 @@ export async function sendBillingEmailForInvoice(opts: {
                 <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="width:600px;max-width:600px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:14px;overflow:hidden;">
                   <tr>
                     <td style="padding:18px 22px;background:#2a7b77;">
-                      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
-                        <tr>
-                          <td valign="middle" style="width:64px;">
-                            ${
-                              logoAttachment
-                                ? `<img src="cid:${logoAttachment.cid}" alt="TR" style="width:54px;height:54px;border-radius:999px;display:block;background:#ffffff;border:3px solid rgba(255,255,255,0.35);object-fit:cover;" />`
-                                : ""
-                            }
-                          </td>
-                          <td valign="middle" style="font-family:Arial,Helvetica,sans-serif;font-size:36px;font-weight:800;color:#ffffff;line-height:1;">
-                            Multichat
-                          </td>
-                        </tr>
-                      </table>
+                      ${
+                        logoAttachment
+                          ? `<img src="cid:${logoAttachment.cid}" alt="TR Multichat" style="height:54px;max-width:100%;display:block;" />`
+                          : `<div style="font-family:Arial,Helvetica,sans-serif;font-size:34px;font-weight:800;color:#ffffff;line-height:1;">Multichat</div>`
+                      }
                     </td>
                   </tr>
 
