@@ -22,6 +22,10 @@ type MailOptions = {
     contentType?: string;
     // Allow inline images (e.g., logo) via cid
     cid?: string;
+    // Improve compatibility with webmails (Roundcube, etc.)
+    // - 'inline' enables cid rendering in HTML
+    // - 'attachment' forces showing in attachments list
+    contentDisposition?: "inline" | "attachment";
   }>;
 };
 

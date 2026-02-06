@@ -151,7 +151,7 @@ async function ensureInvoicePaymentColumns() {
   await pgQuery('ALTER TABLE "Invoices" ADD COLUMN IF NOT EXISTS "mpPaymentUrl" text');
 }
 
-async function getMasterLogoAttachment(masterCompanyId: number): Promise<{ cid: string; filename: string; path: string; contentType?: string } | null> {
+async function getMasterLogoAttachment(masterCompanyId: number): Promise<{ cid: string; filename: string; path: string; contentType?: string; contentDisposition?: "inline" | "attachment"; publicUrl?: string } | null> {
   try {
     // Prefer per-company branding (DB), fallback to default branding path
     let logoUrl: string | null = null;
@@ -168,7 +168,16 @@ async function getMasterLogoAttachment(masterCompanyId: number): Promise<{ cid: 
     const rel = String(logoUrl || "").replace(/^\/+/, "");
     const abs = path.join(process.cwd(), "public", rel);
     if (!fs.existsSync(abs)) return null;
-    return { cid: "trlogo", filename: path.basename(abs) || "logo.png", path: abs, contentType: "image/png" };
+    const base = String(process.env.BACKEND_URL || "https://api.trmultichat.com.br").replace(/\/+$/, "");
+    const publicUrl = `${base}${String(logoUrl || "")}`;
+    return {
+      cid: "trlogo",
+      filename: path.basename(abs) || "logo.png",
+      path: abs,
+      contentType: "image/png",
+      contentDisposition: "inline",
+      publicUrl
+    };
   } catch {
     return null;
   }
@@ -182,14 +191,17 @@ async function getPixQrAttachment(opts: {
   invoiceId: number;
   pixCopyPaste: string;
   pixQrCodeBase64?: string;
-}): Promise<{ cid: string; filename: string; path: string; contentType?: string } | null> {
+}): Promise<{ cid: string; filename: string; path: string; contentType?: string; contentDisposition?: "inline" | "attachment"; publicUrl?: string } | null> {
   try {
     const invoiceId = Number(opts.invoiceId || 0);
     if (!invoiceId) return null;
 
     const outDir = path.join(process.cwd(), "public", "uploads", "billing-email");
     ensureDir(outDir);
-    const outPath = path.join(outDir, `pix-qrcode-${invoiceId}.png`);
+    const fileName = `pix-qrcode-${invoiceId}.png`;
+    const outPath = path.join(outDir, fileName);
+    const base = String(process.env.BACKEND_URL || "https://api.trmultichat.com.br").replace(/\/+$/, "");
+    const publicUrl = `${base}/uploads/billing-email/${fileName}`;
 
     const base64 = String(opts.pixQrCodeBase64 || "").trim();
     if (base64) {
@@ -199,7 +211,14 @@ async function getPixQrAttachment(opts: {
       const buf = Buffer.from(cleaned, "base64");
       if (buf.length > 32) {
         fs.writeFileSync(outPath, buf);
-        return { cid: "pixqr", filename: `pix-qrcode-${invoiceId}.png`, path: outPath, contentType: "image/png" };
+        return {
+          cid: "pixqr",
+          filename: fileName,
+          path: outPath,
+          contentType: "image/png",
+          contentDisposition: "inline",
+          publicUrl
+        };
       }
     }
 
@@ -213,7 +232,14 @@ async function getPixQrAttachment(opts: {
       type: "png",
     });
 
-    return { cid: "pixqr", filename: `pix-qrcode-${invoiceId}.png`, path: outPath, contentType: "image/png" };
+    return {
+      cid: "pixqr",
+      filename: fileName,
+      path: outPath,
+      contentType: "image/png",
+      contentDisposition: "inline",
+      publicUrl
+    };
   } catch {
     return null;
   }
@@ -380,62 +406,134 @@ export async function sendBillingEmailForInvoice(opts: {
       .join("\n");
 
     const logoAttachment = await getMasterLogoAttachment(masterCompanyId);
+    // Roundcube sometimes hides inline parts in attachment list.
+    // Send both inline (cid) and "attachment" copies for maximum compatibility.
     const attachments = [
       ...(logoAttachment ? [logoAttachment] : []),
+      ...(logoAttachment
+        ? [
+            {
+              filename: logoAttachment.filename,
+              path: logoAttachment.path,
+              contentType: logoAttachment.contentType,
+              contentDisposition: "attachment"
+            } as any
+          ]
+        : []),
       ...(pixQrAttachment ? [pixQrAttachment] : []),
+      ...(pixQrAttachment
+        ? [
+            {
+              filename: pixQrAttachment.filename,
+              path: pixQrAttachment.path,
+              contentType: pixQrAttachment.contentType,
+              contentDisposition: "attachment"
+            } as any
+          ]
+        : []),
     ];
+    const qrPublicUrl = pixQrAttachment?.publicUrl || "";
+    const logoPublicUrl = logoAttachment?.publicUrl || "";
     const html = `
-      <div style="font-family:Arial,Helvetica,sans-serif;line-height:1.45;color:#0f172a;background:#ffffff;padding:0;margin:0;">
-        <div style="max-width:640px;margin:0 auto;padding:24px;">
-          <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
-            ${
-              logoAttachment
-                ? `<img src="cid:${logoAttachment.cid}" alt="TR Multichat" style="height:44px;max-width:220px;object-fit:contain;" />`
-                : `<div style="font-size:18px;font-weight:700;letter-spacing:.2px;color:#0b4c46;">TR Multichat</div>`
-            }
+      <!doctype html>
+      <html>
+        <body style="margin:0;padding:0;background:#f3f6fb;">
+          <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">
+            Cobrança TR Multichat · Fatura #${escHtml(String(vars.invoiceId))}
           </div>
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#f3f6fb;padding:24px 0;">
+            <tr>
+              <td align="center">
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="width:600px;max-width:600px;background:#ffffff;border:1px solid #e5e7eb;border-radius:14px;overflow:hidden;">
+                  <tr>
+                    <td style="padding:18px 22px;background:#ffffff;">
+                      ${
+                        logoAttachment
+                          ? `<img src="cid:${logoAttachment.cid}" alt="TR Multichat" style="height:42px;max-width:220px;display:block;object-fit:contain;" />`
+                          : `<div style="font-family:Arial,Helvetica,sans-serif;font-size:18px;font-weight:700;color:#0b4c46;">TR Multichat</div>`
+                      }
+                      ${
+                        logoPublicUrl
+                          ? `<div style="margin-top:6px;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#94a3b8;">Se a logo não aparecer, <a href="${escHtml(logoPublicUrl)}" style="color:#0b4c46;text-decoration:underline;">abrir imagem</a>.</div>`
+                          : ""
+                      }
+                    </td>
+                  </tr>
 
-          <div style="border:1px solid #e5e7eb;border-radius:12px;padding:16px;background:#f8fafc;">
-            <div style="font-size:14px;color:#334155;margin-bottom:10px;"><strong>Cobrança</strong> · Fatura <strong>#${escHtml(String(vars.invoiceId))}</strong></div>
-            <table style="width:100%;border-collapse:collapse;font-size:14px;color:#0f172a;">
-              <tr><td style="padding:6px 0;color:#64748b;">Empresa</td><td style="padding:6px 0;text-align:right;"><strong>${escHtml(String(vars.companyName))}</strong></td></tr>
-              <tr><td style="padding:6px 0;color:#64748b;">Descrição</td><td style="padding:6px 0;text-align:right;">${escHtml(String(vars.detail))}</td></tr>
-              <tr><td style="padding:6px 0;color:#64748b;">Valor</td><td style="padding:6px 0;text-align:right;"><strong>${escHtml(String(vars.value))}</strong></td></tr>
-              <tr><td style="padding:6px 0;color:#64748b;">Vencimento</td><td style="padding:6px 0;text-align:right;"><strong>${escHtml(String(vars.dueDate))}</strong></td></tr>
-              <tr><td style="padding:6px 0;color:#64748b;">Status</td><td style="padding:6px 0;text-align:right;">${escHtml(String(vars.status))}</td></tr>
-            </table>
-          </div>
+                  <tr>
+                    <td style="padding:18px 22px;">
+                      <div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#0f172a;margin:0 0 12px 0;">
+                        <strong>Cobrança</strong> · Fatura <strong>#${escHtml(String(vars.invoiceId))}</strong>
+                      </div>
 
-          <div style="margin-top:16px;border:1px solid #e5e7eb;border-radius:12px;padding:16px;">
-            <div style="font-size:15px;font-weight:700;margin-bottom:8px;color:#0b4c46;">Pagamento via PIX</div>
-            ${
-              pixQrSrc
-                ? `<div style="text-align:center;margin:12px 0;">
-                     <img src="${pixQrSrc}" alt="QR Code PIX" style="width:220px;height:220px;border-radius:12px;border:1px solid #e5e7eb;" />
-                   </div>`
-                : ""
-            }
-            ${
-              pixCopyPaste
-                ? `<div style="font-size:13px;color:#334155;margin-bottom:8px;">PIX <strong>copia e cola</strong> (copie o código abaixo):</div>
-                   <div style="font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;font-size:12px;white-space:pre-wrap;word-break:break-all;padding:12px;border-radius:12px;background:#0b1220;color:#e2e8f0;border:1px solid #111827;">${escHtml(pixCopyPaste)}</div>`
-                : ""
-            }
-            ${
-              !pixCopyPaste && mpPaymentUrl
-                ? `<div style="margin-top:10px;font-size:13px;color:#334155;">Link de pagamento: <a href="${escHtml(mpPaymentUrl)}" style="color:#0b4c46;text-decoration:underline;">${escHtml(mpPaymentUrl)}</a></div>`
-                : ""
-            }
-            <div style="margin-top:12px;font-size:12px;color:#64748b;">
-              Se preferir, você também pode acessar o sistema e ir em <strong>Financeiro</strong> para visualizar esta fatura.
-            </div>
-          </div>
+                      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border:1px solid #e5e7eb;border-radius:12px;background:#f8fafc;">
+                        <tr><td style="padding:14px 14px 0 14px;">
+                          <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#0f172a;">
+                            <tr><td style="padding:6px 0;color:#64748b;">Empresa</td><td align="right" style="padding:6px 0;"><strong>${escHtml(String(vars.companyName))}</strong></td></tr>
+                            <tr><td style="padding:6px 0;color:#64748b;">Descrição</td><td align="right" style="padding:6px 0;">${escHtml(String(vars.detail))}</td></tr>
+                            <tr><td style="padding:6px 0;color:#64748b;">Valor</td><td align="right" style="padding:6px 0;"><strong>${escHtml(String(vars.value))}</strong></td></tr>
+                            <tr><td style="padding:6px 0;color:#64748b;">Vencimento</td><td align="right" style="padding:6px 0;"><strong>${escHtml(String(vars.dueDate))}</strong></td></tr>
+                            <tr><td style="padding:6px 0;color:#64748b;">Status</td><td align="right" style="padding:6px 0;">${escHtml(String(vars.status))}</td></tr>
+                          </table>
+                        </td></tr>
+                        <tr><td style="height:14px;"></td></tr>
+                      </table>
 
-          <div style="margin-top:16px;font-size:12px;color:#94a3b8;">
-            <pre style="white-space:pre-wrap;font-family:inherit;margin:0;">${escHtml(baseText)}</pre>
-          </div>
-        </div>
-      </div>
+                      <div style="height:16px;"></div>
+
+                      <div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:700;color:#0b4c46;margin:0 0 8px 0;">
+                        Pagamento via PIX
+                      </div>
+
+                      ${
+                        pixQrSrc
+                          ? `<div style="text-align:center;margin:10px 0 12px 0;">
+                               <img src="${pixQrSrc}" alt="QR Code PIX" style="width:220px;height:220px;border:1px solid #e5e7eb;border-radius:12px;display:inline-block;" />
+                             </div>`
+                          : ""
+                      }
+                      ${
+                        qrPublicUrl
+                          ? `<div style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#94a3b8;margin:0 0 10px 0;">
+                               Se o QR Code não aparecer, <a href="${escHtml(qrPublicUrl)}" style="color:#0b4c46;text-decoration:underline;">abrir QR Code</a> (ou veja o anexo).
+                             </div>`
+                          : ""
+                      }
+
+                      ${
+                        pixCopyPaste
+                          ? `<div style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#334155;margin:0 0 8px 0;">
+                               PIX <strong>copia e cola</strong>:
+                             </div>
+                             <div style="font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;font-size:12px;line-height:1.4;white-space:pre-wrap;word-break:break-all;padding:12px;border-radius:12px;background:#0b1220;color:#e2e8f0;border:1px solid #111827;">${escHtml(pixCopyPaste)}</div>`
+                          : ""
+                      }
+
+                      ${
+                        !pixCopyPaste && mpPaymentUrl
+                          ? `<div style="margin-top:10px;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#334155;">
+                               Link de pagamento: <a href="${escHtml(mpPaymentUrl)}" style="color:#0b4c46;text-decoration:underline;">${escHtml(mpPaymentUrl)}</a>
+                             </div>`
+                          : ""
+                      }
+
+                      <div style="margin-top:12px;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#64748b;">
+                        Se preferir, você também pode acessar o sistema e ir em <strong>Financeiro</strong> para visualizar esta fatura.
+                      </div>
+                    </td>
+                  </tr>
+
+                  <tr>
+                    <td style="padding:14px 22px;border-top:1px solid #e5e7eb;background:#ffffff;">
+                      <div style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#94a3b8;white-space:pre-wrap;">${escHtml(baseText)}</div>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+        </body>
+      </html>
     `;
 
     await sendMail(
