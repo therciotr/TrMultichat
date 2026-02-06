@@ -174,6 +174,51 @@ async function getMasterLogoAttachment(masterCompanyId: number): Promise<{ cid: 
   }
 }
 
+function ensureDir(dir: string) {
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+}
+
+async function getPixQrAttachment(opts: {
+  invoiceId: number;
+  pixCopyPaste: string;
+  pixQrCodeBase64?: string;
+}): Promise<{ cid: string; filename: string; path: string; contentType?: string } | null> {
+  try {
+    const invoiceId = Number(opts.invoiceId || 0);
+    if (!invoiceId) return null;
+
+    const outDir = path.join(process.cwd(), "public", "uploads", "billing-email");
+    ensureDir(outDir);
+    const outPath = path.join(outDir, `pix-qrcode-${invoiceId}.png`);
+
+    const base64 = String(opts.pixQrCodeBase64 || "").trim();
+    if (base64) {
+      const cleaned = base64.startsWith("data:")
+        ? base64.replace(/^data:image\/\w+;base64,/, "")
+        : base64;
+      const buf = Buffer.from(cleaned, "base64");
+      if (buf.length > 32) {
+        fs.writeFileSync(outPath, buf);
+        return { cid: "pixqr", filename: `pix-qrcode-${invoiceId}.png`, path: outPath, contentType: "image/png" };
+      }
+    }
+
+    const pix = String(opts.pixCopyPaste || "").trim();
+    if (!pix) return null;
+
+    await QRCode.toFile(outPath, pix, {
+      errorCorrectionLevel: "M",
+      margin: 2,
+      width: 512,
+      type: "png",
+    });
+
+    return { cid: "pixqr", filename: `pix-qrcode-${invoiceId}.png`, path: outPath, contentType: "image/png" };
+  } catch {
+    return null;
+  }
+}
+
 async function ensureInvoiceEmailLogsSchema() {
   await pgQuery(`
     CREATE TABLE IF NOT EXISTS "InvoiceEmailLogs" (
@@ -308,20 +353,12 @@ export async function sendBillingEmailForInvoice(opts: {
       }
     }
 
-    let pixQrSrc = "";
-    if (pixQrCodeBase64) {
-      pixQrSrc = pixQrCodeBase64.startsWith("data:")
-        ? pixQrCodeBase64
-        : `data:image/png;base64,${pixQrCodeBase64}`;
-    } else if (pixCopyPaste) {
-      try {
-        pixQrSrc = await QRCode.toDataURL(pixCopyPaste, {
-          errorCorrectionLevel: "M",
-          margin: 1,
-          width: 220,
-        });
-      } catch {}
-    }
+    const pixQrAttachment = await getPixQrAttachment({
+      invoiceId: Number(inv.id || invoiceId || 0),
+      pixCopyPaste,
+      pixQrCodeBase64: pixQrCodeBase64 || undefined,
+    });
+    const pixQrSrc = pixQrAttachment ? `cid:${pixQrAttachment.cid}` : "";
 
     const varsPay = {
       ...vars,
@@ -335,6 +372,7 @@ export async function sendBillingEmailForInvoice(opts: {
       baseText,
       "",
       "Pagamento via PIX",
+      pixQrAttachment ? "QR Code do PIX: (imagem em anexo)" : "",
       pixCopyPaste ? `PIX copia e cola: ${pixCopyPaste}` : "",
       !pixCopyPaste && mpPaymentUrl ? `Link de pagamento: ${mpPaymentUrl}` : "",
     ]
@@ -342,6 +380,10 @@ export async function sendBillingEmailForInvoice(opts: {
       .join("\n");
 
     const logoAttachment = await getMasterLogoAttachment(masterCompanyId);
+    const attachments = [
+      ...(logoAttachment ? [logoAttachment] : []),
+      ...(pixQrAttachment ? [pixQrAttachment] : []),
+    ];
     const html = `
       <div style="font-family:Arial,Helvetica,sans-serif;line-height:1.45;color:#0f172a;background:#ffffff;padding:0;margin:0;">
         <div style="max-width:640px;margin:0 auto;padding:24px;">
@@ -396,8 +438,10 @@ export async function sendBillingEmailForInvoice(opts: {
       </div>
     `;
 
-    const attachments = logoAttachment ? [logoAttachment] : undefined;
-    await sendMail({ to, subject, text, html, attachments }, masterCompanyId);
+    await sendMail(
+      { to, subject, text, html, attachments: attachments.length ? attachments : undefined },
+      masterCompanyId
+    );
 
     await ensureInvoiceEmailLogsSchema();
     await pgQuery(
