@@ -136,6 +136,14 @@ function invoiceStatusPt(raw: any) {
   return map[s] || s;
 }
 
+function chunkEvery(s: string, size = 48): string[] {
+  const str = String(s || "");
+  if (!str) return [];
+  const out: string[] = [];
+  for (let i = 0; i < str.length; i += size) out.push(str.slice(i, i + size));
+  return out;
+}
+
 function interpolate(tpl: string, vars: Record<string, any>) {
   return String(tpl || "").replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_m, k) => {
     const v = vars[String(k)] ?? "";
@@ -394,12 +402,15 @@ export async function sendBillingEmailForInvoice(opts: {
 
     const subject = interpolate(cfg.subjectTemplate, varsPay);
     const baseText = interpolate(cfg.bodyTemplate, varsPay);
+    const pixLines = pixCopyPaste ? chunkEvery(pixCopyPaste, 48) : [];
+    const pixTextBlock = pixLines.length ? pixLines.join("\n") : "";
     const text = [
       baseText,
       "",
       "Pagamento via PIX",
       pixQrAttachment ? "QR Code do PIX: (imagem em anexo)" : "",
-      pixCopyPaste ? `PIX copia e cola: ${pixCopyPaste}` : "",
+      pixCopyPaste ? "PIX copia e cola:" : "",
+      pixTextBlock,
       !pixCopyPaste && mpPaymentUrl ? `Link de pagamento: ${mpPaymentUrl}` : "",
     ]
       .filter(Boolean)
@@ -434,6 +445,8 @@ export async function sendBillingEmailForInvoice(opts: {
     ];
     const qrPublicUrl = pixQrAttachment?.publicUrl || "";
     const logoPublicUrl = logoAttachment?.publicUrl || "";
+    const statusColor = String(vars.status || "").toLowerCase() === "aberto" ? "#d97706" : "#0f172a";
+    const pixHtmlLines = pixLines.length ? pixLines.map((l) => escHtml(l)).join("<br/>") : "";
     const html = `
       <!doctype html>
       <html>
@@ -444,88 +457,112 @@ export async function sendBillingEmailForInvoice(opts: {
           <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#f3f6fb;padding:24px 0;">
             <tr>
               <td align="center">
-                <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="width:600px;max-width:600px;background:#ffffff;border:1px solid #e5e7eb;border-radius:14px;overflow:hidden;">
+                <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="width:600px;max-width:600px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:14px;overflow:hidden;">
                   <tr>
-                    <td style="padding:18px 22px;background:#ffffff;">
-                      ${
-                        logoAttachment
-                          ? `<img src="cid:${logoAttachment.cid}" alt="TR Multichat" style="height:42px;max-width:220px;display:block;object-fit:contain;" />`
-                          : `<div style="font-family:Arial,Helvetica,sans-serif;font-size:18px;font-weight:700;color:#0b4c46;">TR Multichat</div>`
-                      }
-                      ${
-                        logoPublicUrl
-                          ? `<div style="margin-top:6px;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#94a3b8;">Se a logo não aparecer, <a href="${escHtml(logoPublicUrl)}" style="color:#0b4c46;text-decoration:underline;">abrir imagem</a>.</div>`
-                          : ""
-                      }
+                    <td style="padding:18px 22px;background:#2a7b77;">
+                      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+                        <tr>
+                          <td valign="middle" style="width:64px;">
+                            ${
+                              logoAttachment
+                                ? `<img src="cid:${logoAttachment.cid}" alt="TR" style="width:54px;height:54px;border-radius:999px;display:block;background:#ffffff;border:3px solid rgba(255,255,255,0.35);object-fit:cover;" />`
+                                : ""
+                            }
+                          </td>
+                          <td valign="middle" style="font-family:Arial,Helvetica,sans-serif;font-size:36px;font-weight:800;color:#ffffff;line-height:1;">
+                            Multichat
+                          </td>
+                        </tr>
+                      </table>
                     </td>
                   </tr>
 
                   <tr>
                     <td style="padding:18px 22px;">
-                      <div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#0f172a;margin:0 0 12px 0;">
-                        <strong>Cobrança</strong> · Fatura <strong>#${escHtml(String(vars.invoiceId))}</strong>
+                      <div style="font-family:Arial,Helvetica,sans-serif;font-size:18px;font-weight:800;color:#0f172a;margin:0 0 6px 0;">
+                        Olá, ${escHtml(String(vars.companyName || "").toUpperCase())},
+                      </div>
+                      <div style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#334155;margin:0 0 14px 0;">
+                        Segue a cobrança referente ao serviço contratado.
                       </div>
 
-                      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border:1px solid #e5e7eb;border-radius:12px;background:#f8fafc;">
+                      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border:1px solid #e5e7eb;border-radius:12px;background:#ffffff;">
                         <tr><td style="padding:14px 14px 0 14px;">
                           <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#0f172a;">
-                            <tr><td style="padding:6px 0;color:#64748b;">Empresa</td><td align="right" style="padding:6px 0;"><strong>${escHtml(String(vars.companyName))}</strong></td></tr>
-                            <tr><td style="padding:6px 0;color:#64748b;">Descrição</td><td align="right" style="padding:6px 0;">${escHtml(String(vars.detail))}</td></tr>
-                            <tr><td style="padding:6px 0;color:#64748b;">Valor</td><td align="right" style="padding:6px 0;"><strong>${escHtml(String(vars.value))}</strong></td></tr>
-                            <tr><td style="padding:6px 0;color:#64748b;">Vencimento</td><td align="right" style="padding:6px 0;"><strong>${escHtml(String(vars.dueDate))}</strong></td></tr>
-                            <tr><td style="padding:6px 0;color:#64748b;">Status</td><td align="right" style="padding:6px 0;">${escHtml(String(vars.status))}</td></tr>
+                            <tr><td style="padding:6px 0;color:#111827;"><strong>Fatura:</strong></td><td align="left" style="padding:6px 0;">&nbsp;#${escHtml(String(vars.invoiceId))}</td></tr>
+                            <tr><td style="padding:6px 0;color:#111827;"><strong>Descrição:</strong></td><td align="left" style="padding:6px 0;">&nbsp;${escHtml(String(vars.detail))}</td></tr>
+                            <tr><td style="padding:6px 0;color:#111827;"><strong>Valor:</strong></td><td align="left" style="padding:6px 0;">&nbsp;${escHtml(String(vars.value))}</td></tr>
+                            <tr><td style="padding:6px 0;color:#111827;"><strong>Vencimento:</strong></td><td align="left" style="padding:6px 0;">&nbsp;${escHtml(String(vars.dueDate))}</td></tr>
+                            <tr><td style="padding:6px 0;color:#111827;"><strong>Status:</strong></td><td align="left" style="padding:6px 0;">&nbsp;<span style="color:${statusColor};font-weight:700;">${escHtml(String(vars.status))}</span></td></tr>
                           </table>
                         </td></tr>
                         <tr><td style="height:14px;"></td></tr>
                       </table>
 
-                      <div style="height:16px;"></div>
+                      <div style="height:14px;"></div>
 
-                      <div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;font-weight:700;color:#0b4c46;margin:0 0 8px 0;">
-                        Pagamento via PIX
+                      <div style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#334155;margin:0 0 10px 0;">
+                        Para realizar o pagamento, utilize a opção abaixo:
                       </div>
 
-                      ${
-                        pixQrSrc
-                          ? `<div style="text-align:center;margin:10px 0 12px 0;">
-                               <img src="${pixQrSrc}" alt="QR Code PIX" style="width:220px;height:220px;border:1px solid #e5e7eb;border-radius:12px;display:inline-block;" />
-                             </div>`
-                          : ""
-                      }
-                      ${
-                        qrPublicUrl
-                          ? `<div style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#94a3b8;margin:0 0 10px 0;">
-                               Se o QR Code não aparecer, <a href="${escHtml(qrPublicUrl)}" style="color:#0b4c46;text-decoration:underline;">abrir QR Code</a> (ou veja o anexo).
-                             </div>`
-                          : ""
-                      }
+                      <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border:1px solid #e5e7eb;border-radius:12px;background:#ffffff;overflow:hidden;">
+                        <tr>
+                          <td style="padding:0;">
+                            <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+                              <tr>
+                                <td style="padding:12px 14px;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:800;color:#0f172a;">
+                                  Pagamento via PIX
+                                </td>
+                                <td style="padding:12px 14px;background:#f3f4f6;"></td>
+                              </tr>
+                              <tr>
+                                <td style="padding:12px 14px;vertical-align:top;">
+                                  <div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;font-weight:800;color:#0f172a;margin:0 0 6px 0;">
+                                    PIX Copia e Cola:
+                                  </div>
+                                  <div style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#111827;line-height:1.5;">
+                                    ${pixHtmlLines}
+                                  </div>
+                                </td>
+                                <td style="padding:12px 14px;vertical-align:top;" align="right">
+                                  ${
+                                    pixQrSrc
+                                      ? `<img src="${pixQrSrc}" alt="QR Code PIX" style="width:190px;height:190px;border:1px solid #e5e7eb;border-radius:8px;display:block;background:#fff;" />`
+                                      : ""
+                                  }
+                                  ${
+                                    qrPublicUrl
+                                      ? `<div style="margin-top:8px;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#94a3b8;text-align:right;">
+                                           <a href="${escHtml(qrPublicUrl)}" style="color:#0b4c46;text-decoration:underline;">Abrir QR Code</a>
+                                         </div>`
+                                      : ""
+                                  }
+                                </td>
+                              </tr>
+                            </table>
+                          </td>
+                        </tr>
+                      </table>
 
-                      ${
-                        pixCopyPaste
-                          ? `<div style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#334155;margin:0 0 8px 0;">
-                               PIX <strong>copia e cola</strong>:
-                             </div>
-                             <div style="font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;font-size:12px;line-height:1.4;white-space:pre-wrap;word-break:break-all;padding:12px;border-radius:12px;background:#0b1220;color:#e2e8f0;border:1px solid #111827;">${escHtml(pixCopyPaste)}</div>`
-                          : ""
-                      }
+                      <div style="height:12px;"></div>
 
-                      ${
-                        !pixCopyPaste && mpPaymentUrl
-                          ? `<div style="margin-top:10px;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#334155;">
-                               Link de pagamento: <a href="${escHtml(mpPaymentUrl)}" style="color:#0b4c46;text-decoration:underline;">${escHtml(mpPaymentUrl)}</a>
-                             </div>`
-                          : ""
-                      }
+                      <div style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#334155;">
+                        Caso já tenha realizado o pagamento, desconsidere esta mensagem.
+                      </div>
 
-                      <div style="margin-top:12px;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#64748b;">
-                        Se preferir, você também pode acessar o sistema e ir em <strong>Financeiro</strong> para visualizar esta fatura.
+                      <div style="height:8px;"></div>
+
+                      <div style="font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:700;color:#0f172a;">
+                        Equipe TR Multichat
                       </div>
                     </td>
                   </tr>
 
                   <tr>
-                    <td style="padding:14px 22px;border-top:1px solid #e5e7eb;background:#ffffff;">
-                      <div style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#94a3b8;white-space:pre-wrap;">${escHtml(baseText)}</div>
+                    <td style="padding:14px 22px;border-top:1px solid #e5e7eb;background:#f8fafc;">
+                      <div style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#94a3b8;text-align:center;">
+                        © 2026 TR Tecnologias - Todos os direitos reservados
+                      </div>
                     </td>
                   </tr>
                 </table>
