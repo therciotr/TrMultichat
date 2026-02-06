@@ -176,6 +176,17 @@ const Financeiro = () => {
   const [billingSaving, setBillingSaving] = useState(false);
   const [billingLoading, setBillingLoading] = useState(false);
 
+  // Safe setter for MUI events (avoids "Cannot read properties of null (reading 'value')" on pooled events)
+  const setBillingKey = (key, parser) => (eOrValue) => {
+    const t = eOrValue && eOrValue.target ? eOrValue.target : null;
+    const raw =
+      t
+        ? (String(t.type || "").toLowerCase() === "checkbox" ? Boolean(t.checked) : t.value)
+        : eOrValue;
+    const nextVal = typeof parser === "function" ? parser(raw) : raw;
+    setBillingCfg((p) => ({ ...(p || {}), [key]: nextVal }));
+  };
+
   const loadBillingCfg = async () => {
     if (!isMasterEmail) return;
     setBillingLoading(true);
@@ -612,7 +623,7 @@ const Financeiro = () => {
                       <Switch
                         color="primary"
                         checked={Boolean(billingCfg?.enabled)}
-                        onChange={(e) => setBillingCfg((p) => ({ ...(p || {}), enabled: e.target.checked }))}
+                        onChange={setBillingKey("enabled", (v) => Boolean(v))}
                       />
                     }
                     label="Ativar cobranças por e-mail"
@@ -622,7 +633,7 @@ const Financeiro = () => {
                       <Switch
                         color="primary"
                         checked={Boolean(billingCfg?.autoEnabled)}
-                        onChange={(e) => setBillingCfg((p) => ({ ...(p || {}), autoEnabled: e.target.checked }))}
+                        onChange={setBillingKey("autoEnabled", (v) => Boolean(v))}
                         disabled={!billingCfg?.enabled}
                       />
                     }
@@ -639,7 +650,7 @@ const Financeiro = () => {
                         size="small"
                         label="Horário (HH:MM)"
                         value={billingCfg?.autoTime || "09:00"}
-                        onChange={(e) => setBillingCfg((p) => ({ ...(p || {}), autoTime: e.target.value }))}
+                        onChange={setBillingKey("autoTime", (v) => String(v || ""))}
                         disabled={!billingCfg?.enabled || !billingCfg?.autoEnabled}
                       />
                     </Grid>
@@ -652,7 +663,10 @@ const Financeiro = () => {
                         label="Dias antes"
                         helperText="0 = só vencidas/hoje (ou conforme abaixo)"
                         value={billingCfg?.daysBefore ?? 0}
-                        onChange={(e) => setBillingCfg((p) => ({ ...(p || {}), daysBefore: Number(e.target.value || 0) }))}
+                        onChange={setBillingKey("daysBefore", (v) => {
+                          const n = Number(v);
+                          return Number.isFinite(n) ? n : 0;
+                        })}
                         disabled={!billingCfg?.enabled}
                       />
                     </Grid>
@@ -662,7 +676,7 @@ const Financeiro = () => {
                           <Switch
                             color="primary"
                             checked={Boolean(billingCfg?.includeOverdue)}
-                            onChange={(e) => setBillingCfg((p) => ({ ...(p || {}), includeOverdue: e.target.checked }))}
+                            onChange={setBillingKey("includeOverdue", (v) => Boolean(v))}
                             disabled={!billingCfg?.enabled}
                           />
                         }
@@ -679,7 +693,7 @@ const Financeiro = () => {
                     size="small"
                     label="Assunto (template)"
                     value={billingCfg?.subjectTemplate || ""}
-                    onChange={(e) => setBillingCfg((p) => ({ ...(p || {}), subjectTemplate: e.target.value }))}
+                    onChange={setBillingKey("subjectTemplate", (v) => String(v || ""))}
                     disabled={!billingCfg?.enabled}
                     helperText="Variáveis: {{companyName}} {{invoiceId}} {{dueDate}} {{value}} {{status}} {{detail}}"
                   />
@@ -691,7 +705,7 @@ const Financeiro = () => {
                     size="small"
                     label="Mensagem (template)"
                     value={billingCfg?.bodyTemplate || ""}
-                    onChange={(e) => setBillingCfg((p) => ({ ...(p || {}), bodyTemplate: e.target.value }))}
+                    onChange={setBillingKey("bodyTemplate", (v) => String(v || ""))}
                     disabled={!billingCfg?.enabled}
                     multiline
                     minRows={6}
