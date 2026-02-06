@@ -10,6 +10,7 @@ import Select from "@material-ui/core/Select";
 import MenuItem from "@material-ui/core/MenuItem";
 import TextField from "@material-ui/core/TextField";
 import Table from "@material-ui/core/Table";
+import TableContainer from "@material-ui/core/TableContainer";
 import TableHead from "@material-ui/core/TableHead";
 import TableRow from "@material-ui/core/TableRow";
 import TableCell from "@material-ui/core/TableCell";
@@ -106,9 +107,39 @@ const useStyles = makeStyles((theme) => ({
     border: `1px solid ${theme.palette.divider}`,
     boxShadow: theme.palette.type === "dark" ? "0 18px 46px rgba(0,0,0,0.45)" : "0 10px 28px rgba(15, 23, 42, 0.05)",
     overflow: "hidden",
+    display: "flex",
+    flexDirection: "column",
+
+    // premium header (matches branding)
+    "& > div:first-child": {
+      padding: theme.spacing(1.25, 1.5),
+      borderBottom: `1px solid ${theme.palette.divider}`,
+      background: "var(--tr-heading-soft, rgba(11, 76, 70, 0.06))",
+    },
+    "& > div:last-child": {
+      flex: 1,
+      minHeight: 0,
+    },
   },
   tableHead: {
     background: theme.palette.type === "dark" ? "rgba(15,23,42,0.55)" : "rgba(15, 23, 42, 0.03)",
+  },
+  tableContainer: {
+    width: "100%",
+    overflowX: "auto",
+    WebkitOverflowScrolling: "touch",
+    "& table": {
+      minWidth: 640,
+    },
+  },
+  tableCell: {
+    paddingTop: 10,
+    paddingBottom: 10,
+    fontSize: 13,
+    whiteSpace: "nowrap",
+  },
+  tableCellStrong: {
+    fontWeight: 900,
   },
   chipOk: {
     backgroundColor: "rgba(16, 185, 129, 0.12)",
@@ -412,42 +443,44 @@ export default function Dashboard() {
             {loading ? (
               <Skeleton variant="rect" height={220} />
             ) : (
-              <Table size="small">
-                <TableHead className={classes.tableHead}>
-                  <TableRow>
-                    <TableCell>Usuário</TableCell>
-                    <TableCell align="right">Finalizados</TableCell>
-                    <TableCell align="right">Em aberto</TableCell>
-                    <TableCell align="right">Pendentes</TableCell>
-                    <TableCell align="right">T.M. atendimento</TableCell>
-                    <TableCell align="right">Status</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {rankAttendants.length === 0 ? (
+              <TableContainer className={classes.tableContainer}>
+                <Table size="small" stickyHeader>
+                  <TableHead className={classes.tableHead}>
                     <TableRow>
-                      <TableCell colSpan={6}>Nenhum dado no período.</TableCell>
+                      <TableCell className={`${classes.tableCell} ${classes.tableCellStrong}`}>Usuário</TableCell>
+                      <TableCell className={classes.tableCell} align="right">Finalizados</TableCell>
+                      <TableCell className={classes.tableCell} align="right">Em aberto</TableCell>
+                      <TableCell className={classes.tableCell} align="right">Pendentes</TableCell>
+                      <TableCell className={classes.tableCell} align="right">T.M. atendimento</TableCell>
+                      <TableCell className={classes.tableCell} align="right">Status</TableCell>
                     </TableRow>
-                  ) : (
-                    rankAttendants.map((a) => (
-                      <TableRow key={a.id}>
-                        <TableCell>{a.name}</TableCell>
-                        <TableCell align="right">{a.closedCount}</TableCell>
-                        <TableCell align="right">{a.openCount}</TableCell>
-                        <TableCell align="right">{a.pendingCount}</TableCell>
-                        <TableCell align="right">{formatMinutes(a.avgSupportTime)}</TableCell>
-                        <TableCell align="right">
-                          <Chip
-                            size="small"
-                            label={a.online ? "Online" : "Offline"}
-                            className={a.online ? classes.chipOk : classes.chipDanger}
-                          />
-                        </TableCell>
+                  </TableHead>
+                  <TableBody>
+                    {rankAttendants.length === 0 ? (
+                      <TableRow>
+                        <TableCell className={classes.tableCell} colSpan={6}>Nenhum dado no período.</TableCell>
                       </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
+                    ) : (
+                      rankAttendants.map((a) => (
+                        <TableRow key={a.id}>
+                          <TableCell className={`${classes.tableCell} ${classes.tableCellStrong}`}>{a.name}</TableCell>
+                          <TableCell className={classes.tableCell} align="right">{a.closedCount}</TableCell>
+                          <TableCell className={classes.tableCell} align="right">{a.openCount}</TableCell>
+                          <TableCell className={classes.tableCell} align="right">{a.pendingCount}</TableCell>
+                          <TableCell className={classes.tableCell} align="right">{formatMinutes(a.avgSupportTime)}</TableCell>
+                          <TableCell className={classes.tableCell} align="right">
+                            <Chip
+                              size="small"
+                              label={a.online ? "Online" : "Offline"}
+                              className={a.online ? classes.chipOk : classes.chipDanger}
+                            />
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </TableContainer>
             )}
           </TrCard>
         </Grid>
@@ -457,59 +490,61 @@ export default function Dashboard() {
             {loading ? (
               <Skeleton variant="rect" height={220} />
             ) : (
-              <Table size="small">
-                <TableHead className={classes.tableHead}>
-                  <TableRow>
-                    <TableCell>Fila</TableCell>
-                    <TableCell align="right">Total</TableCell>
-                    <TableCell align="right">Pendentes</TableCell>
-                    <TableCell align="right">Em aberto</TableCell>
-                    <TableCell align="right">Finalizados</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {rankQueues.length === 0 ? (
+              <TableContainer className={classes.tableContainer}>
+                <Table size="small" stickyHeader>
+                  <TableHead className={classes.tableHead}>
                     <TableRow>
-                      <TableCell colSpan={5}>Nenhum dado no período.</TableCell>
+                      <TableCell className={`${classes.tableCell} ${classes.tableCellStrong}`}>Fila</TableCell>
+                      <TableCell className={classes.tableCell} align="right">Total</TableCell>
+                      <TableCell className={classes.tableCell} align="right">Pendentes</TableCell>
+                      <TableCell className={classes.tableCell} align="right">Em aberto</TableCell>
+                      <TableCell className={classes.tableCell} align="right">Finalizados</TableCell>
                     </TableRow>
-                  ) : (
-                    rankQueues.map((q) => (
-                      <TableRow key={`${q.id}-${q.name}`}>
-                        <TableCell>
-                          <Box display="flex" alignItems="center" gridGap={8}>
-                            <span
-                              style={{
-                                width: 10,
-                                height: 10,
-                                borderRadius: 999,
-                                background: q.color || "#7c7c7c",
-                                display: "inline-block",
-                              }}
-                            />
-                            <span>{q.name}</span>
-                          </Box>
-                        </TableCell>
-                        <TableCell align="right">{q.totalTickets}</TableCell>
-                        <TableCell align="right">
-                          <Chip
-                            size="small"
-                            label={q.pendingTickets}
-                            className={
-                              q.pendingTickets >= 10
-                                ? classes.chipDanger
-                                : q.pendingTickets >= 5
-                                  ? classes.chipWarn
-                                  : classes.chipOk
-                            }
-                          />
-                        </TableCell>
-                        <TableCell align="right">{q.openTickets}</TableCell>
-                        <TableCell align="right">{q.closedTickets}</TableCell>
+                  </TableHead>
+                  <TableBody>
+                    {rankQueues.length === 0 ? (
+                      <TableRow>
+                        <TableCell className={classes.tableCell} colSpan={5}>Nenhum dado no período.</TableCell>
                       </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
+                    ) : (
+                      rankQueues.map((q) => (
+                        <TableRow key={`${q.id}-${q.name}`}>
+                          <TableCell className={`${classes.tableCell} ${classes.tableCellStrong}`}>
+                            <Box display="flex" alignItems="center" gridGap={8}>
+                              <span
+                                style={{
+                                  width: 10,
+                                  height: 10,
+                                  borderRadius: 999,
+                                  background: q.color || "#7c7c7c",
+                                  display: "inline-block",
+                                }}
+                              />
+                              <span style={{ whiteSpace: "nowrap" }}>{q.name}</span>
+                            </Box>
+                          </TableCell>
+                          <TableCell className={classes.tableCell} align="right">{q.totalTickets}</TableCell>
+                          <TableCell className={classes.tableCell} align="right">
+                            <Chip
+                              size="small"
+                              label={q.pendingTickets}
+                              className={
+                                q.pendingTickets >= 10
+                                  ? classes.chipDanger
+                                  : q.pendingTickets >= 5
+                                    ? classes.chipWarn
+                                    : classes.chipOk
+                              }
+                            />
+                          </TableCell>
+                          <TableCell className={classes.tableCell} align="right">{q.openTickets}</TableCell>
+                          <TableCell className={classes.tableCell} align="right">{q.closedTickets}</TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </TableContainer>
             )}
           </TrCard>
         </Grid>
@@ -519,34 +554,36 @@ export default function Dashboard() {
             {loading ? (
               <Skeleton variant="rect" height={220} />
             ) : (
-              <Table size="small">
-                <TableHead className={classes.tableHead}>
-                  <TableRow>
-                    <TableCell>Cliente</TableCell>
-                    <TableCell>Número</TableCell>
-                    <TableCell align="right">Tickets</TableCell>
-                    <TableCell align="right">Último contato</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {rankClients.length === 0 ? (
+              <TableContainer className={classes.tableContainer}>
+                <Table size="small" stickyHeader>
+                  <TableHead className={classes.tableHead}>
                     <TableRow>
-                      <TableCell colSpan={4}>Nenhum dado no período.</TableCell>
+                      <TableCell className={`${classes.tableCell} ${classes.tableCellStrong}`}>Cliente</TableCell>
+                      <TableCell className={classes.tableCell}>Número</TableCell>
+                      <TableCell className={classes.tableCell} align="right">Tickets</TableCell>
+                      <TableCell className={classes.tableCell} align="right">Último contato</TableCell>
                     </TableRow>
-                  ) : (
-                    rankClients.map((c) => (
-                      <TableRow key={c.id}>
-                        <TableCell>{c.name}</TableCell>
-                        <TableCell>{c.number}</TableCell>
-                        <TableCell align="right">{c.ticketsCount}</TableCell>
-                        <TableCell align="right">
-                          {c.lastTicketAt ? moment(c.lastTicketAt).format("DD/MM/YYYY HH:mm") : "—"}
-                        </TableCell>
+                  </TableHead>
+                  <TableBody>
+                    {rankClients.length === 0 ? (
+                      <TableRow>
+                        <TableCell className={classes.tableCell} colSpan={4}>Nenhum dado no período.</TableCell>
                       </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
+                    ) : (
+                      rankClients.map((c) => (
+                        <TableRow key={c.id}>
+                          <TableCell className={`${classes.tableCell} ${classes.tableCellStrong}`}>{c.name}</TableCell>
+                          <TableCell className={classes.tableCell}>{c.number}</TableCell>
+                          <TableCell className={classes.tableCell} align="right">{c.ticketsCount}</TableCell>
+                          <TableCell className={classes.tableCell} align="right">
+                            {c.lastTicketAt ? moment(c.lastTicketAt).format("DD/MM/YYYY HH:mm") : "—"}
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </TableContainer>
             )}
           </TrCard>
         </Grid>
