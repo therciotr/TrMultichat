@@ -3,6 +3,8 @@ import { authMiddleware } from "../../middleware/authMiddleware";
 import { pgQuery } from "../../utils/pgClient";
 import { getIO } from "../../libs/socket";
 import { getInlineSock, startOrRefreshInlineSession } from "../../libs/waInlineManager";
+import fs from "fs";
+import multer from "multer";
 import path from "path";
 
 const router = Router();
@@ -10,6 +12,49 @@ const router = Router();
 function tenantIdFromReq(req: any): number {
   return Number(req?.tenantId || 0);
 }
+
+function ensureDir(p: string) {
+  try {
+    fs.mkdirSync(p, { recursive: true });
+  } catch {}
+}
+
+function safeFileName(input: string): string {
+  const s = String(input || "file").trim() || "file";
+  return s.replace(/[^\w.\-]+/g, "_").slice(0, 120);
+}
+
+function detectOutgoingMediaType(mimetype?: string): "image" | "video" | "audio" | "application" {
+  const mt = String(mimetype || "").toLowerCase();
+  if (mt.startsWith("image/")) return "image";
+  if (mt.startsWith("video/")) return "video";
+  if (mt.startsWith("audio/")) return "audio";
+  return "application";
+}
+
+// Multer: store outbound medias under /public/uploads/messages/:companyId/:ticketId
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: (req, _file, cb) => {
+      try {
+        const companyId = tenantIdFromReq(req);
+        const ticketId = Number((req as any)?.params?.ticketId || 0);
+        const dir = path.join(process.cwd(), "public", "uploads", "messages", String(companyId || 0), String(ticketId || 0));
+        ensureDir(dir);
+        cb(null, dir);
+      } catch {
+        cb(null, path.join(process.cwd(), "public", "uploads"));
+      }
+    },
+    filename: (_req, file, cb) => {
+      const orig = String(file?.originalname || "file").trim() || "file";
+      const ext = path.extname(orig) || "";
+      const base = safeFileName(orig.replace(ext, "")) || "file";
+      const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+      cb(null, `${base}-${unique}${ext}`);
+    }
+  }),
+});
 
 function setNoCache(res: any) {
   try {
@@ -170,7 +215,7 @@ router.get("/:ticketId", authMiddleware, async (req, res) => {
 });
 
 // POST /messages/:ticketId (send message)
-router.post("/:ticketId", authMiddleware, async (req, res) => {
+router.post("/:ticketId", authMiddleware, upload.any(), async (req, res) => {
   const companyId = tenantIdFromReq(req);
   if (!companyId) return res.status(401).json({ error: true, message: "missing tenantId" });
 
@@ -178,7 +223,14 @@ router.post("/:ticketId", authMiddleware, async (req, res) => {
   if (tryRunLegacyMessageController("store", req, res)) return;
 
   const ticketId = Number(req.params.ticketId);
-  const bodyText = String((req.body as any)?.body || "").trim();
+  const files = Array.isArray((req as any)?.files) ? ((req as any).files as any[]) : [];
+  const hasMedia = files.length > 0;
+
+  // Body is required only for pure text messages.
+  // For media messages, if body/caption is empty we use the filename as caption to avoid blocking the send.
+  const firstFileName = files?.[0]?.originalname ? String(files[0].originalname).trim() : "";
+  const bodyTextRaw = String((req.body as any)?.body || "").trim();
+  const bodyText = hasMedia ? (bodyTextRaw || firstFileName || "[Arquivo]") : bodyTextRaw;
   if (!ticketId) return res.status(400).json({ error: true, message: "invalid ticketId" });
   if (!bodyText) return res.status(400).json({ error: true, message: "body is required" });
 
@@ -227,74 +279,143 @@ router.post("/:ticketId", authMiddleware, async (req, res) => {
     if (last) remoteJid = last;
   } catch {}
 
-  let sentId = `local-${Date.now()}`;
+  const createdIds: string[] = [];
+  let lastBodyForTicket = bodyText;
+
+  const sendOne = async (opts: { text: string; file?: any }) => {
+    const text = String(opts.text || "").trim();
+    const file = opts.file;
+    let sentId = `local-${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+    let mediaType: string | null = null;
+    let mediaUrl: string | null = null;
+
+    try {
+      if (file) {
+        const absPath = String(file.path || "").trim();
+        const mimetype = String(file.mimetype || "").trim();
+        const kind = detectOutgoingMediaType(mimetype);
+        mediaType = kind;
+        mediaUrl = `/uploads/messages/${companyId}/${ticketId}/${path.basename(absPath)}`;
+
+        if (kind === "image") {
+          const result = await sock.sendMessage(remoteJid, { image: { url: absPath }, caption: text || undefined });
+          sentId = String(result?.key?.id || sentId);
+        } else if (kind === "video") {
+          const result = await sock.sendMessage(remoteJid, { video: { url: absPath }, caption: text || undefined });
+          sentId = String(result?.key?.id || sentId);
+        } else if (kind === "audio") {
+          const result = await sock.sendMessage(remoteJid, { audio: { url: absPath }, mimetype: mimetype || undefined });
+          sentId = String(result?.key?.id || sentId);
+        } else {
+          const result = await sock.sendMessage(remoteJid, {
+            document: { url: absPath },
+            mimetype: mimetype || undefined,
+            fileName: String(file.originalname || path.basename(absPath) || "arquivo"),
+            caption: text || undefined,
+          });
+          sentId = String(result?.key?.id || sentId);
+        }
+      } else {
+        const result = await sock.sendMessage(remoteJid, { text });
+        sentId = String(result?.key?.id || sentId);
+      }
+    } catch (e: any) {
+      throw new Error(e?.message || "sendMessage failed");
+    }
+
+    // Persist message
+    await pgQuery(
+      `
+        INSERT INTO "Messages"
+          (id, body, ack, read, "mediaType", "mediaUrl", "ticketId", "createdAt", "updatedAt", "fromMe", "isDeleted",
+           "contactId", "companyId", "remoteJid", "dataJson")
+        VALUES
+          ($1, $2, 0, true, $3, $4, $5, NOW(), NOW(), true, false, $6, $7, $8, $9)
+        ON CONFLICT (id) DO NOTHING
+      `,
+      [
+        sentId,
+        text,
+        mediaType,
+        mediaUrl,
+        ticketId,
+        Number(contact.id),
+        companyId,
+        remoteJid,
+        JSON.stringify({ ...(req.body || {}), media: file ? { originalname: file.originalname, mimetype: file.mimetype, filename: path.basename(String(file.path || "")) } : null }),
+      ]
+    );
+
+    createdIds.push(sentId);
+    lastBodyForTicket = text || lastBodyForTicket;
+
+    // Emit updates for ticket list
+    try {
+      const io = getIO();
+      const msgRows = await pgQuery<any>(
+        `
+          SELECT id, body, ack, read, "mediaType", "mediaUrl", "ticketId", "createdAt", "updatedAt",
+                 "fromMe", "isDeleted", "contactId", "companyId", "quotedMsgId", "remoteJid", "dataJson", participant
+          FROM "Messages"
+          WHERE id = $1 AND "companyId" = $2
+          LIMIT 1
+        `,
+        [sentId, companyId]
+      );
+      const message = msgRows?.[0] || {
+        id: sentId,
+        body: text,
+        ack: 0,
+        read: true,
+        mediaType,
+        mediaUrl,
+        ticketId,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        fromMe: true,
+        isDeleted: false,
+        contactId: Number(contact.id),
+        companyId,
+        quotedMsgId: null,
+        remoteJid,
+        dataJson: JSON.stringify(req.body || {}),
+        participant: null
+      };
+
+      io.emit(`company-${companyId}-appMessage`, { action: "create", message });
+    } catch {}
+  };
+
   try {
-    const result = await sock.sendMessage(remoteJid, { text: bodyText });
-    sentId = String(result?.key?.id || sentId);
+    if (hasMedia) {
+      // Send each media as its own message (compatible with UI + socket events)
+      for (let i = 0; i < files.length; i++) {
+        const f = files[i];
+        const caption = i === 0 ? bodyText : (String(f?.originalname || "").trim() || "[Arquivo]");
+        await sendOne({ text: caption, file: f });
+      }
+    } else {
+      await sendOne({ text: bodyText });
+    }
   } catch (e: any) {
     return res.status(502).json({ error: true, message: e?.message || "sendMessage failed" });
   }
 
-  // Persist message
-  await pgQuery(
-    `
-      INSERT INTO "Messages"
-        (id, body, ack, read, "ticketId", "createdAt", "updatedAt", "fromMe", "isDeleted",
-         "contactId", "companyId", "remoteJid", "dataJson")
-      VALUES
-        ($1, $2, 0, true, $3, NOW(), NOW(), true, false, $4, $5, $6, $7)
-      ON CONFLICT (id) DO NOTHING
-    `,
-    [sentId, bodyText, ticketId, Number(contact.id), companyId, remoteJid, JSON.stringify(req.body || {})]
-  );
-
   await pgQuery(
     `UPDATE "Tickets" SET "lastMessage" = $1, "updatedAt" = NOW(), "fromMe" = true, "unreadMessages" = 0 WHERE id = $2 AND "companyId" = $3`,
-    [bodyText, ticketId, companyId]
+    [lastBodyForTicket, ticketId, companyId]
   );
 
-  // Emit updates for ticket list
   try {
     const io = getIO();
-    const msgRows = await pgQuery<any>(
-      `
-        SELECT id, body, ack, read, "mediaType", "mediaUrl", "ticketId", "createdAt", "updatedAt",
-               "fromMe", "isDeleted", "contactId", "companyId", "quotedMsgId", "remoteJid", "dataJson", participant
-        FROM "Messages"
-        WHERE id = $1 AND "companyId" = $2
-        LIMIT 1
-      `,
-      [sentId, companyId]
-    );
-    const message = msgRows?.[0] || {
-      id: sentId,
-      body: bodyText,
-      ack: 0,
-      read: true,
-      mediaType: null,
-      mediaUrl: null,
-      ticketId,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      fromMe: true,
-      isDeleted: false,
-      contactId: Number(contact.id),
-      companyId,
-      quotedMsgId: null,
-      remoteJid,
-      dataJson: JSON.stringify(req.body || {}),
-      participant: null
-    };
-
-    // MessagesList expects { action, message }
-    io.emit(`company-${companyId}-appMessage`, { action: "create", message });
     io.emit(`company-${companyId}-ticket`, {
       action: "update",
-      ticket: { id: ticketId, lastMessage: bodyText, updatedAt: new Date().toISOString(), fromMe: true, unreadMessages: 0 }
+      ticket: { id: ticketId, lastMessage: lastBodyForTicket, updatedAt: new Date().toISOString(), fromMe: true, unreadMessages: 0 }
     });
   } catch {}
 
-  return res.status(201).json({ id: sentId });
+  const lastId = createdIds[createdIds.length - 1] || `local-${Date.now()}`;
+  return res.status(201).json({ id: lastId, ids: createdIds });
 });
 
 export default router;
