@@ -319,6 +319,11 @@ export default function Agenda() {
     const nextVal = typeof parser === "function" ? parser(raw) : raw;
     setForm((f) => ({ ...(f || {}), [key]: nextVal }));
   };
+  const setFormCheckedKey = (key) => (eOrChecked) => {
+    const t = eOrChecked && eOrChecked.target ? eOrChecked.target : null;
+    const raw = t ? t.checked : eOrChecked;
+    setForm((f) => ({ ...(f || {}), [key]: Boolean(raw) }));
+  };
 
   const canPickUser = isAdminLike;
 
@@ -872,7 +877,7 @@ export default function Agenda() {
                 control={
                   <Switch
                     checked={Boolean(form.notifyInChat)}
-                    onChange={(e) => setForm((f) => ({ ...f, notifyInChat: e.target.checked }))}
+                    onChange={setFormCheckedKey("notifyInChat")}
                     color="primary"
                     disabled={Number(form.reminderMinutes || 0) <= 0}
                   />
@@ -891,7 +896,7 @@ export default function Agenda() {
                 control={
                   <Switch
                     checked={form.allDay}
-                    onChange={(e) => setForm((f) => ({ ...f, allDay: e.target.checked }))}
+                    onChange={setFormCheckedKey("allDay")}
                     color="primary"
                   />
                 }
@@ -991,28 +996,28 @@ export default function Agenda() {
                 }}
               >
                 {uploading ? "Enviando..." : "Enviar anexo"}
-                <input
-                  type="file"
-                  ref={uploadInputRef}
-                  tabIndex={-1}
-                  // Visually hidden (but NOT display:none), so programmatic click opens picker reliably
-                  style={{
-                    position: "fixed",
-                    top: 0,
-                    left: 0,
-                    width: 1,
-                    height: 1,
-                    opacity: 0,
-                    pointerEvents: "none",
-                  }}
-                  onChange={(e) => {
-                    const file = e?.target?.files?.[0];
-                    // allow selecting same file again
-                    try { e.target.value = ""; } catch {}
-                    handleUploadAttachment(file);
-                  }}
-                />
               </TrButton>
+              <input
+                type="file"
+                ref={uploadInputRef}
+                tabIndex={-1}
+                // Visually hidden (but NOT display:none), so programmatic click opens picker reliably
+                style={{
+                  position: "fixed",
+                  top: 0,
+                  left: 0,
+                  width: 1,
+                  height: 1,
+                  opacity: 0,
+                  pointerEvents: "none",
+                }}
+                onChange={(e) => {
+                  const file = e?.target?.files?.[0];
+                  // allow selecting same file again
+                  try { e.target.value = ""; } catch {}
+                  handleUploadAttachment(file);
+                }}
+              />
               <div className={classes.hint}>
                 {form.seriesId ? "Arquivos ficam salvos no evento." : "Salve o evento primeiro para anexar arquivos."}
               </div>
