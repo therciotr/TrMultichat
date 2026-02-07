@@ -1068,7 +1068,7 @@ export default function Agenda() {
                       <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
                         <AttachFileOutlinedIcon style={{ fontSize: 18, opacity: 0.8 }} />
                         <a
-                          href={`/${String(a.filePath || "")}`}
+                          href={`${String(api?.defaults?.baseURL || "").replace(/\/+$/, "")}/${String(a.filePath || "").replace(/^\/+/, "")}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className={classes.attachmentName}
