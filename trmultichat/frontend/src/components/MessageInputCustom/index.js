@@ -21,7 +21,10 @@ import MicIcon from "@material-ui/icons/Mic";
 import CheckCircleOutlineIcon from "@material-ui/icons/CheckCircleOutline";
 import HighlightOffIcon from "@material-ui/icons/HighlightOff";
 import MailOutlineOutlinedIcon from "@material-ui/icons/MailOutlineOutlined";
-import { Button, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, Switch, TextField } from "@material-ui/core";
+import AlternateEmailIcon from "@material-ui/icons/AlternateEmail";
+import SubjectIcon from "@material-ui/icons/Subject";
+import NotesOutlinedIcon from "@material-ui/icons/NotesOutlined";
+import { Button, Dialog, DialogActions, DialogContent, FormControlLabel, InputAdornment, Switch, TextField, Typography } from "@material-ui/core";
 import Autocomplete from "@material-ui/lab/Autocomplete";
 import { isString, isEmpty, isObject, has } from "lodash";
 import StarBorderOutlinedIcon from "@material-ui/icons/StarBorderOutlined";
@@ -39,6 +42,7 @@ import toastError from "../../errors/toastError";
 import { toast } from "react-toastify";
 
 import useQuickMessages from "../../hooks/useQuickMessages";
+import { TrButton } from "../ui";
 
 const Mp3Recorder = new MicRecorder({ bitRate: 128 });
 
@@ -97,6 +101,64 @@ const useStyles = makeStyles((theme) => ({
     bottom: 63,
     width: 40,
     borderTop: "1px solid #e8e8e8",
+  },
+
+  emailDialogPaper: {
+    borderRadius: 16,
+    overflow: "hidden",
+  },
+  emailDialogHeader: {
+    padding: theme.spacing(2.25, 2.5),
+    color: "#fff",
+    background:
+      theme.palette.type === "dark"
+        ? "linear-gradient(135deg, rgba(15,23,42,0.92) 0%, rgba(2,6,23,0.92) 100%)"
+        : `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.secondary.main} 100%)`,
+  },
+  emailDialogHeaderRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: theme.spacing(1.5),
+  },
+  emailDialogHeaderIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "rgba(255,255,255,0.18)",
+    border: "1px solid rgba(255,255,255,0.18)",
+    flex: "0 0 auto",
+  },
+  emailDialogTitle: {
+    fontWeight: 900,
+    fontSize: 16,
+    lineHeight: 1.15,
+  },
+  emailDialogSub: {
+    opacity: 0.92,
+    marginTop: 4,
+    fontSize: 12,
+    lineHeight: 1.25,
+  },
+  emailDialogContent: {
+    padding: theme.spacing(2),
+    background: theme.palette.type === "dark" ? "rgba(2,6,23,0.35)" : "#fff",
+  },
+  emailAttachmentCard: {
+    marginTop: theme.spacing(1.5),
+    padding: theme.spacing(1.5),
+    borderRadius: 14,
+    border: `1px solid ${theme.palette.divider}`,
+    background: theme.palette.type === "dark" ? "rgba(15,23,42,0.55)" : "rgba(148,163,184,0.10)",
+  },
+  emailActions: {
+    padding: theme.spacing(1.25, 2),
+    background: theme.palette.type === "dark" ? "rgba(2,6,23,0.35)" : "rgba(148,163,184,0.10)",
+  },
+  emailFieldIcon: {
+    color: theme.palette.type === "dark" ? "rgba(226,232,240,0.85)" : "rgba(15,23,42,0.55)",
   },
 
   circleLoading: {
@@ -791,6 +853,20 @@ const MessageInputCustom = (props) => {
     setInputMessage((prevState) => prevState + emoji);
   };
 
+  const formatBytes = (bytes) => {
+    const n = Number(bytes || 0);
+    if (!Number.isFinite(n) || n <= 0) return "";
+    const units = ["B", "KB", "MB", "GB"];
+    let idx = 0;
+    let v = n;
+    while (v >= 1024 && idx < units.length - 1) {
+      v /= 1024;
+      idx++;
+    }
+    const fixed = idx === 0 ? 0 : idx === 1 ? 1 : 2;
+    return `${v.toFixed(fixed)} ${units[idx]}`;
+  };
+
   const handleChangeMedias = (e) => {
     if (!e.target.files) {
       return;
@@ -1054,9 +1130,33 @@ const MessageInputCustom = (props) => {
           <MailOutlineOutlinedIcon className={classes.sendMessageIcons} />
         </IconButton>
 
-        <Dialog open={emailOpen} onClose={() => setEmailOpen(false)} maxWidth="xs" fullWidth>
-          <DialogTitle>Enviar anexo por e-mail</DialogTitle>
-          <DialogContent dividers>
+        <Dialog
+          open={emailOpen}
+          onClose={() => setEmailOpen(false)}
+          maxWidth="xs"
+          fullWidth
+          fullScreen={!isWidthUp("sm", props.width)}
+          classes={{ paper: classes.emailDialogPaper }}
+        >
+          <div className={classes.emailDialogHeader}>
+            <div className={classes.emailDialogHeaderRow}>
+              <div className={classes.emailDialogHeaderIcon}>
+                <MailOutlineOutlinedIcon style={{ color: "#fff" }} />
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <div className={classes.emailDialogTitle}>Enviar anexo por e-mail</div>
+                <div className={classes.emailDialogSub}>
+                  Atendimento <strong>#{ticketId}</strong>
+                  {contactName ? ` • ${contactName}` : ""}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <DialogContent className={classes.emailDialogContent}>
+            <Typography style={{ fontSize: 12, opacity: 0.8, marginBottom: 10 }}>
+              Envia o arquivo como <strong>anexo</strong> para o cliente. Não altera o envio do WhatsApp.
+            </Typography>
             <TextField
               fullWidth
               variant="outlined"
@@ -1066,6 +1166,14 @@ const MessageInputCustom = (props) => {
               onChange={setEmailKey("toEmail", (v) => String(v || ""))}
               style={{ marginBottom: 12 }}
               placeholder="cliente@empresa.com.br"
+              helperText="Você pode informar mais de um e-mail separado por vírgula."
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <AlternateEmailIcon className={classes.emailFieldIcon} />
+                  </InputAdornment>
+                ),
+              }}
             />
             <TextField
               fullWidth
@@ -1075,6 +1183,13 @@ const MessageInputCustom = (props) => {
               value={emailForm.subject}
               onChange={setEmailKey("subject", (v) => String(v || ""))}
               style={{ marginBottom: 12 }}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SubjectIcon className={classes.emailFieldIcon} />
+                  </InputAdornment>
+                ),
+              }}
             />
             <TextField
               fullWidth
@@ -1085,19 +1200,50 @@ const MessageInputCustom = (props) => {
               onChange={setEmailKey("message", (v) => String(v || ""))}
               multiline
               minRows={3}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <NotesOutlinedIcon className={classes.emailFieldIcon} />
+                  </InputAdornment>
+                ),
+              }}
             />
-            <div style={{ marginTop: 10, fontSize: 12, opacity: 0.75 }}>
-              Anexo: <strong>{medias?.[0]?.name}</strong>
-              {medias.length > 1 ? ` (+${medias.length - 1})` : ""}
-            </div>
+
+            <Paper elevation={0} className={classes.emailAttachmentCard}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div
+                  style={{
+                    width: 38,
+                    height: 38,
+                    borderRadius: 12,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    background: "rgba(148,163,184,0.18)",
+                    flex: "0 0 auto",
+                  }}
+                >
+                  <AttachFileIcon className={classes.sendMessageIcons} />
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <Typography style={{ fontWeight: 900, fontSize: 13, lineHeight: 1.2 }} noWrap>
+                    {medias?.[0]?.name || "—"}
+                  </Typography>
+                  <Typography style={{ fontSize: 12, opacity: 0.75, marginTop: 2 }}>
+                    {formatBytes(medias?.[0]?.size) ? `${formatBytes(medias?.[0]?.size)} • ` : ""}
+                    {medias.length > 1 ? `+${medias.length - 1} arquivo(s)` : "1 arquivo"}
+                  </Typography>
+                </div>
+              </div>
+            </Paper>
           </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setEmailOpen(false)} disabled={loading}>
+          <DialogActions className={classes.emailActions}>
+            <Button onClick={() => setEmailOpen(false)} disabled={loading} variant="outlined">
               Cancelar
             </Button>
-            <Button color="primary" variant="contained" onClick={handleSendEmailWithAttachment} disabled={loading}>
+            <TrButton variant="contained" onClick={handleSendEmailWithAttachment} disabled={loading}>
               {loading ? "Enviando..." : "Enviar e-mail"}
-            </Button>
+            </TrButton>
           </DialogActions>
         </Dialog>
       </Paper>
