@@ -1021,9 +1021,9 @@ export default function Agenda() {
               <TrButton
                 variant="outlined"
                 startIcon={<CloudUploadOutlinedIcon />}
-                disabled={!form.seriesId || uploading}
+                disabled={uploading || saving}
                 onClick={() => {
-                  if (!form.seriesId || uploading) return;
+                  if (uploading || saving) return;
                   const el = uploadInputRef.current;
                   // Some browsers block clicking inputs with display:none (hidden attribute).
                   // Prefer showPicker when available, else click.
@@ -1057,7 +1057,9 @@ export default function Agenda() {
                 }}
               />
               <div className={classes.hint}>
-                {form.seriesId ? "Arquivos ficam salvos no evento." : "Salve o evento primeiro para anexar arquivos."}
+                {form.seriesId
+                  ? "Arquivos ficam salvos no evento."
+                  : "Ao anexar, o evento será salvo automaticamente para guardar o arquivo."}
               </div>
               <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
                 {(attachments || []).length ? (
