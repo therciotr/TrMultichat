@@ -11,6 +11,75 @@ import path from "path";
 
 const router = Router();
 
+function escHtml(s: any) {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function formatBytes(bytes: any) {
+  const n = Number(bytes || 0);
+  if (!Number.isFinite(n) || n <= 0) return "";
+  const units = ["B", "KB", "MB", "GB"];
+  let idx = 0;
+  let v = n;
+  while (v >= 1024 && idx < units.length - 1) {
+    v /= 1024;
+    idx++;
+  }
+  const fixed = idx === 0 ? 0 : idx === 1 ? 1 : 2;
+  return `${v.toFixed(fixed)} ${units[idx]}`;
+}
+
+async function getCompanyBrandingTheme(companyId: number): Promise<{ primary: string; secondary: string; logoUrl: string | null }> {
+  // Best-effort read from CompanyBrandings JSON
+  try {
+    const rows = await pgQuery<any>(
+      'SELECT data FROM "CompanyBrandings" WHERE "companyId" = $1 LIMIT 1',
+      [companyId]
+    );
+    const data = rows?.[0]?.data;
+    const primary = String(data?.primaryColor || "#0B4C46");
+    const secondary = String(data?.secondaryColor || "#2BA9A5");
+    const logoUrl = data?.logoUrl ? String(data.logoUrl) : null;
+    return { primary, secondary, logoUrl };
+  } catch {
+    return { primary: "#0B4C46", secondary: "#2BA9A5", logoUrl: null };
+  }
+}
+
+async function getCompanyLogoInline(companyId: number): Promise<{ cid: string; filename: string; path: string; contentType?: string; contentDisposition?: "inline"; publicUrl?: string } | null> {
+  const { logoUrl } = await getCompanyBrandingTheme(companyId);
+  const resolved = String(logoUrl || "/uploads/logo-tr.png");
+  const rel = resolved.replace(/^\/+/, "");
+  const absPath = path.join(process.cwd(), "public", rel);
+  try {
+    if (!fs.existsSync(absPath)) return null;
+  } catch {
+    return null;
+  }
+  const ext = path.extname(absPath).toLowerCase();
+  const contentType =
+    ext === ".png"
+      ? "image/png"
+      : ext === ".jpg" || ext === ".jpeg"
+        ? "image/jpeg"
+        : ext === ".webp"
+          ? "image/webp"
+          : undefined;
+  const base = String(process.env.BACKEND_URL || "https://api.trmultichat.com.br").replace(/\/+$/, "");
+  return {
+    cid: "trlogo",
+    filename: path.basename(absPath),
+    path: absPath,
+    contentType,
+    contentDisposition: "inline",
+    publicUrl: `${base}${resolved}`,
+  };
+}
+
 function tenantIdFromReq(req: any): number {
   return Number(req?.tenantId || 0);
 }
@@ -326,11 +395,107 @@ router.post("/:ticketId/email", authMiddleware, emailUpload.any(), async (req, r
     const defaultSubject = `Anexo do atendimento #${ticketId} - ${ticket?.contact?.name || "Cliente"}`;
     const safeSubject = subject || defaultSubject;
 
-    const text = message || `Segue anexo do atendimento #${ticketId}.`;
+    const { primary, secondary } = await getCompanyBrandingTheme(companyId);
+    const logoInline = await getCompanyLogoInline(companyId);
+    const logoSrc = logoInline?.cid ? `cid:${logoInline.cid}` : (logoInline?.publicUrl || "");
+
+    const contactName = String(ticket?.contact?.name || "Cliente");
+    const greeting = `Olá, ${contactName}!`;
+    const messageText = String(message || "").trim() || "Segue o anexo do atendimento abaixo.";
+    const sentAt = new Date();
+    const sentAtBr = `${String(sentAt.getDate()).padStart(2, "0")}/${String(sentAt.getMonth() + 1).padStart(2, "0")}/${sentAt.getFullYear()}`;
+
+    const firstFile = files?.[0];
+    const fileName = String(firstFile?.originalname || path.basename(String(firstFile?.path || "")) || "arquivo");
+    const fileSize = formatBytes(firstFile?.size);
+
+    // Professional, finance-like, table-based email (Roundcube-friendly)
     const html = `
-      <div style="font-family:Arial,Helvetica,sans-serif;line-height:1.45;color:#0f172a;">
-        <p style="margin:0 0 10px 0;">${text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br/>")}</p>
-        <p style="margin:10px 0 0 0;font-size:12px;color:#64748b;">TR Multichat • Atendimento #${ticketId}</p>
+      <div style="margin:0;padding:0;background:#f3f6f7;">
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background:#f3f6f7;padding:20px 0;">
+          <tr>
+            <td align="center">
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="640" style="width:640px;max-width:94vw;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid rgba(15,23,42,0.08);">
+                <tr>
+                  <td style="padding:18px 22px;background:${escHtml(primary)};">
+                    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+                      <tr>
+                        <td style="width:56px;vertical-align:middle;">
+                          ${
+                            logoSrc
+                              ? `<img src="${escHtml(logoSrc)}" width="44" height="44" alt="Logo" style="display:block;border-radius:22px;background:#ffffff;border:2px solid rgba(255,255,255,0.65);" />`
+                              : ""
+                          }
+                        </td>
+                        <td style="vertical-align:middle;">
+                          <div style="font-family:Arial,Helvetica,sans-serif;font-size:22px;font-weight:800;color:#ffffff;line-height:1.1;">
+                            Multichat
+                          </div>
+                          <div style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:rgba(255,255,255,0.92);margin-top:4px;">
+                            Envio de anexo • Atendimento #${escHtml(ticketId)}
+                          </div>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+
+                <tr>
+                  <td style="padding:22px 22px 10px 22px;">
+                    <div style="font-family:Arial,Helvetica,sans-serif;font-size:18px;font-weight:800;color:#0f172a;margin:0 0 8px 0;">
+                      ${escHtml(greeting)}
+                    </div>
+                    <div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.55;color:#334155;">
+                      ${escHtml(messageText).replace(/\n/g, "<br/>")}
+                    </div>
+                  </td>
+                </tr>
+
+                <tr>
+                  <td style="padding:12px 22px 22px 22px;">
+                    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border:1px solid rgba(15,23,42,0.10);border-radius:14px;overflow:hidden;">
+                      <tr>
+                        <td colspan="2" style="padding:12px 14px;background:rgba(2,132,199,0.08);border-bottom:1px solid rgba(15,23,42,0.08);">
+                          <span style="font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:800;color:#0f172a;">Detalhes do anexo</span>
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="padding:10px 14px;width:180px;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#0f172a;font-weight:700;">Atendimento:</td>
+                        <td style="padding:10px 14px;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#0f172a;">#${escHtml(ticketId)}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding:10px 14px;width:180px;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#0f172a;font-weight:700;">Anexo:</td>
+                        <td style="padding:10px 14px;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#0f172a;">${escHtml(fileName)}${files.length > 1 ? ` (+${files.length - 1})` : ""}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding:10px 14px;width:180px;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#0f172a;font-weight:700;">Tamanho:</td>
+                        <td style="padding:10px 14px;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#0f172a;">${escHtml(fileSize || "—")}</td>
+                      </tr>
+                      <tr>
+                        <td style="padding:10px 14px;width:180px;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#0f172a;font-weight:700;">Enviado em:</td>
+                        <td style="padding:10px 14px;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#0f172a;">${escHtml(sentAtBr)}</td>
+                      </tr>
+                    </table>
+
+                    <div style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#64748b;margin-top:14px;">
+                      Obrigado por utilizar o TR Multichat.<br/>
+                      <strong style="color:#0f172a;">Equipe TR Multichat</strong>
+                    </div>
+                  </td>
+                </tr>
+
+                <tr>
+                  <td style="padding:14px 22px;background:rgba(148,163,184,0.10);border-top:1px solid rgba(15,23,42,0.08);">
+                    <div style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#64748b;">
+                      © ${new Date().getFullYear()} TR Tecnologias • Todos os direitos reservados
+                    </div>
+                    <div style="height:2px;background:linear-gradient(90deg, ${escHtml(primary)} 0%, ${escHtml(secondary)} 100%);margin-top:10px;border-radius:999px;"></div>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
       </div>
     `;
 
@@ -339,14 +504,17 @@ router.post("/:ticketId/email", authMiddleware, emailUpload.any(), async (req, r
       path: String(f.path || ""),
       contentType: f.mimetype ? String(f.mimetype) : undefined,
     }));
+    const finalAttachments: any[] = [];
+    if (logoInline?.path) finalAttachments.push(logoInline);
+    finalAttachments.push(...attachments);
 
     await sendMail(
       {
         to: toEmail,
         subject: safeSubject,
-        text,
+        // HTML-only to ensure webmails (Roundcube) render the premium template
         html,
-        attachments,
+        attachments: finalAttachments,
       },
       companyId
     );
