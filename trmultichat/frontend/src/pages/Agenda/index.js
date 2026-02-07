@@ -449,39 +449,65 @@ export default function Agenda() {
     setModalOpen(true);
   };
 
+  const buildPayload = (forceTitle) => {
+    const reminders =
+      Number(form.reminderMinutes || 0) > 0
+        ? [{ minutesBefore: Number(form.reminderMinutes || 0), notifyInChat: Boolean(form.notifyInChat) }]
+        : [];
+    const titleTrimmed = String(form.title || "").trim();
+    const titleResolved = titleTrimmed || String(forceTitle || "").trim() || "Evento";
+    return {
+      title: titleResolved,
+      description: form.description,
+      location: form.location,
+      color: form.color,
+      allDay: form.allDay,
+      startAt: new Date(form.startAt).toISOString(),
+      endAt: new Date(form.endAt).toISOString(),
+      recurrenceType: String(form.recurrenceType || "none"),
+      recurrenceInterval: Number(form.recurrenceInterval || 1) || 1,
+      recurrenceUntil:
+        form.recurrenceType && String(form.recurrenceType) !== "none" && form.recurrenceUntil
+          ? new Date(form.recurrenceUntil).toISOString()
+          : null,
+      reminders,
+      ...(canPickUser ? { userId: selectedUserId } : {}),
+    };
+  };
+
+  const saveEvent = async ({ closeModal = true } = {}) => {
+    // Backend requires title; if user leaves it empty, we auto-fill to avoid errors
+    const payload = buildPayload("Evento");
+    if (!String(form.title || "").trim()) {
+      setForm((f) => ({ ...(f || {}), title: payload.title }));
+    }
+
+    if (form.seriesId) {
+      await api.put(`/agenda/events/${form.seriesId}`, payload);
+      if (closeModal) {
+        setModalOpen(false);
+        await loadEventsForRange();
+      }
+      return String(form.seriesId || "");
+    }
+
+    const { data } = await api.post("/agenda/events", payload);
+    const createdSeriesId = data?.id || "";
+    if (createdSeriesId) {
+      setForm((f) => ({ ...(f || {}), seriesId: createdSeriesId }));
+      await loadAttachments(createdSeriesId);
+    }
+    if (closeModal) {
+      setModalOpen(false);
+      await loadEventsForRange();
+    }
+    return String(createdSeriesId || "");
+  };
+
   const handleSave = async () => {
     setSaving(true);
     try {
-      const reminders =
-        Number(form.reminderMinutes || 0) > 0
-          ? [{ minutesBefore: Number(form.reminderMinutes || 0), notifyInChat: Boolean(form.notifyInChat) }]
-          : [];
-      const payload = {
-        title: form.title,
-        description: form.description,
-        location: form.location,
-        color: form.color,
-        allDay: form.allDay,
-        startAt: new Date(form.startAt).toISOString(),
-        endAt: new Date(form.endAt).toISOString(),
-        recurrenceType: String(form.recurrenceType || "none"),
-        recurrenceInterval: Number(form.recurrenceInterval || 1) || 1,
-        recurrenceUntil: form.recurrenceType && String(form.recurrenceType) !== "none" && form.recurrenceUntil ? new Date(form.recurrenceUntil).toISOString() : null,
-        reminders,
-        ...(canPickUser ? { userId: selectedUserId } : {}),
-      };
-      if (form.seriesId) {
-        await api.put(`/agenda/events/${form.seriesId}`, payload);
-      } else {
-        const { data } = await api.post("/agenda/events", payload);
-        const createdSeriesId = data?.id || "";
-        if (createdSeriesId) {
-          setForm((f) => ({ ...f, seriesId: createdSeriesId }));
-          await loadAttachments(createdSeriesId);
-        }
-      }
-      setModalOpen(false);
-      await loadEventsForRange();
+      await saveEvent({ closeModal: true });
     } catch (err) {
       toastError(err);
     }
@@ -502,14 +528,26 @@ export default function Agenda() {
   };
 
   const handleUploadAttachment = async (file) => {
-    if (!file || !form.seriesId) return;
+    if (!file) return;
     setUploading(true);
     try {
+      let seriesId = String(form.seriesId || "");
+      if (!seriesId) {
+        // Allow selecting an attachment before saving the event:
+        // create the event first (keeps the modal open), then upload.
+        seriesId = await saveEvent({ closeModal: false });
+      }
+      if (!seriesId) {
+        toastError("Não foi possível salvar o evento para anexar o arquivo. Verifique os campos e tente novamente.");
+        setUploading(false);
+        return;
+      }
       const data = new FormData();
       data.append("file", file);
       // Let the browser set the multipart boundary automatically
-      await api.post(`/agenda/events/${form.seriesId}/attachments`, data);
-      await loadAttachments(form.seriesId);
+      await api.post(`/agenda/events/${seriesId}/attachments`, data);
+      await loadAttachments(seriesId);
+      await loadEventsForRange();
     } catch (err) {
       toastError(err);
     }
