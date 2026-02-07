@@ -434,14 +434,7 @@ router.post("/:ticketId/email", authMiddleware, emailUpload.any(), async (req, r
                               : ""
                           }
                         </td>
-                        <td style="vertical-align:middle;">
-                          <div style="font-family:Arial,Helvetica,sans-serif;font-size:22px;font-weight:800;color:#ffffff;line-height:1.1;">
-                            Multichat
-                          </div>
-                          <div style="font-family:Arial,Helvetica,sans-serif;font-size:12px;color:rgba(255,255,255,0.92);margin-top:4px;">
-                            Envio de anexo • Atendimento #${escHtml(ticketId)}
-                          </div>
-                        </td>
+                        <td style="vertical-align:middle;">&nbsp;</td>
                       </tr>
                     </table>
                   </td>
