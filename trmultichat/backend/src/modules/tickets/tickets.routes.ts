@@ -420,18 +420,18 @@ router.post("/:ticketId/email", authMiddleware, emailUpload.any(), async (req, r
                   <td style="padding:18px 22px;background:${escHtml(primary)};">
                     <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
                       <tr>
-                        <td width="56" valign="middle" style="width:56px;vertical-align:middle;">
+                        <td width="190" valign="middle" style="width:190px;vertical-align:middle;">
                           ${
                             logoSrc
                               ? `
-                                <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="width:44px;height:44px;border-radius:22px;background:#ffffff;border:2px solid rgba(255,255,255,0.65);">
+                                <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="background:#ffffff;border-radius:14px;border:2px solid rgba(255,255,255,0.65);">
                                   <tr>
-                                    <td align="center" valign="middle" style="width:44px;height:44px;">
+                                    <td align="left" valign="middle" style="padding:6px 10px;">
                                       <img
                                         src="${escHtml(logoSrc)}"
-                                        width="34"
                                         alt="Logo"
-                                        style="display:block;width:34px;max-width:34px;height:auto;max-height:34px;"
+                                        height="32"
+                                        style="display:block;height:32px;width:auto;max-width:150px;"
                                       />
                                     </td>
                                   </tr>
