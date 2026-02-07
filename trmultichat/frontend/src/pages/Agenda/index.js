@@ -982,14 +982,29 @@ export default function Agenda() {
                 onClick={() => {
                   if (!form.seriesId || uploading) return;
                   const el = uploadInputRef.current;
+                  // Some browsers block clicking inputs with display:none (hidden attribute).
+                  // Prefer showPicker when available, else click.
+                  try {
+                    if (el && typeof el.showPicker === "function") return el.showPicker();
+                  } catch {}
                   if (el && typeof el.click === "function") el.click();
                 }}
               >
                 {uploading ? "Enviando..." : "Enviar anexo"}
                 <input
                   type="file"
-                  hidden
                   ref={uploadInputRef}
+                  tabIndex={-1}
+                  // Visually hidden (but NOT display:none), so programmatic click opens picker reliably
+                  style={{
+                    position: "fixed",
+                    top: 0,
+                    left: 0,
+                    width: 1,
+                    height: 1,
+                    opacity: 0,
+                    pointerEvents: "none",
+                  }}
                   onChange={(e) => {
                     const file = e?.target?.files?.[0];
                     // allow selecting same file again
