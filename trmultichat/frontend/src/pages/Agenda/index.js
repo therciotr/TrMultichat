@@ -280,6 +280,7 @@ export default function Agenda() {
   const isAdminLike = isSuper || isAdmin || profile === "admin" || profile === "super";
 
   const calendarRef = useRef(null);
+  const uploadInputRef = useRef(null);
 
   const [loading, setLoading] = useState(true);
   const [records, setRecords] = useState([]);
@@ -977,13 +978,18 @@ export default function Agenda() {
               <TrButton
                 variant="outlined"
                 startIcon={<CloudUploadOutlinedIcon />}
-                component="label"
                 disabled={!form.seriesId || uploading}
+                onClick={() => {
+                  if (!form.seriesId || uploading) return;
+                  const el = uploadInputRef.current;
+                  if (el && typeof el.click === "function") el.click();
+                }}
               >
                 {uploading ? "Enviando..." : "Enviar anexo"}
                 <input
                   type="file"
                   hidden
+                  ref={uploadInputRef}
                   onChange={(e) => {
                     const file = e?.target?.files?.[0];
                     // allow selecting same file again
