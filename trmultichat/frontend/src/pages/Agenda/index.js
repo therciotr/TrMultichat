@@ -311,6 +311,14 @@ export default function Agenda() {
     notifyInChat: true,
   });
 
+  // Safe setter for pooled events / nullable events (prevents "Cannot read properties of null (reading 'value')")
+  const setFormKey = (key, parser) => (eOrValue) => {
+    const t = eOrValue && eOrValue.target ? eOrValue.target : null;
+    const raw = t ? t.value : eOrValue;
+    const nextVal = typeof parser === "function" ? parser(raw) : raw;
+    setForm((f) => ({ ...(f || {}), [key]: nextVal }));
+  };
+
   const canPickUser = isAdminLike;
 
   const events = useMemo(() => {
@@ -493,9 +501,8 @@ export default function Agenda() {
     try {
       const data = new FormData();
       data.append("file", file);
-      await api.post(`/agenda/events/${form.seriesId}/attachments`, data, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
+      // Let the browser set the multipart boundary automatically
+      await api.post(`/agenda/events/${form.seriesId}/attachments`, data);
       await loadAttachments(form.seriesId);
     } catch (err) {
       toastError(err);
@@ -725,7 +732,7 @@ export default function Agenda() {
                 size="small"
                 fullWidth
                 value={form.title}
-                onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+                onChange={setFormKey("title", (v) => String(v || ""))}
               />
             </Grid>
             <Grid item xs={12}>
@@ -738,7 +745,7 @@ export default function Agenda() {
                 multiline
                 minRows={3}
                 value={form.description}
-                onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+                onChange={setFormKey("description", (v) => String(v || ""))}
               />
             </Grid>
             <Grid item xs={12} sm={7}>
@@ -749,7 +756,7 @@ export default function Agenda() {
                 size="small"
                 fullWidth
                 value={form.location}
-                onChange={(e) => setForm((f) => ({ ...f, location: e.target.value }))}
+                onChange={setFormKey("location", (v) => String(v || ""))}
               />
             </Grid>
             <Grid item xs={12} sm={5}>
@@ -761,7 +768,7 @@ export default function Agenda() {
                 size="small"
                 fullWidth
                 value={form.color}
-                onChange={(e) => setForm((f) => ({ ...f, color: e.target.value }))}
+                onChange={setFormKey("color", (v) => String(v || "#2563EB"))}
               >
                 {DEFAULT_COLORS.map((c) => (
                   <MenuItem key={c.value} value={c.value}>
@@ -789,7 +796,7 @@ export default function Agenda() {
                 size="small"
                 fullWidth
                 value={String(form.recurrenceType || "none")}
-                onChange={(e) => setForm((f) => ({ ...f, recurrenceType: e.target.value }))}
+                onChange={setFormKey("recurrenceType", (v) => String(v || "none"))}
               >
                 {RECURRENCE_TYPES.map((t) => (
                   <MenuItem key={t.value} value={t.value}>
@@ -809,7 +816,7 @@ export default function Agenda() {
                 inputProps={{ min: 1, max: 365 }}
                 disabled={String(form.recurrenceType || "none") === "none"}
                 value={Number(form.recurrenceInterval || 1)}
-                onChange={(e) => setForm((f) => ({ ...f, recurrenceInterval: Number(e.target.value || 1) }))}
+                onChange={setFormKey("recurrenceInterval", (v) => Number(v || 1) || 1)}
                 helperText={
                   String(form.recurrenceType || "none") === "none"
                     ? "Sem repetição"
@@ -827,12 +834,7 @@ export default function Agenda() {
                 fullWidth
                 disabled={String(form.recurrenceType || "none") === "none"}
                 value={form.recurrenceUntil ? toInputDateValue(form.recurrenceUntil) : ""}
-                onChange={(e) =>
-                  setForm((f) => ({
-                    ...f,
-                    recurrenceUntil: e.target.value ? new Date(`${e.target.value}T23:59`) : null,
-                  }))
-                }
+                onChange={setFormKey("recurrenceUntil", (v) => (v ? new Date(`${v}T23:59`) : null))}
                 InputLabelProps={{ shrink: true }}
               />
             </Grid>
@@ -852,7 +854,7 @@ export default function Agenda() {
                 size="small"
                 fullWidth
                 value={Number(form.reminderMinutes || 0)}
-                onChange={(e) => setForm((f) => ({ ...f, reminderMinutes: Number(e.target.value || 0) }))}
+                onChange={setFormKey("reminderMinutes", (v) => Number(v || 0) || 0)}
               >
                 {REMINDER_PRESETS.map((p) => (
                   <MenuItem key={p.minutes} value={p.minutes}>
@@ -908,7 +910,8 @@ export default function Agenda() {
                     fullWidth
                     value={toInputDateValue(form.startAt)}
                     onChange={(e) => {
-                      const d = new Date(`${e.target.value}T00:00`);
+                      const v = e && e.target ? e.target.value : "";
+                      const d = new Date(`${v}T00:00`);
                       const end = new Date(d.getTime() + 24 * 60 * 60 * 1000);
                       setForm((f) => ({ ...f, startAt: d, endAt: end }));
                     }}
@@ -925,7 +928,8 @@ export default function Agenda() {
                     fullWidth
                     value={toInputDateValue(form.endAt)}
                     onChange={(e) => {
-                      const d = new Date(`${e.target.value}T23:59`);
+                      const v = e && e.target ? e.target.value : "";
+                      const d = new Date(`${v}T23:59`);
                       if (d.getTime() > new Date(form.startAt).getTime()) {
                         setForm((f) => ({ ...f, endAt: d }));
                       }
@@ -945,7 +949,7 @@ export default function Agenda() {
                     size="small"
                     fullWidth
                     value={toInputDateTimeValue(form.startAt)}
-                    onChange={(e) => setForm((f) => ({ ...f, startAt: new Date(e.target.value) }))}
+                    onChange={setFormKey("startAt", (v) => new Date(String(v || "")))}
                     InputLabelProps={{ shrink: true }}
                   />
                 </Grid>
@@ -958,7 +962,7 @@ export default function Agenda() {
                     size="small"
                     fullWidth
                     value={toInputDateTimeValue(form.endAt)}
-                    onChange={(e) => setForm((f) => ({ ...f, endAt: new Date(e.target.value) }))}
+                    onChange={setFormKey("endAt", (v) => new Date(String(v || "")))}
                     InputLabelProps={{ shrink: true }}
                   />
                 </Grid>
@@ -980,7 +984,12 @@ export default function Agenda() {
                 <input
                   type="file"
                   hidden
-                  onChange={(e) => handleUploadAttachment(e.target.files?.[0])}
+                  onChange={(e) => {
+                    const file = e?.target?.files?.[0];
+                    // allow selecting same file again
+                    try { e.target.value = ""; } catch {}
+                    handleUploadAttachment(file);
+                  }}
                 />
               </TrButton>
               <div className={classes.hint}>
