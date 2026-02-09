@@ -231,7 +231,7 @@ class _AudioPlayerScreenState extends ConsumerState<_AudioPlayerScreen> {
         onReceiveProgress: (rcv, total) {
           if (total <= 0) return;
           final p = (rcv / total).clamp(0, 1);
-          if (mounted) setState(() => _progress = p);
+          if (mounted) setState(() => _progress = p.toDouble());
         },
       );
       await _player.setFilePath(file.path);
