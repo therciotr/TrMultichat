@@ -53,5 +53,25 @@ class ChatRepositoryImpl implements ChatRepository {
         onProgress: onProgress,
         cancelToken: cancelToken,
       );
+
+  @override
+  Future<void> sendTicketEmail({
+    required int ticketId,
+    required String toEmail,
+    required String subject,
+    required String message,
+    required List<({String name, String? mimeType, String? path, List<int>? bytes})> files,
+    UploadProgress? onProgress,
+    CancelToken? cancelToken,
+  }) =>
+      _remote.sendTicketEmail(
+        ticketId: ticketId,
+        toEmail: toEmail,
+        subject: subject,
+        message: message,
+        files: files,
+        onProgress: onProgress,
+        cancelToken: cancelToken,
+      );
 }
 

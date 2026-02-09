@@ -114,5 +114,59 @@ class ChatRemoteDataSource {
       onSendProgress: onProgress == null ? null : (sent, total) => onProgress(sent, total),
     );
   }
+
+  /// POST /tickets/:ticketId/email
+  /// Backend uses company SMTP settings and sends a premium HTML email.
+  Future<void> sendTicketEmail({
+    required int ticketId,
+    required String toEmail,
+    required String subject,
+    required String message,
+    required List<({String name, String? mimeType, String? path, List<int>? bytes})> files,
+    UploadProgress? onProgress,
+    CancelToken? cancelToken,
+  }) async {
+    if (files.isEmpty) {
+      throw ArgumentError('files is required');
+    }
+    final multipart = <MultipartFile>[];
+    for (final f in files) {
+      if (f.path != null && f.path!.trim().isNotEmpty) {
+        multipart.add(
+          await MultipartFile.fromFile(
+            f.path!,
+            filename: f.name,
+            contentType: f.mimeType != null ? MediaType.parse(f.mimeType!) : null,
+          ),
+        );
+        continue;
+      }
+      final bytes = f.bytes;
+      if (bytes != null && bytes.isNotEmpty) {
+        multipart.add(
+          MultipartFile.fromBytes(
+            bytes,
+            filename: f.name,
+            contentType: f.mimeType != null ? MediaType.parse(f.mimeType!) : null,
+          ),
+        );
+      }
+    }
+    if (multipart.isEmpty) {
+      throw ArgumentError('No valid file paths/bytes');
+    }
+    final form = FormData.fromMap({
+      'toEmail': toEmail,
+      'subject': subject,
+      'message': message,
+      'file': multipart,
+    });
+    await _dio.post(
+      '/tickets/$ticketId/email',
+      data: form,
+      cancelToken: cancelToken,
+      onSendProgress: onProgress == null ? null : (sent, total) => onProgress(sent, total),
+    );
+  }
 }
 

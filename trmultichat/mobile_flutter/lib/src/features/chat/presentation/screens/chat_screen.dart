@@ -55,8 +55,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         ),
       ),
       body: SafeArea(
-        child: Column(
-          children: [
+        child: GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+          child: Column(
+            children: [
             if (st.loading) const LinearProgressIndicator(minHeight: 2),
             if (st.uploading) const LinearProgressIndicator(minHeight: 2),
             if (st.uploading && st.uploadProgress != null)
@@ -97,6 +100,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 color: Theme.of(context).colorScheme.surface,
                 child: ListView.builder(
                   controller: _scroll,
+                  keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                   padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
                   itemCount: st.messages.length,
                   itemBuilder: (context, i) {
@@ -123,6 +127,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               },
               onAttach: () async {
                 if (st.uploading) return;
+                FocusManager.instance.primaryFocus?.unfocus();
                 // iOS can return files without a filesystem path (e.g. iCloud/Files).
                 // Using withData ensures we can still upload.
                 final picked = await FilePicker.platform.pickFiles(withData: true, allowMultiple: true);
@@ -133,13 +138,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 if (files.isEmpty) return;
 
                 if (!mounted) return;
+                FocusManager.instance.primaryFocus?.unfocus();
                 final action = await showModalBottomSheet<String>(
                   context: context,
+                  useRootNavigator: true,
+                  isScrollControlled: true,
+                  useSafeArea: true,
                   showDragHandle: true,
                   builder: (ctx) {
+                    final bottomInset = MediaQuery.viewInsetsOf(ctx).bottom;
                     return SafeArea(
                       child: Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 10, 16, 18),
+                        padding: EdgeInsets.fromLTRB(16, 10, 16, 18 + bottomInset),
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -174,11 +184,80 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 if (action == null) return;
 
                 if (action == 'email') {
-                  await ref.read(shareServiceProvider).shareFiles(
-                        files: files.map((f) => (name: f.name, mimeType: f.mimeType, path: f.path, bytes: f.bytes)).toList(),
-                        subject: 'TR - Multichat • Anexo',
-                        text: _text.text.trim().isEmpty ? null : _text.text.trim(),
-                      );
+                  final initialMsg = _text.text.trim();
+                  if (!mounted) return;
+                  final toCtrl = TextEditingController();
+                  final subjCtrl = TextEditingController(text: 'Anexo do atendimento #${widget.ticketId}');
+                  final msgCtrl = TextEditingController(text: initialMsg);
+                  try {
+                    final sent = await showModalBottomSheet<bool>(
+                      context: context,
+                      useRootNavigator: true,
+                      isScrollControlled: true,
+                      useSafeArea: true,
+                      showDragHandle: true,
+                      builder: (ctx) {
+                        final bottomInset = MediaQuery.viewInsetsOf(ctx).bottom;
+                        return Padding(
+                          padding: EdgeInsets.fromLTRB(16, 10, 16, 16 + bottomInset),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Text(
+                                'Enviar anexo por e-mail',
+                                style: Theme.of(ctx).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
+                              ),
+                              const SizedBox(height: 12),
+                              TextField(
+                                controller: toCtrl,
+                                keyboardType: TextInputType.emailAddress,
+                                decoration: const InputDecoration(
+                                  labelText: 'Destinatário',
+                                  hintText: 'email@exemplo.com',
+                                  border: OutlineInputBorder(),
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              TextField(
+                                controller: subjCtrl,
+                                decoration: const InputDecoration(labelText: 'Assunto', border: OutlineInputBorder()),
+                              ),
+                              const SizedBox(height: 10),
+                              TextField(
+                                controller: msgCtrl,
+                                minLines: 2,
+                                maxLines: 5,
+                                decoration: const InputDecoration(labelText: 'Mensagem', border: OutlineInputBorder()),
+                              ),
+                              const SizedBox(height: 12),
+                              FilledButton.icon(
+                                onPressed: () => Navigator.pop(ctx, true),
+                                icon: const Icon(Icons.send),
+                                label: Text('Enviar (${files.length} anexo${files.length > 1 ? 's' : ''})'),
+                              ),
+                              const SizedBox(height: 8),
+                              OutlinedButton(
+                                onPressed: () => Navigator.pop(ctx, false),
+                                child: const Text('Cancelar'),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    );
+                    if (sent != true) return;
+                    await ctrl.sendTicketEmail(
+                      toEmail: toCtrl.text,
+                      subject: subjCtrl.text,
+                      message: msgCtrl.text,
+                      files: files.map((f) => (name: f.name, mimeType: f.mimeType, path: f.path, bytes: f.bytes)).toList(),
+                    );
+                  } finally {
+                    toCtrl.dispose();
+                    subjCtrl.dispose();
+                    msgCtrl.dispose();
+                  }
                   return;
                 }
 
@@ -191,7 +270,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 _text.clear();
               },
             ),
-          ],
+            ],
+          ),
         ),
       ),
     );

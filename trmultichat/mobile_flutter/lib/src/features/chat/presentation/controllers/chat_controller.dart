@@ -330,6 +330,57 @@ class ChatController extends StateNotifier<ChatState> {
     }
   }
 
+  Future<void> sendTicketEmail({
+    required String toEmail,
+    required String subject,
+    required String message,
+    required List<({String name, String? mimeType, String? path, List<int>? bytes})> files,
+  }) async {
+    final to = toEmail.trim();
+    if (to.isEmpty) return;
+    final subj = subject.trim().isEmpty ? 'Anexo do atendimento #$ticketId' : subject.trim();
+    final msg = message.trim().isEmpty ? 'Segue anexo do atendimento.' : message.trim();
+    if (files.isEmpty) return;
+
+    _cancelToken?.cancel('new_upload');
+    _cancelToken = CancelToken();
+    state = state.copyWith(
+      uploading: true,
+      uploadFileName: 'E-mail',
+      uploadFileIndex: null,
+      uploadFileTotal: null,
+      uploadProgress: 0.0,
+      error: null,
+    );
+    try {
+      await _repo.sendTicketEmail(
+        ticketId: ticketId,
+        toEmail: to,
+        subject: subj,
+        message: msg,
+        files: files,
+        cancelToken: _cancelToken,
+        onProgress: (sent, total) {
+          if (total <= 0) return;
+          final p = (sent / total).clamp(0, 1);
+          state = state.copyWith(uploading: true, uploadProgress: p);
+        },
+      );
+    } catch (e) {
+      final cancelled = e is DioException && CancelToken.isCancel(e);
+      state = state.copyWith(error: cancelled ? 'Envio cancelado' : _humanizeSendError(e));
+    } finally {
+      _cancelToken = null;
+      state = state.copyWith(
+        uploading: false,
+        uploadFileName: null,
+        uploadFileIndex: null,
+        uploadFileTotal: null,
+        uploadProgress: null,
+      );
+    }
+  }
+
   String _humanizeSendError(Object e) {
     if (e is DioException) {
       final status = e.response?.statusCode;
