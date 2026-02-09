@@ -21,6 +21,12 @@ String? guessMimeType(String fileName) {
       return 'video/quicktime';
     case 'mp3':
       return 'audio/mpeg';
+    case 'aac':
+      return 'audio/aac';
+    case 'amr':
+      return 'audio/amr';
+    case 'opus':
+      return 'audio/opus';
     case 'm4a':
       return 'audio/mp4';
     case 'ogg':

@@ -111,6 +111,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       isMe: isMe,
                       pending: m.pending,
                       error: m.error,
+                      mediaType: m.mediaType,
                       mediaUrl: m.mediaUrl,
                       onOpenMedia: m.mediaUrl == null ? null : () => _openMedia(m.mediaUrl!),
                     );
@@ -124,6 +125,28 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 final v = _text.text;
                 _text.clear();
                 await ctrl.sendText(v);
+              },
+              onPickAudio: () async {
+                if (st.uploading) return;
+                FocusManager.instance.primaryFocus?.unfocus();
+                final picked = await FilePicker.platform.pickFiles(
+                  withData: true,
+                  allowMultiple: false,
+                  type: FileType.audio,
+                );
+                final f = picked?.files.firstOrNull;
+                if (f == null) return;
+                final hasPath = f.path != null && f.path!.trim().isNotEmpty;
+                final hasBytes = f.bytes != null && f.bytes!.isNotEmpty;
+                if (!hasPath && !hasBytes) return;
+                await ctrl.sendMedia(
+                  body: _text.text,
+                  filePath: f.path,
+                  fileBytes: f.bytes,
+                  fileName: f.name,
+                  mimeType: guessMimeType(f.name),
+                );
+                _text.clear();
               },
               onAttach: () async {
                 if (st.uploading) return;
@@ -285,8 +308,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 class _Composer extends StatelessWidget {
   final TextEditingController controller;
   final VoidCallback onAttach;
+  final VoidCallback onPickAudio;
   final VoidCallback onSend;
-  const _Composer({required this.controller, required this.onAttach, required this.onSend});
+  const _Composer({required this.controller, required this.onAttach, required this.onPickAudio, required this.onSend});
 
   @override
   Widget build(BuildContext context) {
@@ -302,6 +326,11 @@ class _Composer extends StatelessWidget {
             onPressed: onAttach,
             icon: const Icon(Icons.attach_file),
             tooltip: 'Anexar',
+          ),
+          IconButton(
+            onPressed: onPickAudio,
+            icon: const Icon(Icons.mic_none),
+            tooltip: 'Enviar áudio',
           ),
           Expanded(
             child: TextField(
@@ -345,6 +374,7 @@ class _Bubble extends StatelessWidget {
   final bool isMe;
   final bool pending;
   final String? error;
+  final String? mediaType;
   final String? mediaUrl;
   final VoidCallback? onOpenMedia;
 
@@ -353,6 +383,7 @@ class _Bubble extends StatelessWidget {
     required this.isMe,
     required this.pending,
     required this.error,
+    required this.mediaType,
     required this.mediaUrl,
     required this.onOpenMedia,
   });
@@ -361,6 +392,9 @@ class _Bubble extends StatelessWidget {
   Widget build(BuildContext context) {
     final bg = isMe ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.surfaceContainerHighest;
     final fg = isMe ? Colors.white : Theme.of(context).colorScheme.onSurface;
+    final mt = (mediaType ?? '').toLowerCase();
+    final urlLower = (mediaUrl ?? '').toLowerCase();
+    final isAudio = mt.startsWith('audio/') || mt == 'audio' || urlLower.endsWith('.mp3') || urlLower.endsWith('.m4a') || urlLower.endsWith('.ogg') || urlLower.endsWith('.wav') || urlLower.endsWith('.aac') || urlLower.endsWith('.amr') || urlLower.endsWith('.opus');
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
@@ -387,11 +421,11 @@ class _Bubble extends StatelessWidget {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.insert_drive_file_outlined, color: fg),
+                      Icon(isAudio ? Icons.play_circle_outline : Icons.insert_drive_file_outlined, color: fg),
                       const SizedBox(width: 8),
                       Flexible(
                         child: Text(
-                          'Abrir anexo',
+                          isAudio ? 'Ouvir áudio' : 'Abrir anexo',
                           style: TextStyle(color: fg, decoration: TextDecoration.underline),
                           overflow: TextOverflow.ellipsis,
                         ),
