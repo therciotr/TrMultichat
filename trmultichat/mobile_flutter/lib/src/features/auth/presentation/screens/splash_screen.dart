@@ -19,11 +19,16 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
     super.initState();
     // Warm up branding as soon as we have auth context.
     Future.microtask(() async {
-      final auth = ref.read(authControllerProvider);
-      final companyId = auth.user?.companyId ?? 0;
-      await ref.read(brandingControllerProvider.notifier).load(companyId: companyId);
-      final branding = ref.read(brandingControllerProvider).branding;
-      ref.read(appThemeProvider.notifier).setBranding(branding);
+      try {
+        final auth = ref.read(authControllerProvider);
+        final companyId = auth.user?.companyId ?? 0;
+        await ref.read(brandingControllerProvider.notifier).load(companyId: companyId);
+        if (!mounted) return;
+        final branding = ref.read(brandingControllerProvider).branding;
+        ref.read(appThemeProvider.notifier).setBranding(branding);
+      } catch (_) {
+        // Never crash splash.
+      }
     });
   }
 

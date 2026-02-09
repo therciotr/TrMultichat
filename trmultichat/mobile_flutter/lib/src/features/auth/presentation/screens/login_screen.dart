@@ -35,8 +35,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final loading = auth.loading;
     final primary = _hex(branding.primaryColor);
     final hasSession = ref.watch(hasSavedSessionProvider).value == true;
-    final bioAvailable = ref.watch(biometricAvailableProvider).value == true;
-    final canBioLogin = hasSession && bioAvailable;
+    // Avoid calling biometrics plugin during app startup/build.
+    // We'll attempt Face ID only when user taps the button.
+    final canBioLogin = hasSession;
 
     return Scaffold(
       body: SafeArea(

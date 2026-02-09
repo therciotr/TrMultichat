@@ -52,38 +52,30 @@ class AuthController extends StateNotifier<AuthState> {
     _bootstrapped = true;
     final startedAt = DateTime.now();
     const minSplash = Duration(milliseconds: 1400);
-
-    final session = await _repo.loadSession();
-    if (session == null) {
-      final elapsed = DateTime.now().difference(startedAt);
-      if (elapsed < minSplash) {
-        await Future.delayed(minSplash - elapsed);
+    try {
+      final session = await _repo.loadSession();
+      if (session == null) {
+        final elapsed = DateTime.now().difference(startedAt);
+        if (elapsed < minSplash) await Future.delayed(minSplash - elapsed);
+        state = state.copyWith(loading: false, isAuthenticated: false, error: null);
+        _ref.read(currentAccessTokenProvider.notifier).state = null;
+        try {
+          _msgSub?.cancel();
+        } catch (_) {}
+        _msgSub = null;
+        return;
       }
+
+      // Keep the session stored; user can unlock via Face ID from Login screen.
+      final elapsed = DateTime.now().difference(startedAt);
+      if (elapsed < minSplash) await Future.delayed(minSplash - elapsed);
       state = state.copyWith(loading: false, isAuthenticated: false, error: null);
       _ref.read(currentAccessTokenProvider.notifier).state = null;
-      try {
-        _msgSub?.cancel();
-      } catch (_) {}
-      _msgSub = null;
-      return;
-    }
-
-    // If biometrics are available, keep the session stored but require the user
-    // to unlock it explicitly from the Login screen (avoids early plugin calls
-    // during bootstrap that can lead to white screen on some iOS setups).
-    final biometric = _ref.read(biometricAuthServiceProvider);
-    final bioAvailable = await biometric.isAvailable();
-    if (bioAvailable) {
-      final elapsed = DateTime.now().difference(startedAt);
-      if (elapsed < minSplash) {
-        await Future.delayed(minSplash - elapsed);
-      }
+    } catch (_) {
+      // Never keep the app stuck on splash/loading.
       state = state.copyWith(loading: false, isAuthenticated: false, error: null);
       _ref.read(currentAccessTokenProvider.notifier).state = null;
-      return;
     }
-
-    await _applySession(session, startedAt: startedAt, minSplash: minSplash);
   }
 
   Future<void> biometricLogin() async {
@@ -95,6 +87,11 @@ class AuthController extends StateNotifier<AuthState> {
       return;
     }
     final biometric = _ref.read(biometricAuthServiceProvider);
+    final available = await biometric.isAvailable();
+    if (!available) {
+      state = state.copyWith(loading: false, error: 'Face ID/biometria não disponível');
+      return;
+    }
     final ok = await biometric.authenticate(reason: 'Use o Face ID/biometria para entrar no TR - Multichat');
     if (!ok) {
       state = state.copyWith(loading: false, error: null);
@@ -124,10 +121,13 @@ class AuthController extends StateNotifier<AuthState> {
       refreshToken: rt,
       error: null,
     );
-    // Notifications infra (local) - best-effort.
+    // Notifications infra (local) - warm up asynchronously (avoid startup crashes).
     try {
-      await _ref.read(localNotificationsProvider).init();
-      await _ref.read(localNotificationsProvider).requestPermissions();
+      Future.microtask(() async {
+        try {
+          await _ref.read(localNotificationsProvider).warmup();
+        } catch (_) {}
+      });
     } catch (_) {}
     // Connect socket after restoring session
     try {
