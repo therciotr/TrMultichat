@@ -4,9 +4,21 @@ import 'branding.dart';
 
 class AppTheme {
   static Color _hex(String v) {
-    final s = v.replaceAll('#', '').trim();
-    if (s.length == 6) return Color(int.parse('FF$s', radix: 16));
-    if (s.length == 8) return Color(int.parse(s, radix: 16));
+    final raw = v.trim();
+    var s = raw.replaceAll('#', '').trim();
+    if (s.length == 3) {
+      // RGB -> RRGGBB
+      s = '${s[0]}${s[0]}${s[1]}${s[1]}${s[2]}${s[2]}';
+    } else if (s.length == 4) {
+      // ARGB -> AARRGGBB
+      s = '${s[0]}${s[0]}${s[1]}${s[1]}${s[2]}${s[2]}${s[3]}${s[3]}';
+    }
+    try {
+      if (s.length == 6) return Color(int.parse('FF$s', radix: 16));
+      if (s.length == 8) return Color(int.parse(s, radix: 16));
+    } catch (_) {
+      // fallthrough to default
+    }
     return const Color(0xFF2BA9A5);
   }
 

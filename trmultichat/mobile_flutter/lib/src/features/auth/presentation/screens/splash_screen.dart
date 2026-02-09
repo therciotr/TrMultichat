@@ -107,9 +107,16 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
 }
 
 Color _hex(String v) {
-  final s = v.replaceAll('#', '').trim();
-  if (s.length == 6) return Color(int.parse('FF$s', radix: 16));
-  if (s.length == 8) return Color(int.parse(s, radix: 16));
+  var s = v.trim().replaceAll('#', '').trim();
+  if (s.length == 3) {
+    s = '${s[0]}${s[0]}${s[1]}${s[1]}${s[2]}${s[2]}';
+  } else if (s.length == 4) {
+    s = '${s[0]}${s[0]}${s[1]}${s[1]}${s[2]}${s[2]}${s[3]}${s[3]}';
+  }
+  try {
+    if (s.length == 6) return Color(int.parse('FF$s', radix: 16));
+    if (s.length == 8) return Color(int.parse(s, radix: 16));
+  } catch (_) {}
   return const Color(0xFF2BA9A5);
 }
 
