@@ -212,7 +212,7 @@ class ChatController extends StateNotifier<ChatState> {
       uploadFileName: fileName,
       uploadFileIndex: 1,
       uploadFileTotal: 1,
-      uploadProgress: 0,
+      uploadProgress: 0.0,
     );
     try {
       await _repo.sendMedia(
@@ -280,7 +280,7 @@ class ChatController extends StateNotifier<ChatState> {
       uploadFileName: files.first.name,
       uploadFileIndex: 1,
       uploadFileTotal: files.length,
-      uploadProgress: 0,
+      uploadProgress: 0.0,
     );
     try {
       for (var i = 0; i < files.length; i++) {
@@ -291,7 +291,7 @@ class ChatController extends StateNotifier<ChatState> {
           uploadFileName: f.name,
           uploadFileIndex: i + 1,
           uploadFileTotal: files.length,
-          uploadProgress: 0,
+          uploadProgress: 0.0,
         );
 
         await _repo.sendMedia(

@@ -40,6 +40,7 @@ dependencies:
   # Utils / UI
   equatable: ^2.0.5
   local_auth: ^2.2.0
+  share_plus: ^10.0.2
 
 dev_dependencies:
   flutter_test:

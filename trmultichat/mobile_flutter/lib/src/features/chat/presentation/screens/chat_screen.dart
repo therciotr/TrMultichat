@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/di/core_providers.dart';
+import '../../../../core/share/share_providers.dart';
 import '../../../../core/ui/attachment_preview.dart';
 import '../../../../core/utils/mime_guess.dart';
 import '../../../tickets/domain/entities/ticket.dart';
@@ -130,6 +131,57 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     .map((f) => (path: f.path, bytes: f.bytes, name: f.name, mimeType: guessMimeType(f.name)))
                     .toList();
                 if (files.isEmpty) return;
+
+                if (!mounted) return;
+                final action = await showModalBottomSheet<String>(
+                  context: context,
+                  showDragHandle: true,
+                  builder: (ctx) {
+                    return SafeArea(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 10, 16, 18),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Text(
+                              files.length == 1 ? files.first.name : '${files.length} anexos selecionados',
+                              style: Theme.of(ctx).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'O que você deseja fazer?',
+                              style: Theme.of(ctx).textTheme.bodyMedium?.copyWith(color: Theme.of(ctx).colorScheme.onSurfaceVariant),
+                            ),
+                            const SizedBox(height: 14),
+                            FilledButton.icon(
+                              onPressed: () => Navigator.pop(ctx, 'chat'),
+                              icon: const Icon(Icons.send),
+                              label: const Text('Enviar no chat'),
+                            ),
+                            const SizedBox(height: 10),
+                            OutlinedButton.icon(
+                              onPressed: () => Navigator.pop(ctx, 'email'),
+                              icon: const Icon(Icons.email_outlined),
+                              label: const Text('Enviar por e-mail'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                );
+                if (action == null) return;
+
+                if (action == 'email') {
+                  await ref.read(shareServiceProvider).shareFiles(
+                        files: files.map((f) => (name: f.name, mimeType: f.mimeType, path: f.path, bytes: f.bytes)).toList(),
+                        subject: 'TR - Multichat • Anexo',
+                        text: _text.text.trim().isEmpty ? null : _text.text.trim(),
+                      );
+                  return;
+                }
+
                 if (files.length == 1) {
                   final f = files.first;
                   await ctrl.sendMedia(body: _text.text, filePath: f.path, fileBytes: f.bytes, fileName: f.name, mimeType: f.mimeType);
