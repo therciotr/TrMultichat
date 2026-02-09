@@ -4,6 +4,10 @@ platform :ios, '12.0'
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
 
+# Needed for some Swift pods (e.g. DKPhotoGallery/SDWebImage) when integrating
+# pods as static libraries (Flutter default).
+use_modular_headers!
+
 project 'Runner', {
   'Debug' => :debug,
   'Profile' => :release,
