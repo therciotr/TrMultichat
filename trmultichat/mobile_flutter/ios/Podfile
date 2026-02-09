@@ -28,8 +28,9 @@ require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelpe
 flutter_ios_podfile_setup
 
 target 'Runner' do
-  # Prefer static linkage to avoid runtime issues
-  use_frameworks! :linkage => :static
+  # Prefer default CocoaPods integration (static libraries).
+  # Using use_frameworks can lead to 'Pods_Runner.framework not found' when
+  # building outside the workspace / with incomplete Pods integration.
 
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
   target 'RunnerTests' do
