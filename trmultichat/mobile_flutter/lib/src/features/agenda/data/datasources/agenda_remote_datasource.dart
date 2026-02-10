@@ -22,25 +22,52 @@ class AgendaRemoteDataSource {
     );
     final data = (res.data as Map).cast<String, dynamic>();
     final records = (data['records'] as List? ?? const []).cast<dynamic>();
-    return records.map((e) => AgendaEventDto.fromJson((e as Map).cast<String, dynamic>())).toList();
+    return records
+        .map((e) => AgendaEventDto.fromJson((e as Map).cast<String, dynamic>()))
+        .toList();
+  }
+
+  Future<AgendaEvent> createEvent({
+    required String title,
+    required DateTime startAt,
+    required DateTime endAt,
+    bool allDay = false,
+    String? location,
+    String? color,
+    int? userId,
+  }) async {
+    final payload = <String, dynamic>{
+      'title': title.trim(),
+      'startAt': startAt.toUtc().toIso8601String(),
+      'endAt': endAt.toUtc().toIso8601String(),
+      'allDay': allDay,
+      'location': (location ?? '').trim(),
+      if ((color ?? '').trim().isNotEmpty) 'color': color!.trim(),
+      'recurrenceType': 'none',
+      'recurrenceInterval': 1,
+      'recurrenceUntil': null,
+      'reminders': const <Map<String, dynamic>>[],
+      if (userId != null && userId > 0) 'userId': userId,
+    };
+    final res = await _dio.post('/agenda/events', data: payload);
+    final data = (res.data as Map).cast<String, dynamic>();
+    return AgendaEventDto.fromJson(data);
   }
 
   Future<List<AgendaAttachment>> listAttachments(String eventId) async {
     final res = await _dio.get('/agenda/events/$eventId/attachments');
     final data = (res.data as Map).cast<String, dynamic>();
     final records = (data['records'] as List? ?? const []).cast<dynamic>();
-    return records
-        .map((e) {
-          final m = (e as Map).cast<String, dynamic>();
-          return AgendaAttachment(
-            id: m['id']?.toString() ?? '',
-            filePath: m['filePath']?.toString() ?? '',
-            fileName: m['fileName']?.toString() ?? '',
-            fileType: m['fileType']?.toString(),
-            fileSize: (m['fileSize'] as num?)?.toInt(),
-          );
-        })
-        .toList();
+    return records.map((e) {
+      final m = (e as Map).cast<String, dynamic>();
+      return AgendaAttachment(
+        id: m['id']?.toString() ?? '',
+        filePath: m['filePath']?.toString() ?? '',
+        fileName: m['fileName']?.toString() ?? '',
+        fileType: m['fileType']?.toString(),
+        fileSize: (m['fileSize'] as num?)?.toInt(),
+      );
+    }).toList();
   }
 
   Future<void> uploadAttachment({
@@ -62,8 +89,8 @@ class AgendaRemoteDataSource {
       '/agenda/events/$eventId/attachments',
       data: form,
       cancelToken: cancelToken,
-      onSendProgress: onProgress == null ? null : (sent, total) => onProgress(sent, total),
+      onSendProgress:
+          onProgress == null ? null : (sent, total) => onProgress(sent, total),
     );
   }
 }
-

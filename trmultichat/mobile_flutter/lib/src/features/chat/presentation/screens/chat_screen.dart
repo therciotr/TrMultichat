@@ -38,6 +38,35 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   bool _isRecording = false;
   int _recordSeconds = 0;
   Timer? _recordTimer;
+  String? _statusOverride;
+  bool _loadingTicketMeta = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTicketMeta();
+  }
+
+  Future<void> _loadTicketMeta() async {
+    setState(() => _loadingTicketMeta = true);
+    try {
+      final res =
+          await ref.read(dioProvider).get('/tickets/${widget.ticketId}');
+      final data =
+          (res.data as Map?)?.cast<String, dynamic>() ?? <String, dynamic>{};
+      final status = (data['status']?.toString() ?? '').trim().toLowerCase();
+      if (!mounted) return;
+      setState(() {
+        _statusOverride = status.isEmpty ? null : status;
+      });
+    } catch (_) {
+      // keep status from navigation fallback
+    } finally {
+      if (mounted) {
+        setState(() => _loadingTicketMeta = false);
+      }
+    }
+  }
 
   Future<void> _updateTicketStatus(String status) async {
     final next = status.trim().toLowerCase();
@@ -46,20 +75,24 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     final userId = auth.user?.id;
     try {
       await ref.read(dioProvider).put(
-            '/tickets/${widget.ticketId}',
-            data: {
-              'status': next,
-              // Backend updates userId if present; keep assigned user when changing status.
-              if (userId != null && userId > 0) 'userId': userId,
-            },
-          );
+        '/tickets/${widget.ticketId}',
+        data: {
+          'status': next,
+          // Backend updates userId if present; keep assigned user when changing status.
+          if (userId != null && userId > 0) 'userId': userId,
+        },
+      );
       // Refresh tickets list (home/all) and chat messages header state.
       try {
         await ref.read(ticketsControllerProvider.notifier).refresh();
       } catch (_) {}
+      await _loadTicketMeta();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(next == 'closed' ? 'Chamado finalizado.' : 'Chamado atualizado.')),
+        SnackBar(
+            content: Text(next == 'closed'
+                ? 'Chamado finalizado.'
+                : 'Chamado atualizado.')),
       );
     } catch (e) {
       if (!mounted) return;
@@ -76,7 +109,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         await ref.read(ticketsControllerProvider.notifier).refresh();
       } catch (_) {}
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Ticket apagado.')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Ticket apagado.')));
       // Go back to tickets list.
       if (context.canPop()) {
         context.pop();
@@ -104,11 +138,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   Widget build(BuildContext context) {
     final st = ref.watch(chatControllerProvider(widget.ticketId));
     final ctrl = ref.read(chatControllerProvider(widget.ticketId).notifier);
-    final ticket = widget.ticketExtra is Ticket ? widget.ticketExtra as Ticket : null;
-    final title = ticket?.contact?.name.isNotEmpty == true ? ticket!.contact!.name : 'Atendimento #${widget.ticketId}';
-    final status = (ticket?.status ?? '').trim().toLowerCase();
+    final ticket =
+        widget.ticketExtra is Ticket ? widget.ticketExtra as Ticket : null;
+    final title = ticket?.contact?.name.isNotEmpty == true
+        ? ticket!.contact!.name
+        : 'Atendimento #${widget.ticketId}';
+    final status =
+        (_statusOverride ?? ticket?.status ?? '').trim().toLowerCase();
     final auth = ref.watch(authControllerProvider);
-    final isAdmin = auth.user?.admin == true || auth.user?.isSuper == true || (auth.user?.profile ?? '').toLowerCase() == 'admin' || (auth.user?.profile ?? '').toLowerCase() == 'super';
+    final isAdmin = auth.user?.admin == true ||
+        auth.user?.isSuper == true ||
+        (auth.user?.profile ?? '').toLowerCase() == 'admin' ||
+        (auth.user?.profile ?? '').toLowerCase() == 'super';
 
     // Auto-scroll to bottom on new messages
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -123,10 +164,48 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           children: [
             Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
             if (ticket?.contact?.number.isNotEmpty == true)
-              Text(ticket!.contact!.number, style: const TextStyle(fontSize: 12, color: Colors.white70)),
+              Text(ticket!.contact!.number,
+                  style: const TextStyle(fontSize: 12, color: Colors.white70)),
           ],
         ),
         actions: [
+          if (_loadingTicketMeta)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 8),
+              child: Center(
+                child: SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            ),
+          if (!_loadingTicketMeta && status == 'pending')
+            TextButton.icon(
+              onPressed: () async {
+                final ok = await showDialog<bool>(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    title: const Text('Aceitar chamado'),
+                    content: const Text(
+                        'Deseja iniciar o atendimento deste ticket agora?'),
+                    actions: [
+                      TextButton(
+                          onPressed: () => Navigator.pop(ctx, false),
+                          child: const Text('Cancelar')),
+                      FilledButton(
+                          onPressed: () => Navigator.pop(ctx, true),
+                          child: const Text('Aceitar')),
+                    ],
+                  ),
+                );
+                if (ok == true) {
+                  await _updateTicketStatus('open');
+                }
+              },
+              icon: const Icon(Icons.play_arrow, size: 18),
+              label: const Text('Aceitar'),
+            ),
           PopupMenuButton<String>(
             tooltip: 'Ações',
             onSelected: (v) async {
@@ -137,8 +216,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     title: const Text('Finalizar chamado'),
                     content: const Text('Deseja finalizar este chamado?'),
                     actions: [
-                      TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
-                      FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Finalizar')),
+                      TextButton(
+                          onPressed: () => Navigator.pop(ctx, false),
+                          child: const Text('Cancelar')),
+                      FilledButton(
+                          onPressed: () => Navigator.pop(ctx, true),
+                          child: const Text('Finalizar')),
                     ],
                   ),
                 );
@@ -152,8 +235,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     title: const Text('Reabrir chamado'),
                     content: const Text('Deseja reabrir este chamado?'),
                     actions: [
-                      TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
-                      FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Reabrir')),
+                      TextButton(
+                          onPressed: () => Navigator.pop(ctx, false),
+                          child: const Text('Cancelar')),
+                      FilledButton(
+                          onPressed: () => Navigator.pop(ctx, true),
+                          child: const Text('Reabrir')),
                     ],
                   ),
                 );
@@ -165,11 +252,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   context: context,
                   builder: (ctx) => AlertDialog(
                     title: const Text('Apagar ticket'),
-                    content: const Text('Essa ação é permanente. Deseja apagar este ticket?'),
+                    content: const Text(
+                        'Essa ação é permanente. Deseja apagar este ticket?'),
                     actions: [
-                      TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancelar')),
+                      TextButton(
+                          onPressed: () => Navigator.pop(ctx, false),
+                          child: const Text('Cancelar')),
                       FilledButton(
-                        style: FilledButton.styleFrom(backgroundColor: Colors.red),
+                        style:
+                            FilledButton.styleFrom(backgroundColor: Colors.red),
                         onPressed: () => Navigator.pop(ctx, true),
                         child: const Text('Apagar'),
                       ),
@@ -181,10 +272,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               }
             },
             itemBuilder: (ctx) => [
-              if (status != 'closed') const PopupMenuItem(value: 'close', child: Text('Finalizar chamado')),
-              if (status == 'closed') const PopupMenuItem(value: 'reopen', child: Text('Reabrir chamado')),
+              if (status != 'closed')
+                const PopupMenuItem(
+                    value: 'close', child: Text('Finalizar chamado')),
+              if (status == 'closed')
+                const PopupMenuItem(
+                    value: 'reopen', child: Text('Reabrir chamado')),
               if (isAdmin) const PopupMenuDivider(),
-              if (isAdmin) const PopupMenuItem(value: 'delete', child: Text('Apagar ticket')),
+              if (isAdmin)
+                const PopupMenuItem(
+                    value: 'delete', child: Text('Apagar ticket')),
             ],
           ),
         ],
@@ -195,233 +292,289 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
           child: Column(
             children: [
-            if (st.loading) const LinearProgressIndicator(minHeight: 2),
-            if (st.uploading) const LinearProgressIndicator(minHeight: 2),
-            if (st.uploading && st.uploadProgress != null)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
-                child: Row(
-                  children: [
-                    const Spacer(),
-                    Flexible(
-                      child: Text(
-                        [
-                          'Enviando',
-                          if (st.uploadFileIndex != null && st.uploadFileTotal != null) '${st.uploadFileIndex}/${st.uploadFileTotal}',
-                          if ((st.uploadFileName ?? '').trim().isNotEmpty) '• ${st.uploadFileName}',
-                          '— ${((st.uploadProgress ?? 0) * 100).toStringAsFixed(0)}%',
-                        ].join(' '),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12, fontWeight: FontWeight.w700),
-                      ),
-                    ),
-                    IconButton(
-                      tooltip: 'Cancelar envio',
-                      onPressed: () => ctrl.cancelUpload(),
-                      icon: const Icon(Icons.close, size: 18),
-                      visualDensity: VisualDensity.compact,
-                    ),
-                  ],
-                ),
-              ),
-            if (st.error != null)
-              Padding(
-                padding: const EdgeInsets.all(12),
-                child: Text(st.error!, style: const TextStyle(color: Colors.red)),
-              ),
-            Expanded(
-              child: Container(
-                color: Theme.of(context).colorScheme.surface,
-                child: ListView.builder(
-                  controller: _scroll,
-                  keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
-                  itemCount: st.messages.length,
-                  itemBuilder: (context, i) {
-                    final m = st.messages[i];
-                    final isMe = m.fromMe;
-                    return _Bubble(
-                      message: m.body,
-                      isMe: isMe,
-                      pending: m.pending,
-                      error: m.error,
-                      mediaType: m.mediaType,
-                      mediaUrl: m.mediaUrl,
-                      onOpenMedia: m.mediaUrl == null ? null : () => _openMedia(m.mediaUrl!, mimeType: m.mediaType),
-                    );
-                  },
-                ),
-              ),
-            ),
-            _Composer(
-              controller: _text,
-              onSend: () async {
-                final v = _text.text;
-                _text.clear();
-                await ctrl.sendText(v);
-              },
-              isRecording: _isRecording,
-              recordSeconds: _recordSeconds,
-              micEnabled: !st.uploading,
-              onToggleRecord: () async {
-                if (st.uploading) return;
-                FocusManager.instance.primaryFocus?.unfocus();
-                if (_isRecording) {
-                  await _stopRecordingAndSend(ctrl);
-                } else {
-                  await _startRecording();
-                }
-              },
-              onCancelRecording: () async {
-                if (!_isRecording) return;
-                await _cancelRecording();
-              },
-              onAttach: () async {
-                if (st.uploading) return;
-                FocusManager.instance.primaryFocus?.unfocus();
-                // iOS can return files without a filesystem path (e.g. iCloud/Files).
-                // Using withData ensures we can still upload.
-                final picked = await FilePicker.platform.pickFiles(withData: true, allowMultiple: true);
-                final files = (picked?.files ?? const <PlatformFile>[])
-                    .where((f) => (f.path != null && f.path!.trim().isNotEmpty) || (f.bytes != null && f.bytes!.isNotEmpty))
-                    .map((f) => (path: f.path, bytes: f.bytes, name: f.name, mimeType: guessMimeType(f.name)))
-                    .toList();
-                if (files.isEmpty) return;
-
-                if (!mounted) return;
-                FocusManager.instance.primaryFocus?.unfocus();
-                final action = await showModalBottomSheet<String>(
-                  context: context,
-                  useRootNavigator: true,
-                  isScrollControlled: true,
-                  useSafeArea: true,
-                  showDragHandle: true,
-                  builder: (ctx) {
-                    final bottomInset = MediaQuery.viewInsetsOf(ctx).bottom;
-                    return SafeArea(
-                      child: Padding(
-                        padding: EdgeInsets.fromLTRB(16, 10, 16, 18 + bottomInset),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Text(
-                              files.length == 1 ? files.first.name : '${files.length} anexos selecionados',
-                              style: Theme.of(ctx).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'O que você deseja fazer?',
-                              style: Theme.of(ctx).textTheme.bodyMedium?.copyWith(color: Theme.of(ctx).colorScheme.onSurfaceVariant),
-                            ),
-                            const SizedBox(height: 14),
-                            FilledButton.icon(
-                              onPressed: () => Navigator.pop(ctx, 'chat'),
-                              icon: const Icon(Icons.send),
-                              label: const Text('Enviar no chat'),
-                            ),
-                            const SizedBox(height: 10),
-                            OutlinedButton.icon(
-                              onPressed: () => Navigator.pop(ctx, 'email'),
-                              icon: const Icon(Icons.email_outlined),
-                              label: const Text('Enviar por e-mail'),
-                            ),
-                          ],
+              if (st.loading) const LinearProgressIndicator(minHeight: 2),
+              if (st.uploading) const LinearProgressIndicator(minHeight: 2),
+              if (st.uploading && st.uploadProgress != null)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
+                  child: Row(
+                    children: [
+                      const Spacer(),
+                      Flexible(
+                        child: Text(
+                          [
+                            'Enviando',
+                            if (st.uploadFileIndex != null &&
+                                st.uploadFileTotal != null)
+                              '${st.uploadFileIndex}/${st.uploadFileTotal}',
+                            if ((st.uploadFileName ?? '').trim().isNotEmpty)
+                              '• ${st.uploadFileName}',
+                            '— ${((st.uploadProgress ?? 0) * 100).toStringAsFixed(0)}%',
+                          ].join(' '),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700),
                         ),
                       ),
-                    );
-                  },
-                );
-                if (action == null) return;
+                      IconButton(
+                        tooltip: 'Cancelar envio',
+                        onPressed: () => ctrl.cancelUpload(),
+                        icon: const Icon(Icons.close, size: 18),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                    ],
+                  ),
+                ),
+              if (st.error != null)
+                Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Text(st.error!,
+                      style: const TextStyle(color: Colors.red)),
+                ),
+              Expanded(
+                child: Container(
+                  color: Theme.of(context).colorScheme.surface,
+                  child: ListView.builder(
+                    controller: _scroll,
+                    keyboardDismissBehavior:
+                        ScrollViewKeyboardDismissBehavior.onDrag,
+                    padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+                    itemCount: st.messages.length,
+                    itemBuilder: (context, i) {
+                      final m = st.messages[i];
+                      final isMe = m.fromMe;
+                      return _Bubble(
+                        message: m.body,
+                        isMe: isMe,
+                        pending: m.pending,
+                        error: m.error,
+                        mediaType: m.mediaType,
+                        mediaUrl: m.mediaUrl,
+                        onOpenMedia: m.mediaUrl == null
+                            ? null
+                            : () =>
+                                _openMedia(m.mediaUrl!, mimeType: m.mediaType),
+                      );
+                    },
+                  ),
+                ),
+              ),
+              _Composer(
+                controller: _text,
+                onSend: () async {
+                  final v = _text.text;
+                  _text.clear();
+                  await ctrl.sendText(v);
+                },
+                isRecording: _isRecording,
+                recordSeconds: _recordSeconds,
+                micEnabled: !st.uploading,
+                onToggleRecord: () async {
+                  if (st.uploading) return;
+                  FocusManager.instance.primaryFocus?.unfocus();
+                  if (_isRecording) {
+                    await _stopRecordingAndSend(ctrl);
+                  } else {
+                    await _startRecording();
+                  }
+                },
+                onCancelRecording: () async {
+                  if (!_isRecording) return;
+                  await _cancelRecording();
+                },
+                onAttach: () async {
+                  if (st.uploading) return;
+                  FocusManager.instance.primaryFocus?.unfocus();
+                  // iOS can return files without a filesystem path (e.g. iCloud/Files).
+                  // Using withData ensures we can still upload.
+                  final picked = await FilePicker.platform
+                      .pickFiles(withData: true, allowMultiple: true);
+                  final files = (picked?.files ?? const <PlatformFile>[])
+                      .where((f) =>
+                          (f.path != null && f.path!.trim().isNotEmpty) ||
+                          (f.bytes != null && f.bytes!.isNotEmpty))
+                      .map((f) => (
+                            path: f.path,
+                            bytes: f.bytes,
+                            name: f.name,
+                            mimeType: guessMimeType(f.name)
+                          ))
+                      .toList();
+                  if (files.isEmpty) return;
 
-                if (action == 'email') {
-                  final initialMsg = _text.text.trim();
                   if (!mounted) return;
-                  final toCtrl = TextEditingController();
-                  final subjCtrl = TextEditingController(text: 'Anexo do atendimento #${widget.ticketId}');
-                  final msgCtrl = TextEditingController(text: initialMsg);
-                  try {
-                    final sent = await showModalBottomSheet<bool>(
-                      context: context,
-                      useRootNavigator: true,
-                      isScrollControlled: true,
-                      useSafeArea: true,
-                      showDragHandle: true,
-                      builder: (ctx) {
-                        final bottomInset = MediaQuery.viewInsetsOf(ctx).bottom;
-                        return Padding(
-                          padding: EdgeInsets.fromLTRB(16, 10, 16, 16 + bottomInset),
+                  FocusManager.instance.primaryFocus?.unfocus();
+                  final action = await showModalBottomSheet<String>(
+                    context: context,
+                    useRootNavigator: true,
+                    isScrollControlled: true,
+                    useSafeArea: true,
+                    showDragHandle: true,
+                    builder: (ctx) {
+                      final bottomInset = MediaQuery.viewInsetsOf(ctx).bottom;
+                      return SafeArea(
+                        child: Padding(
+                          padding:
+                              EdgeInsets.fromLTRB(16, 10, 16, 18 + bottomInset),
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
                               Text(
-                                'Enviar anexo por e-mail',
-                                style: Theme.of(ctx).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w900),
-                              ),
-                              const SizedBox(height: 12),
-                              TextField(
-                                controller: toCtrl,
-                                keyboardType: TextInputType.emailAddress,
-                                decoration: const InputDecoration(
-                                  labelText: 'Destinatário',
-                                  hintText: 'email@exemplo.com',
-                                  border: OutlineInputBorder(),
-                                ),
-                              ),
-                              const SizedBox(height: 10),
-                              TextField(
-                                controller: subjCtrl,
-                                decoration: const InputDecoration(labelText: 'Assunto', border: OutlineInputBorder()),
-                              ),
-                              const SizedBox(height: 10),
-                              TextField(
-                                controller: msgCtrl,
-                                minLines: 2,
-                                maxLines: 5,
-                                decoration: const InputDecoration(labelText: 'Mensagem', border: OutlineInputBorder()),
-                              ),
-                              const SizedBox(height: 12),
-                              FilledButton.icon(
-                                onPressed: () => Navigator.pop(ctx, true),
-                                icon: const Icon(Icons.send),
-                                label: Text('Enviar (${files.length} anexo${files.length > 1 ? 's' : ''})'),
+                                files.length == 1
+                                    ? files.first.name
+                                    : '${files.length} anexos selecionados',
+                                style: Theme.of(ctx)
+                                    .textTheme
+                                    .titleMedium
+                                    ?.copyWith(fontWeight: FontWeight.w800),
                               ),
                               const SizedBox(height: 8),
-                              OutlinedButton(
-                                onPressed: () => Navigator.pop(ctx, false),
-                                child: const Text('Cancelar'),
+                              Text(
+                                'O que você deseja fazer?',
+                                style: Theme.of(ctx)
+                                    .textTheme
+                                    .bodyMedium
+                                    ?.copyWith(
+                                        color: Theme.of(ctx)
+                                            .colorScheme
+                                            .onSurfaceVariant),
+                              ),
+                              const SizedBox(height: 14),
+                              FilledButton.icon(
+                                onPressed: () => Navigator.pop(ctx, 'chat'),
+                                icon: const Icon(Icons.send),
+                                label: const Text('Enviar no chat'),
+                              ),
+                              const SizedBox(height: 10),
+                              OutlinedButton.icon(
+                                onPressed: () => Navigator.pop(ctx, 'email'),
+                                icon: const Icon(Icons.email_outlined),
+                                label: const Text('Enviar por e-mail'),
                               ),
                             ],
                           ),
-                        );
-                      },
-                    );
-                    if (sent != true) return;
-                    await ctrl.sendTicketEmail(
-                      toEmail: toCtrl.text,
-                      subject: subjCtrl.text,
-                      message: msgCtrl.text,
-                      files: files.map((f) => (name: f.name, mimeType: f.mimeType, path: f.path, bytes: f.bytes)).toList(),
-                    );
-                  } finally {
-                    toCtrl.dispose();
-                    subjCtrl.dispose();
-                    msgCtrl.dispose();
-                  }
-                  return;
-                }
+                        ),
+                      );
+                    },
+                  );
+                  if (action == null) return;
 
-                if (files.length == 1) {
-                  final f = files.first;
-                  await ctrl.sendMedia(body: _text.text, filePath: f.path, fileBytes: f.bytes, fileName: f.name, mimeType: f.mimeType);
-                } else {
-                  await ctrl.sendMediaBatch(body: _text.text, files: files);
-                }
-                _text.clear();
-              },
-            ),
+                  if (action == 'email') {
+                    final initialMsg = _text.text.trim();
+                    if (!mounted) return;
+                    final toCtrl = TextEditingController();
+                    final subjCtrl = TextEditingController(
+                        text: 'Anexo do atendimento #${widget.ticketId}');
+                    final msgCtrl = TextEditingController(text: initialMsg);
+                    try {
+                      final sent = await showModalBottomSheet<bool>(
+                        context: context,
+                        useRootNavigator: true,
+                        isScrollControlled: true,
+                        useSafeArea: true,
+                        showDragHandle: true,
+                        builder: (ctx) {
+                          final bottomInset =
+                              MediaQuery.viewInsetsOf(ctx).bottom;
+                          return Padding(
+                            padding: EdgeInsets.fromLTRB(
+                                16, 10, 16, 16 + bottomInset),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Text(
+                                  'Enviar anexo por e-mail',
+                                  style: Theme.of(ctx)
+                                      .textTheme
+                                      .titleMedium
+                                      ?.copyWith(fontWeight: FontWeight.w900),
+                                ),
+                                const SizedBox(height: 12),
+                                TextField(
+                                  controller: toCtrl,
+                                  keyboardType: TextInputType.emailAddress,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Destinatário',
+                                    hintText: 'email@exemplo.com',
+                                    border: OutlineInputBorder(),
+                                  ),
+                                ),
+                                const SizedBox(height: 10),
+                                TextField(
+                                  controller: subjCtrl,
+                                  decoration: const InputDecoration(
+                                      labelText: 'Assunto',
+                                      border: OutlineInputBorder()),
+                                ),
+                                const SizedBox(height: 10),
+                                TextField(
+                                  controller: msgCtrl,
+                                  minLines: 2,
+                                  maxLines: 5,
+                                  decoration: const InputDecoration(
+                                      labelText: 'Mensagem',
+                                      border: OutlineInputBorder()),
+                                ),
+                                const SizedBox(height: 12),
+                                FilledButton.icon(
+                                  onPressed: () => Navigator.pop(ctx, true),
+                                  icon: const Icon(Icons.send),
+                                  label: Text(
+                                      'Enviar (${files.length} anexo${files.length > 1 ? 's' : ''})'),
+                                ),
+                                const SizedBox(height: 8),
+                                OutlinedButton(
+                                  onPressed: () => Navigator.pop(ctx, false),
+                                  child: const Text('Cancelar'),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      );
+                      if (sent != true) return;
+                      await ctrl.sendTicketEmail(
+                        toEmail: toCtrl.text,
+                        subject: subjCtrl.text,
+                        message: msgCtrl.text,
+                        files: files
+                            .map((f) => (
+                                  name: f.name,
+                                  mimeType: f.mimeType,
+                                  path: f.path,
+                                  bytes: f.bytes
+                                ))
+                            .toList(),
+                      );
+                    } finally {
+                      toCtrl.dispose();
+                      subjCtrl.dispose();
+                      msgCtrl.dispose();
+                    }
+                    return;
+                  }
+
+                  if (files.length == 1) {
+                    final f = files.first;
+                    await ctrl.sendMedia(
+                        body: _text.text,
+                        filePath: f.path,
+                        fileBytes: f.bytes,
+                        fileName: f.name,
+                        mimeType: f.mimeType);
+                  } else {
+                    await ctrl.sendMediaBatch(body: _text.text, files: files);
+                  }
+                  _text.clear();
+                },
+              ),
             ],
           ),
         ),
@@ -439,15 +592,22 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       if (!ok) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Permissão de microfone negada. Ative em Ajustes para gravar áudio.')),
+          const SnackBar(
+              content: Text(
+                  'Permissão de microfone negada. Ative em Ajustes para gravar áudio.')),
         );
         return;
       }
 
       final dir = await getTemporaryDirectory();
-      final filePath = p.join(dir.path, 'voice_${DateTime.now().millisecondsSinceEpoch}.m4a');
+      final filePath = p.join(
+          dir.path, 'voice_${DateTime.now().millisecondsSinceEpoch}.m4a');
       await _recorder.start(
-        const RecordConfig(encoder: AudioEncoder.aacLc, sampleRate: 44100, bitRate: 128000, numChannels: 1),
+        const RecordConfig(
+            encoder: AudioEncoder.aacLc,
+            sampleRate: 44100,
+            bitRate: 128000,
+            numChannels: 1),
         path: filePath,
       );
 
@@ -462,7 +622,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       });
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Falha ao iniciar gravação: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Falha ao iniciar gravação: $e')));
     }
   }
 
@@ -541,7 +702,12 @@ class _Composer extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
-        border: Border(top: BorderSide(color: Theme.of(context).colorScheme.outlineVariant.withOpacity(0.5))),
+        border: Border(
+            top: BorderSide(
+                color: Theme.of(context)
+                    .colorScheme
+                    .outlineVariant
+                    .withOpacity(0.5))),
       ),
       child: Row(
         children: [
@@ -552,27 +718,35 @@ class _Composer extends StatelessWidget {
           ),
           IconButton(
             onPressed: micEnabled ? onToggleRecord : null,
-            icon: Icon(isRecording ? Icons.stop_circle_outlined : Icons.mic_none),
+            icon:
+                Icon(isRecording ? Icons.stop_circle_outlined : Icons.mic_none),
             tooltip: isRecording ? 'Parar e enviar' : 'Gravar áudio',
           ),
           Expanded(
             child: isRecording
                 ? Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 12),
                     decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.55),
+                      color: Theme.of(context)
+                          .colorScheme
+                          .surfaceContainerHighest
+                          .withOpacity(0.55),
                       borderRadius: BorderRadius.circular(22),
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.fiber_manual_record, color: Colors.red, size: 16),
+                        const Icon(Icons.fiber_manual_record,
+                            color: Colors.red, size: 16),
                         const SizedBox(width: 10),
                         Expanded(
                           child: Text(
                             'Gravando ${_fmt(recordSeconds)}',
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w700),
+                            style: TextStyle(
+                                color: Theme.of(context).colorScheme.onSurface,
+                                fontWeight: FontWeight.w700),
                           ),
                         ),
                         IconButton(
@@ -593,9 +767,15 @@ class _Composer extends StatelessWidget {
                     decoration: InputDecoration(
                       hintText: 'Mensagem',
                       filled: true,
-                      fillColor: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.55),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(22), borderSide: BorderSide.none),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      fillColor: Theme.of(context)
+                          .colorScheme
+                          .surfaceContainerHighest
+                          .withOpacity(0.55),
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(22),
+                          borderSide: BorderSide.none),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 10),
                     ),
                   ),
           ),
@@ -641,7 +821,9 @@ class _Bubble extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final bg = isMe ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.surfaceContainerHighest;
+    final bg = isMe
+        ? Theme.of(context).colorScheme.primary
+        : Theme.of(context).colorScheme.surfaceContainerHighest;
     final fg = isMe ? Colors.white : Theme.of(context).colorScheme.onSurface;
     final mt = (mediaType ?? '').toLowerCase();
     final rawMediaUrl = mediaUrl?.trim();
@@ -657,13 +839,24 @@ class _Bubble extends ConsumerWidget {
         urlLower.endsWith('.mov') ||
         urlLower.endsWith('.m4v') ||
         urlLower.endsWith('.webm');
-    final isAudio = mt.startsWith('audio/') || mt == 'audio' || urlLower.endsWith('.mp3') || urlLower.endsWith('.m4a') || urlLower.endsWith('.ogg') || urlLower.endsWith('.wav') || urlLower.endsWith('.aac') || urlLower.endsWith('.amr') || urlLower.endsWith('.opus');
+    final isAudio = mt.startsWith('audio/') ||
+        mt == 'audio' ||
+        urlLower.endsWith('.mp3') ||
+        urlLower.endsWith('.m4a') ||
+        urlLower.endsWith('.ogg') ||
+        urlLower.endsWith('.wav') ||
+        urlLower.endsWith('.aac') ||
+        urlLower.endsWith('.amr') ||
+        urlLower.endsWith('.opus');
 
     String? fullUrl;
     String? guessedFileName;
     if (rawMediaUrl != null && rawMediaUrl.isNotEmpty) {
-      final base = ref.read(dioProvider).options.baseUrl.replaceAll(RegExp(r'/+$'), '');
-      fullUrl = rawMediaUrl.startsWith('http') ? rawMediaUrl : '$base/${rawMediaUrl.replaceAll(RegExp(r'^/+'), '')}';
+      final base =
+          ref.read(dioProvider).options.baseUrl.replaceAll(RegExp(r'/+$'), '');
+      fullUrl = rawMediaUrl.startsWith('http')
+          ? rawMediaUrl
+          : '$base/${rawMediaUrl.replaceAll(RegExp(r'^/+'), '')}';
       guessedFileName = Uri.tryParse(fullUrl)?.pathSegments.last;
     }
 
@@ -682,8 +875,10 @@ class _Bubble extends ConsumerWidget {
       final t = message.trim();
       if (t.isEmpty) return false;
       if (isPlaceholder(t)) return false;
-      if ((guessedFileName ?? '').isNotEmpty && t == guessedFileName) return false;
-      if ((isImage || isVideo) && looksLikeFileName(t)) return false; // hide raw filename for image/video
+      if ((guessedFileName ?? '').isNotEmpty && t == guessedFileName)
+        return false;
+      if ((isImage || isVideo) && looksLikeFileName(t))
+        return false; // hide raw filename for image/video
       return true;
     }
 
@@ -709,8 +904,12 @@ class _Bubble extends ConsumerWidget {
 
       // Audio + documents keep the compact "open" row
       final label = isAudio ? 'Ouvir áudio' : 'Abrir anexo';
-      final icon = isAudio ? Icons.play_circle_outline : Icons.insert_drive_file_outlined;
-      final name = (!isAudio && (guessedFileName ?? '').isNotEmpty) ? guessedFileName! : '';
+      final icon = isAudio
+          ? Icons.play_circle_outline
+          : Icons.insert_drive_file_outlined;
+      final name = (!isAudio && (guessedFileName ?? '').isNotEmpty)
+          ? guessedFileName!
+          : '';
       return InkWell(
         onTap: onOpenMedia,
         child: Padding(
@@ -723,7 +922,8 @@ class _Bubble extends ConsumerWidget {
               Flexible(
                 child: Text(
                   name.isNotEmpty ? '$label • $name' : label,
-                  style: TextStyle(color: fg, decoration: TextDecoration.underline),
+                  style: TextStyle(
+                      color: fg, decoration: TextDecoration.underline),
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
@@ -738,7 +938,8 @@ class _Bubble extends ConsumerWidget {
       child: Container(
         margin: const EdgeInsets.symmetric(vertical: 5),
         padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.78),
+        constraints:
+            BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.78),
         decoration: BoxDecoration(
           color: bg,
           borderRadius: BorderRadius.only(
@@ -761,11 +962,16 @@ class _Bubble extends ConsumerWidget {
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (pending) Icon(Icons.access_time, size: 14, color: fg.withOpacity(0.85)),
+                if (pending)
+                  Icon(Icons.access_time,
+                      size: 14, color: fg.withOpacity(0.85)),
                 if (error != null) ...[
-                  Icon(Icons.error_outline, size: 14, color: Colors.red.shade200),
+                  Icon(Icons.error_outline,
+                      size: 14, color: Colors.red.shade200),
                   const SizedBox(width: 6),
-                  Text(error!, style: TextStyle(color: Colors.red.shade200, fontSize: 11)),
+                  Text(error!,
+                      style:
+                          TextStyle(color: Colors.red.shade200, fontSize: 11)),
                 ],
               ],
             ),
@@ -783,7 +989,11 @@ class _MediaThumb extends ConsumerWidget {
   final String url;
   final bool isMe;
   final VoidCallback? onTap;
-  const _MediaThumb({required this.kind, required this.url, required this.isMe, required this.onTap});
+  const _MediaThumb(
+      {required this.kind,
+      required this.url,
+      required this.isMe,
+      required this.onTap});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -796,11 +1006,15 @@ class _MediaThumb extends ConsumerWidget {
         height: 180,
         width: double.infinity,
         decoration: BoxDecoration(
-          color: (isMe ? Colors.white : Theme.of(context).colorScheme.surface).withOpacity(0.10),
+          color: (isMe ? Colors.white : Theme.of(context).colorScheme.surface)
+              .withOpacity(0.10),
           borderRadius: r,
         ),
         child: Center(
-          child: Icon(isVideo ? Icons.play_circle_outline : Icons.image_outlined, color: fg.withOpacity(0.85), size: 48),
+          child: Icon(
+              isVideo ? Icons.play_circle_outline : Icons.image_outlined,
+              color: fg.withOpacity(0.85),
+              size: 48),
         ),
       );
     }
@@ -830,7 +1044,9 @@ class _MediaThumb extends ConsumerWidget {
                     strokeWidth: 2,
                     value: prog.expectedTotalBytes == null
                         ? null
-                        : (prog.cumulativeBytesLoaded / (prog.expectedTotalBytes ?? 1)).clamp(0, 1),
+                        : (prog.cumulativeBytesLoaded /
+                                (prog.expectedTotalBytes ?? 1))
+                            .clamp(0, 1),
                   ),
                 ),
               ),
@@ -862,7 +1078,9 @@ class _MediaThumb extends ConsumerWidget {
         future: buildImage(),
         builder: (context, snap) {
           final w = snap.data ?? placeholder(isVideo: false);
-          return ClipRRect(borderRadius: r, child: SizedBox(height: 180, width: double.infinity, child: w));
+          return ClipRRect(
+              borderRadius: r,
+              child: SizedBox(height: 180, width: double.infinity, child: w));
         },
       );
     } else {
@@ -870,7 +1088,9 @@ class _MediaThumb extends ConsumerWidget {
         future: buildVideoThumbBytes(),
         builder: (context, snap) {
           final bytes = snap.data;
-          final w = bytes == null ? placeholder(isVideo: true) : Image.memory(bytes, fit: BoxFit.cover);
+          final w = bytes == null
+              ? placeholder(isVideo: true)
+              : Image.memory(bytes, fit: BoxFit.cover);
           return ClipRRect(
             borderRadius: r,
             child: SizedBox(
@@ -882,7 +1102,8 @@ class _MediaThumb extends ConsumerWidget {
                   w,
                   Container(color: Colors.black.withOpacity(0.10)),
                   Center(
-                    child: Icon(Icons.play_circle_fill, color: Colors.white.withOpacity(0.92), size: 54),
+                    child: Icon(Icons.play_circle_fill,
+                        color: Colors.white.withOpacity(0.92), size: 54),
                   ),
                 ],
               ),
@@ -906,4 +1127,3 @@ class _MediaThumb extends ConsumerWidget {
 extension<T> on List<T> {
   T? get firstOrNull => isEmpty ? null : first;
 }
-
