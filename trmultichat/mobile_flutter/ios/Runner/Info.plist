@@ -39,6 +39,8 @@
 	<string>Precisamos de acesso à rede local para depuração e conexão com serviços.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Precisamos de acesso ao microfone para mídias de áudio.</string>
+	<key>NSAppleMusicUsageDescription</key>
+	<string>Precisamos de acesso à sua biblioteca de mídia apenas quando você optar por selecionar um áudio como anexo.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Precisamos de acesso à biblioteca para selecionar anexos.</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>

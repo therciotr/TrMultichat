@@ -9,6 +9,10 @@ class ChatRemoteDataSource {
   final Dio _dio;
   ChatRemoteDataSource(this._dio);
 
+  // Large uploads (videos) + backend WhatsApp send can take a while.
+  static const Duration _uploadSendTimeout = Duration(minutes: 3);
+  static const Duration _uploadReceiveTimeout = Duration(minutes: 3);
+
   Future<(List<ChatMessage> messages, bool hasMore)> getMessages({
     required int ticketId,
     int pageNumber = 1,
@@ -25,10 +29,8 @@ class ChatRemoteDataSource {
   /// - text: JSON { body }
   /// - media: multipart/form-data with fields { body } and file(s) key "file"
   Future<void> sendText({required int ticketId, required String body}) async {
-    // Some backends mount multipart middleware on this route; using FormData
-    // keeps it compatible for both text-only and media messages.
-    final form = FormData.fromMap({'body': body});
-    await _dio.post('/messages/$ticketId', data: form);
+    // Legacy + current backend accept JSON for text-only.
+    await _dio.post('/messages/$ticketId', data: {'body': body});
   }
 
   Future<void> sendMedia({
@@ -68,6 +70,10 @@ class ChatRemoteDataSource {
       data: form,
       cancelToken: cancelToken,
       onSendProgress: onProgress == null ? null : (sent, total) => onProgress(sent, total),
+      options: Options(
+        sendTimeout: _uploadSendTimeout,
+        receiveTimeout: _uploadReceiveTimeout,
+      ),
     );
   }
 
@@ -112,6 +118,10 @@ class ChatRemoteDataSource {
       data: form,
       cancelToken: cancelToken,
       onSendProgress: onProgress == null ? null : (sent, total) => onProgress(sent, total),
+      options: Options(
+        sendTimeout: _uploadSendTimeout,
+        receiveTimeout: _uploadReceiveTimeout,
+      ),
     );
   }
 

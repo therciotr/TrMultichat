@@ -2,7 +2,9 @@ import 'dart:async';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'dart:io';
 
+import '../../../../core/di/core_providers.dart';
 import '../../../../core/socket/socket_client.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../domain/entities/chat_message.dart';
@@ -43,7 +45,8 @@ class ChatController extends StateNotifier<ChatState> {
   Future<void> _bindSocket() async {
     final auth = _ref.read(authControllerProvider);
     final companyId = auth.user?.companyId ?? 0;
-    final token = auth.accessToken;
+    // Use the shared in-memory token cache (keeps working after token refresh).
+    final token = _ref.read(currentAccessTokenProvider);
 
     if (companyId <= 0) return;
     await _socket.connect(jwt: token);
@@ -396,6 +399,20 @@ class ChatController extends StateNotifier<ChatState> {
       if (data is Map && data['error'] != null) {
         final m = data['error']?.toString().trim();
         if (m != null && m.isNotEmpty) return m;
+      }
+      if (e.type == DioExceptionType.sendTimeout || e.type == DioExceptionType.receiveTimeout) {
+        return 'Tempo esgotado ao enviar. Se for vídeo grande, tente novamente ou envie um arquivo menor.';
+      }
+      if (e.type == DioExceptionType.connectionError) {
+        return 'Falha de conexão ao enviar. Verifique sua internet e tente novamente.';
+      }
+      if (e.type == DioExceptionType.unknown) {
+        final err = e.error;
+        if (err is SocketException) {
+          return 'Conexão interrompida ao enviar (possível arquivo grande ou instabilidade). Tente novamente.';
+        }
+        final msg = (err?.toString() ?? '').trim();
+        if (msg.isNotEmpty) return msg;
       }
       if (status != null) return 'Falha ao enviar (HTTP $status)';
       final msg = (e.message ?? '').trim();

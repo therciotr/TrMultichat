@@ -2,7 +2,7 @@ import { Router } from "express";
 import { authMiddleware } from "../../middleware/authMiddleware";
 import { pgQuery } from "../../utils/pgClient";
 import { getIO } from "../../libs/socket";
-import { getInlineSock, startOrRefreshInlineSession } from "../../libs/waInlineManager";
+import { getInlineSnapshot, getInlineSock, startOrRefreshInlineSession } from "../../libs/waInlineManager";
 import fs from "fs";
 import multer from "multer";
 import path from "path";
@@ -251,21 +251,49 @@ router.post("/:ticketId", authMiddleware, upload.any(), async (req, res) => {
   const whatsappId = Number(ticket.whatsappId || 0);
   if (!whatsappId) return res.status(400).json({ error: true, message: "ticket has no whatsappId" });
 
-  // Send via inline session (auto-start if needed)
-  let sock = getInlineSock(whatsappId);
-  if (!sock) {
-    // Try to start/reconnect session on-demand (same behavior as /whatsappsession/:id)
-    try {
-      startOrRefreshInlineSession({ companyId, whatsappId }).catch(() => {});
-    } catch {}
-    const startedAt = Date.now();
-    while (!sock && Date.now() - startedAt < 5000) {
-      await new Promise((r) => setTimeout(r, 250));
-      sock = getInlineSock(whatsappId);
-    }
+  function sockReady(s: any): boolean {
+    if (!s) return false;
+    // Baileys uses WebSocket under sock.ws
+    const rs = (s as any)?.ws?.readyState;
+    // If readyState is unknown, assume usable.
+    if (typeof rs !== "number") return true;
+    // 1 = OPEN
+    return rs === 1;
   }
+
+  async function waitForConnectedSock(timeoutMs: number) {
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < timeoutMs) {
+      const s = getInlineSock(whatsappId);
+      const snap = getInlineSnapshot(whatsappId);
+      const ok = snap?.status === "CONNECTED" && sockReady(s);
+      if (ok) return s;
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    return null;
+  }
+
+  async function ensureSock() {
+    // fast path: existing + connected
+    const snap = getInlineSnapshot(whatsappId);
+    const existing = getInlineSock(whatsappId);
+    if (snap?.status === "CONNECTED" && sockReady(existing)) return existing;
+
+    // kick a refresh and wait for CONNECTED
+    try {
+      startOrRefreshInlineSession({ companyId, whatsappId, forceNewQr: false }).catch(() => {});
+    } catch {}
+    return await waitForConnectedSock(7000);
+  }
+
+  // Send via inline session (auto-start/refresh if needed)
+  let sock = await ensureSock();
   if (!sock) {
-    return res.status(409).json({ error: true, message: "whatsapp session not ready yet, retry in a few seconds" });
+    return res.status(409).json({
+      error: true,
+      message:
+        "Sessão do WhatsApp não está conectada/pronta. Reconecte o WhatsApp (QR Code) e tente novamente em alguns segundos.",
+    });
   }
 
   // Prefer the ticket's last known remoteJid (more reliable than reformatting number)
@@ -282,7 +310,7 @@ router.post("/:ticketId", authMiddleware, upload.any(), async (req, res) => {
   const createdIds: string[] = [];
   let lastBodyForTicket = bodyText;
 
-  const sendOne = async (opts: { text: string; file?: any }) => {
+  const sendOne = async (opts: { text: string; file?: any }, attempt: number = 0) => {
     const text = String(opts.text || "").trim();
     const file = opts.file;
     let sentId = `local-${Date.now()}-${Math.round(Math.random() * 1e9)}`;
@@ -290,6 +318,12 @@ router.post("/:ticketId", authMiddleware, upload.any(), async (req, res) => {
     let mediaUrl: string | null = null;
 
     try {
+      // If the socket is stale/closed, refresh it once before trying to send.
+      if (!sockReady(sock) || getInlineSnapshot(whatsappId)?.status !== "CONNECTED") {
+        const refreshed = await ensureSock();
+        if (refreshed) sock = refreshed;
+      }
+
       if (file) {
         const absPath = String(file.path || "").trim();
         const mimetype = String(file.mimetype || "").trim();
@@ -320,7 +354,14 @@ router.post("/:ticketId", authMiddleware, upload.any(), async (req, res) => {
         sentId = String(result?.key?.id || sentId);
       }
     } catch (e: any) {
-      throw new Error(e?.message || "sendMessage failed");
+      const msg = String(e?.message || e?.toString?.() || "sendMessage failed");
+      // Common transient error when the WS is in a bad state. Refresh session and retry once.
+      if (attempt < 1 && /connection closed|closed/i.test(msg)) {
+        const refreshed = await ensureSock();
+        if (refreshed) sock = refreshed;
+        return await sendOne(opts, attempt + 1);
+      }
+      throw new Error(msg || "sendMessage failed");
     }
 
     // Persist message
@@ -398,7 +439,15 @@ router.post("/:ticketId", authMiddleware, upload.any(), async (req, res) => {
       await sendOne({ text: bodyText });
     }
   } catch (e: any) {
-    return res.status(502).json({ error: true, message: e?.message || "sendMessage failed" });
+    const msg = String(e?.message || e?.toString?.() || "sendMessage failed");
+    if (/connection closed|closed/i.test(msg)) {
+      return res.status(409).json({
+        error: true,
+        message:
+          "Sessão do WhatsApp foi desconectada. Reconecte o WhatsApp (QR Code) e tente enviar novamente.",
+      });
+    }
+    return res.status(502).json({ error: true, message: msg || "sendMessage failed" });
   }
 
   await pgQuery(

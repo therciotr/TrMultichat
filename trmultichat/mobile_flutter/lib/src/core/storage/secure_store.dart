@@ -23,6 +23,15 @@ class SecureStore {
     await _storage.write(key: _kUserJson, value: userJson);
   }
 
+  /// Updates only the tokens, keeping the existing stored userJson.
+  Future<void> saveTokens({
+    required String accessToken,
+    required String refreshToken,
+  }) async {
+    await _storage.write(key: _kAccessToken, value: accessToken);
+    await _storage.write(key: _kRefreshToken, value: refreshToken);
+  }
+
   Future<String?> readAccessToken() => _storage.read(key: _kAccessToken);
   Future<String?> readRefreshToken() => _storage.read(key: _kRefreshToken);
   Future<String?> readUserJson() => _storage.read(key: _kUserJson);
