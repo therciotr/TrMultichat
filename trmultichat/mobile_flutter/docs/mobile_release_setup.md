@@ -57,3 +57,4 @@ Workflow: `.github/workflows/mobile-release.yml`
 
 Última atualização do guia: trigger CI mobile.
 Verificação adicional: novo disparo para validação de secrets no CI.
+Disparo solicitado para envio em produção nas lojas oficiais.
