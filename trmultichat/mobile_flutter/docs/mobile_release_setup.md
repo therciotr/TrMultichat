@@ -54,3 +54,5 @@ Workflow: `.github/workflows/mobile-release.yml`
    - conferir secrets;
    - conferir permissões da service account do Play;
    - conferir API key, certificado e profile iOS.
+
+Última atualização do guia: trigger CI mobile.
