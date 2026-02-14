@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/di/core_providers.dart';
+import '../../../dashboard/presentation/providers/dashboard_providers.dart';
+import '../../../auth/presentation/providers/auth_providers.dart';
 import '../providers/tickets_providers.dart';
 
 class TicketsScreen extends ConsumerStatefulWidget {
@@ -15,6 +18,34 @@ class TicketsScreen extends ConsumerStatefulWidget {
 
 class _TicketsScreenState extends ConsumerState<TicketsScreen> {
   final _searchCtrl = TextEditingController();
+
+  Future<void> _acceptTicket(int ticketId) async {
+    final auth = ref.read(authControllerProvider);
+    final userId = auth.user?.id;
+    try {
+      await ref.read(dioProvider).put(
+        '/tickets/$ticketId',
+        data: {
+          'status': 'open',
+          if (userId != null && userId > 0) 'userId': userId,
+        },
+      );
+      await ref.read(ticketsControllerProvider.notifier).refresh();
+      ref.invalidate(dashboardCountersProvider);
+      ref.invalidate(dashboardCountersTodayProvider);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Ticket aceito com sucesso.')),
+      );
+      if (!mounted) return;
+      context.push('/tickets/$ticketId');
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Falha ao aceitar ticket: ${e.toString()}')),
+      );
+    }
+  }
 
   @override
   void initState() {
@@ -106,16 +137,29 @@ class _TicketsScreenState extends ConsumerState<TicketsScreen> {
                 separatorBuilder: (_, __) => const Divider(height: 1),
                 itemBuilder: (context, i) {
                   final t = st.items[i];
-                  final name = t.contact?.name.isNotEmpty == true ? t.contact!.name : 'Cliente';
+                  final number = (t.contact?.number ?? '').trim();
+                  final name = (t.contact?.name ?? '').trim();
+                  final title = name.isNotEmpty && number.isNotEmpty ? '$name - $number' : (name.isNotEmpty ? name : (number.isNotEmpty ? number : 'Cliente'));
                   final last = (t.lastMessage ?? '').trim();
                   return ListTile(
                     leading: CircleAvatar(
                       backgroundColor: Theme.of(context).colorScheme.primary.withOpacity(0.12),
                       child: Icon(Icons.person_outline, color: Theme.of(context).colorScheme.primary),
                     ),
-                    title: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis),
-                    subtitle: Text(last.isEmpty ? '—' : last, maxLines: 1, overflow: TextOverflow.ellipsis),
-                    trailing: const Icon(Icons.chevron_right),
+                    title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
+                    subtitle: Text(last.isEmpty ? (number.isEmpty ? '—' : '📞 $number') : last, maxLines: 1, overflow: TextOverflow.ellipsis),
+                    trailing: t.status.trim().toLowerCase() == 'pending'
+                        ? FilledButton.tonal(
+                            onPressed: () => _acceptTicket(t.id),
+                            style: FilledButton.styleFrom(
+                              visualDensity: VisualDensity.compact,
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 6),
+                              minimumSize: const Size(0, 0),
+                            ),
+                            child: const Text('Aceitar'),
+                          )
+                        : const Icon(Icons.chevron_right),
                     onTap: () {
                       context.push('/tickets/${t.id}', extra: t);
                     },

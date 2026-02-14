@@ -315,6 +315,7 @@ const MessagesList = ({ ticket, ticketId, isGroup }) => {
   const [pageNumber, setPageNumber] = useState(1);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [refreshTick, setRefreshTick] = useState(0);
   const lastMessageRef = useRef();
 
   const [selectedMessage, setSelectedMessage] = useState({});
@@ -358,7 +359,7 @@ const MessagesList = ({ ticket, ticketId, isGroup }) => {
     return () => {
       clearTimeout(delayDebounceFn);
     };
-  }, [pageNumber, ticketId]);
+  }, [pageNumber, ticketId, refreshTick]);
 
   useEffect(() => {
     const companyId = localStorage.getItem("companyId");
@@ -384,6 +385,15 @@ const MessagesList = ({ ticket, ticketId, isGroup }) => {
       socket.disconnect();
     };
   }, [ticketId, ticket]);
+
+  useEffect(() => {
+    if (!ticketId) return undefined;
+    const interval = setInterval(() => {
+      if (loading) return;
+      setRefreshTick((v) => v + 1);
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [ticketId, loading]);
 
   const loadMore = () => {
     setPageNumber((prevPageNumber) => prevPageNumber + 1);

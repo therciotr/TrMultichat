@@ -453,6 +453,13 @@ const TicketListItemCustom = ({ ticket, selectionMode = false, selected = false,
     }
   };
 
+  const contactName = String(ticket?.contact?.name || "").trim();
+  const contactNumber = String(ticket?.contact?.number || "").trim();
+  const displayName = contactName || contactNumber || `Ticket #${ticket?.id || ""}`;
+  const phoneLabel = contactNumber ? `📞 ${contactNumber}` : "";
+  const lastMsg = String(ticket?.lastMessage || "").trim();
+  const secondaryText = lastMsg || phoneLabel || "—";
+
   return (
     <React.Fragment key={ticket.id}>
       <ConfirmationModal
@@ -513,7 +520,7 @@ const TicketListItemCustom = ({ ticket, selectionMode = false, selected = false,
                 color="textPrimary"
                 className={classes.title}
               >
-                {ticket.contact.name}
+                {displayName}
                 {profile === "admin" && (
                   <>
                     <Tooltip title="Espiar Conversa">
@@ -561,7 +568,7 @@ const TicketListItemCustom = ({ ticket, selectionMode = false, selected = false,
                 component="span"
                 variant="body2"
                 color="textSecondary"
-              > {String(ticket.lastMessage || "").includes('data:image/png;base64') ? <MarkdownWrapper> Localização</MarkdownWrapper> : <MarkdownWrapper>{ticket.lastMessage || ""}</MarkdownWrapper>}
+              > {String(secondaryText).includes('data:image/png;base64') ? <MarkdownWrapper> Localização</MarkdownWrapper> : <MarkdownWrapper>{secondaryText}</MarkdownWrapper>}
                 <span className={clsx(classes.secondaryContentSecond, classes.secondaryLine)} >
                   {ticket?.whatsapp?.name ? <span className={classes.connectionTag}>{ticket?.whatsapp?.name?.toUpperCase()}</span> : <br></br>}
                   {ticketUser ? <span className={clsx(classes.connectionTag, classes.agentTag)}>{ticketUser}</span> : <br></br>}

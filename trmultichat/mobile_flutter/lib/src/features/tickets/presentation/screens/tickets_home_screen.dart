@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/di/core_providers.dart';
 import '../../../dashboard/presentation/providers/dashboard_providers.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../providers/tickets_providers.dart';
@@ -15,9 +18,52 @@ class TicketsHomeScreen extends ConsumerStatefulWidget {
 
 class _TicketsHomeScreenState extends ConsumerState<TicketsHomeScreen> {
   final _search = TextEditingController();
+  Timer? _autoRefreshTimer;
+
+  Future<void> _acceptTicket(int ticketId) async {
+    final auth = ref.read(authControllerProvider);
+    final userId = auth.user?.id;
+    try {
+      await ref.read(dioProvider).put(
+        '/tickets/$ticketId',
+        data: {
+          'status': 'open',
+          if (userId != null && userId > 0) 'userId': userId,
+        },
+      );
+      await ref.read(ticketsControllerProvider.notifier).refresh();
+      ref.invalidate(dashboardCountersProvider);
+      ref.invalidate(dashboardCountersTodayProvider);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Ticket aceito com sucesso.')),
+      );
+      if (!mounted) return;
+      context.push('/tickets/$ticketId');
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Falha ao aceitar ticket: ${e.toString()}')),
+      );
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _autoRefreshTimer = Timer.periodic(const Duration(seconds: 5), (_) async {
+      if (!mounted) return;
+      try {
+        await ref.read(ticketsControllerProvider.notifier).refresh();
+      } catch (_) {}
+      ref.invalidate(dashboardCountersProvider);
+      ref.invalidate(dashboardCountersTodayProvider);
+    });
+  }
 
   @override
   void dispose() {
+    _autoRefreshTimer?.cancel();
     _search.dispose();
     super.dispose();
   }
@@ -150,13 +196,18 @@ class _TicketsHomeScreenState extends ConsumerState<TicketsHomeScreen> {
               ),
             const SizedBox(height: 8),
             ...tickets.items.take(10).map((t) {
-              final name = t.contact?.name.isNotEmpty == true ? t.contact!.name : 'Cliente';
-              final sub = (t.lastMessage ?? '').trim().isEmpty ? (t.contact?.number ?? '') : (t.lastMessage ?? '').trim();
+              final number = (t.contact?.number ?? '').trim();
+              final name = (t.contact?.name ?? '').trim();
+              final title = name.isNotEmpty && number.isNotEmpty ? '$name - $number' : (name.isNotEmpty ? name : (number.isNotEmpty ? number : 'Cliente'));
+              final sub = (t.lastMessage ?? '').trim().isEmpty ? (number.isEmpty ? '—' : '📞 $number') : (t.lastMessage ?? '').trim();
               return _TicketRow(
-                title: name,
+                title: title,
                 subtitle: sub,
                 status: t.status,
                 onTap: () => context.push('/tickets/${t.id}', extra: t),
+                onAccept: t.status.trim().toLowerCase() == 'pending'
+                    ? () => _acceptTicket(t.id)
+                    : null,
               );
             }),
             if (tickets.items.isEmpty && !tickets.loading)
@@ -180,8 +231,15 @@ class _TicketRow extends StatelessWidget {
   final String subtitle;
   final String status;
   final VoidCallback onTap;
+  final VoidCallback? onAccept;
 
-  const _TicketRow({required this.title, required this.subtitle, required this.status, required this.onTap});
+  const _TicketRow({
+    required this.title,
+    required this.subtitle,
+    required this.status,
+    required this.onTap,
+    this.onAccept,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -214,8 +272,23 @@ class _TicketRow extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 10),
-            chip,
-            const SizedBox(width: 6),
+            if (onAccept != null)
+              Padding(
+                padding: const EdgeInsets.only(right: 6),
+                child: FilledButton.tonal(
+                  onPressed: onAccept,
+                  style: FilledButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    minimumSize: const Size(0, 0),
+                  ),
+                  child: const Text('Aceitar'),
+                ),
+              )
+            else
+              chip,
+            const SizedBox(width: 4),
             Icon(Icons.chevron_right, color: Theme.of(context).colorScheme.onSurfaceVariant),
           ],
         ),

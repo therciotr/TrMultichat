@@ -19,8 +19,11 @@ class ChatController extends StateNotifier<ChatState> {
 
   StreamSubscription? _sub;
   StreamSubscription? _connSub;
+  StreamSubscription? _socketRecreatedSub;
   Timer? _pollTimer;
+  Timer? _reconcileTimer;
   CancelToken? _cancelToken;
+  bool _disposed = false;
 
   ChatController(this._ref, this._repo, this._socket, {required this.ticketId}) : super(ChatState.initial()) {
     _init();
@@ -30,14 +33,18 @@ class ChatController extends StateNotifier<ChatState> {
     await refresh();
     await _bindSocket();
     _bindPollingFallback();
+    _startRealtimeReconcile();
   }
 
   Future<void> refresh() async {
+    if (_disposed) return;
     state = state.copyWith(loading: true, error: null);
     try {
       final (msgs, hasMore) = await _repo.getMessages(ticketId: ticketId, pageNumber: 1);
+      if (_disposed) return;
       state = state.copyWith(loading: false, messages: msgs, hasMore: hasMore, error: null);
     } catch (_) {
+      if (_disposed) return;
       state = state.copyWith(loading: false, error: 'Falha ao carregar mensagens');
     }
   }
@@ -60,6 +67,7 @@ class ChatController extends StateNotifier<ChatState> {
       if (data is Map) return data.cast<String, dynamic>();
       return <String, dynamic>{};
     }).listen((payload) {
+      if (_disposed) return;
       try {
         if (payload['action']?.toString() != 'create') return;
         final msgMap = (payload['message'] as Map?)?.cast<String, dynamic>();
@@ -68,6 +76,12 @@ class ChatController extends StateNotifier<ChatState> {
         if (incoming.ticketId != ticketId) return;
         _mergeIncoming(incoming);
       } catch (_) {}
+    });
+
+    _socketRecreatedSub?.cancel();
+    _socketRecreatedSub = _socket.socketRecreatedStream.listen((_) async {
+      if (_disposed) return;
+      await _bindSocket();
     });
   }
 
@@ -98,6 +112,13 @@ class ChatController extends StateNotifier<ChatState> {
     _pollTimer = null;
   }
 
+  void _startRealtimeReconcile() {
+    _reconcileTimer ??= Timer.periodic(const Duration(seconds: 5), (_) async {
+      if (_disposed) return;
+      await _silentRefresh();
+    });
+  }
+
   Future<void> _silentRefresh() async {
     try {
       final (msgs, hasMore) = await _repo.getMessages(ticketId: ticketId, pageNumber: 1);
@@ -122,6 +143,7 @@ class ChatController extends StateNotifier<ChatState> {
         }
       }
       merged.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+      if (_disposed) return;
       state = state.copyWith(messages: merged, hasMore: hasMore);
     } catch (_) {
       // ignore in silent polling
@@ -159,10 +181,12 @@ class ChatController extends StateNotifier<ChatState> {
     if (idx >= 0) {
       final next = [...cur];
       next[idx] = incoming;
+      if (_disposed) return;
       state = state.copyWith(messages: next);
       return;
     }
 
+    if (_disposed) return;
     state = state.copyWith(messages: [...cur, incoming]);
   }
 
@@ -448,9 +472,14 @@ class ChatController extends StateNotifier<ChatState> {
 
   @override
   void dispose() {
+    _disposed = true;
     _sub?.cancel();
     _connSub?.cancel();
+    _socketRecreatedSub?.cancel();
     _stopPolling();
+    try {
+      _reconcileTimer?.cancel();
+    } catch (_) {}
     try {
       _cancelToken?.cancel('dispose');
     } catch (_) {}
