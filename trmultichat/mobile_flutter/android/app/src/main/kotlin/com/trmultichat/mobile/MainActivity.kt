@@ -1,4 +1,4 @@
-package com.example.trmultichat_mobile
+package com.trmultichat.mobile
 
 import io.flutter.embedding.android.FlutterActivity
 

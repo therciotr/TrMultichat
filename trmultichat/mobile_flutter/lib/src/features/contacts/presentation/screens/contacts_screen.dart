@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../auth/presentation/providers/auth_providers.dart';
 import '../providers/contacts_providers.dart';
 
 class ContactsScreen extends ConsumerStatefulWidget {
@@ -43,7 +44,38 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
     final ctrl = ref.read(contactsControllerProvider.notifier);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Contatos')),
+      appBar: AppBar(
+        title: const Text('Contatos'),
+        actions: [
+          IconButton(
+            tooltip: 'Sair',
+            icon: const Icon(Icons.logout),
+            onPressed: () async {
+              final ok = await showDialog<bool>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  title: const Text('Sair'),
+                  content: const Text('Deseja sair da sua conta?'),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx, false),
+                      child: const Text('Cancelar'),
+                    ),
+                    FilledButton(
+                      onPressed: () => Navigator.pop(ctx, true),
+                      child: const Text('Sair'),
+                    ),
+                  ],
+                ),
+              );
+              if (ok != true) return;
+              await ref.read(authControllerProvider.notifier).logout();
+              if (!mounted) return;
+              context.go('/login');
+            },
+          ),
+        ],
+      ),
       body: Column(
         children: [
           Padding(
@@ -56,8 +88,13 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
                 prefixIcon: const Icon(Icons.search),
                 hintText: 'Buscar por nome ou número',
                 filled: true,
-                fillColor: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.55),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                fillColor: Theme.of(context)
+                    .colorScheme
+                    .surfaceContainerHighest
+                    .withOpacity(0.55),
+                border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide.none),
               ),
             ),
           ),
@@ -76,14 +113,21 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
                 separatorBuilder: (_, __) => const Divider(height: 1),
                 itemBuilder: (context, i) {
                   final c = st.items[i];
-                  final name = c.name.trim().isEmpty ? 'Contato' : c.name.trim();
+                  final name =
+                      c.name.trim().isEmpty ? 'Contato' : c.name.trim();
                   return ListTile(
                     leading: CircleAvatar(
-                      backgroundColor: Theme.of(context).colorScheme.primary.withOpacity(0.12),
-                      child: Icon(Icons.person_outline, color: Theme.of(context).colorScheme.primary),
+                      backgroundColor: Theme.of(context)
+                          .colorScheme
+                          .primary
+                          .withOpacity(0.12),
+                      child: Icon(Icons.person_outline,
+                          color: Theme.of(context).colorScheme.primary),
                     ),
-                    title: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis),
-                    subtitle: Text(c.number, maxLines: 1, overflow: TextOverflow.ellipsis),
+                    title: Text(name,
+                        maxLines: 1, overflow: TextOverflow.ellipsis),
+                    subtitle: Text(c.number,
+                        maxLines: 1, overflow: TextOverflow.ellipsis),
                     trailing: const Icon(Icons.chevron_right),
                     onTap: () {
                       context.push('/contacts/${c.id}');
@@ -96,11 +140,12 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
           if (st.loading && st.items.isNotEmpty)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 10),
-              child: Text('Carregando mais...', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+              child: Text('Carregando mais...',
+                  style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant)),
             ),
         ],
       ),
     );
   }
 }
-

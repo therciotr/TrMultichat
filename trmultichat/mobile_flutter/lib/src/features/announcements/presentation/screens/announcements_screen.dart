@@ -10,7 +10,8 @@ class AnnouncementsScreen extends ConsumerStatefulWidget {
   const AnnouncementsScreen({super.key});
 
   @override
-  ConsumerState<AnnouncementsScreen> createState() => _AnnouncementsScreenState();
+  ConsumerState<AnnouncementsScreen> createState() =>
+      _AnnouncementsScreenState();
 }
 
 class _AnnouncementsScreenState extends ConsumerState<AnnouncementsScreen> {
@@ -49,7 +50,38 @@ class _AnnouncementsScreenState extends ConsumerState<AnnouncementsScreen> {
         (auth.user?.profile ?? '').toLowerCase() == 'super';
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Chat - Interno')),
+      appBar: AppBar(
+        title: const Text('Chat - Interno'),
+        actions: [
+          IconButton(
+            tooltip: 'Sair',
+            icon: const Icon(Icons.logout),
+            onPressed: () async {
+              final ok = await showDialog<bool>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  title: const Text('Sair'),
+                  content: const Text('Deseja sair da sua conta?'),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx, false),
+                      child: const Text('Cancelar'),
+                    ),
+                    FilledButton(
+                      onPressed: () => Navigator.pop(ctx, true),
+                      child: const Text('Sair'),
+                    ),
+                  ],
+                ),
+              );
+              if (ok != true) return;
+              await ref.read(authControllerProvider.notifier).logout();
+              if (!mounted) return;
+              context.go('/login');
+            },
+          ),
+        ],
+      ),
       floatingActionButton: isAdmin
           ? FloatingActionButton.extended(
               onPressed: _openCreateDialog,
@@ -69,8 +101,13 @@ class _AnnouncementsScreenState extends ConsumerState<AnnouncementsScreen> {
                 prefixIcon: const Icon(Icons.search),
                 hintText: 'Buscar no chat interno',
                 filled: true,
-                fillColor: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.55),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
+                fillColor: Theme.of(context)
+                    .colorScheme
+                    .surfaceContainerHighest
+                    .withOpacity(0.55),
+                border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide.none),
               ),
             ),
           ),
@@ -89,14 +126,19 @@ class _AnnouncementsScreenState extends ConsumerState<AnnouncementsScreen> {
                 itemBuilder: (context, i) {
                   final a = st.items[i];
                   final isRead = st.readIds.contains(a.id);
-                  final title = a.title.trim().isEmpty ? 'Informativo' : a.title.trim();
+                  final title =
+                      a.title.trim().isEmpty ? 'Informativo' : a.title.trim();
                   final sub = a.text.trim().replaceAll('\n', ' ');
                   return ListTile(
                     leading: Stack(
                       children: [
                         CircleAvatar(
-                          backgroundColor: Theme.of(context).colorScheme.primary.withOpacity(0.12),
-                          child: Icon(Icons.campaign_outlined, color: Theme.of(context).colorScheme.primary),
+                          backgroundColor: Theme.of(context)
+                              .colorScheme
+                              .primary
+                              .withOpacity(0.12),
+                          child: Icon(Icons.campaign_outlined,
+                              color: Theme.of(context).colorScheme.primary),
                         ),
                         if (!isRead)
                           Positioned(
@@ -108,14 +150,19 @@ class _AnnouncementsScreenState extends ConsumerState<AnnouncementsScreen> {
                               decoration: BoxDecoration(
                                 color: Colors.redAccent,
                                 borderRadius: BorderRadius.circular(99),
-                                border: Border.all(color: Theme.of(context).colorScheme.surface, width: 2),
+                                border: Border.all(
+                                    color:
+                                        Theme.of(context).colorScheme.surface,
+                                    width: 2),
                               ),
                             ),
                           )
                       ],
                     ),
-                    title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
-                    subtitle: Text(sub.isEmpty ? (a.senderName ?? '') : sub, maxLines: 2, overflow: TextOverflow.ellipsis),
+                    title: Text(title,
+                        maxLines: 1, overflow: TextOverflow.ellipsis),
+                    subtitle: Text(sub.isEmpty ? (a.senderName ?? '') : sub,
+                        maxLines: 2, overflow: TextOverflow.ellipsis),
                     trailing: a.repliesCount > 0
                         ? Chip(
                             label: Text('${a.repliesCount}'),
@@ -137,7 +184,8 @@ class _AnnouncementsScreenState extends ConsumerState<AnnouncementsScreen> {
               padding: const EdgeInsets.all(16),
               child: Text(
                 'Nenhuma conversa no Chat Interno.',
-                style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant),
               ),
             ),
         ],
@@ -151,7 +199,8 @@ class _CreateInternalChatSheet extends StatefulWidget {
   const _CreateInternalChatSheet({required this.controller});
 
   @override
-  State<_CreateInternalChatSheet> createState() => _CreateInternalChatSheetState();
+  State<_CreateInternalChatSheet> createState() =>
+      _CreateInternalChatSheetState();
 }
 
 class _CreateInternalChatSheetState extends State<_CreateInternalChatSheet> {
@@ -247,4 +296,3 @@ class _CreateInternalChatSheetState extends State<_CreateInternalChatSheet> {
     );
   }
 }
-

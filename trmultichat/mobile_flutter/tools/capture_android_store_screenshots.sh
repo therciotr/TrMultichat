@@ -6,7 +6,7 @@ cd "$ROOT_DIR"
 
 FLUTTER_BIN="${FLUTTER_BIN:-/Users/therciojosesilva/flutter/bin/flutter}"
 ADB_BIN="${ADB_BIN:-/Users/therciojosesilva/Library/Android/sdk/platform-tools/adb}"
-BUNDLE_ID="${BUNDLE_ID:-com.trmultichatMobile}"
+BUNDLE_ID="${BUNDLE_ID:-com.trmultichat.mobile}"
 OUT_DIR="$ROOT_DIR/store_assets/google-play/phone"
 
 mkdir -p "$OUT_DIR"

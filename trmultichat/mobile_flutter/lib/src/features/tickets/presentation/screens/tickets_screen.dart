@@ -59,7 +59,9 @@ class _TicketsScreenState extends ConsumerState<TicketsScreen> {
         ctrl.setSearch(initSearch);
       }
       final initStatus = (widget.initialStatus ?? '').trim();
-      if (initStatus == 'pending' || initStatus == 'open' || initStatus == 'closed') {
+      if (initStatus == 'pending' ||
+          initStatus == 'open' ||
+          initStatus == 'closed') {
         ctrl.setStatus(initStatus);
       } else {
         // ensure refresh if only search changed
@@ -82,6 +84,35 @@ class _TicketsScreenState extends ConsumerState<TicketsScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Tickets'),
+        actions: [
+          IconButton(
+            tooltip: 'Sair',
+            icon: const Icon(Icons.logout),
+            onPressed: () async {
+              final ok = await showDialog<bool>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  title: const Text('Sair'),
+                  content: const Text('Deseja sair da sua conta?'),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx, false),
+                      child: const Text('Cancelar'),
+                    ),
+                    FilledButton(
+                      onPressed: () => Navigator.pop(ctx, true),
+                      child: const Text('Sair'),
+                    ),
+                  ],
+                ),
+              );
+              if (ok != true) return;
+              await ref.read(authControllerProvider.notifier).logout();
+              if (!mounted) return;
+              context.go('/login');
+            },
+          ),
+        ],
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(48),
           child: Padding(
@@ -120,7 +151,8 @@ class _TicketsScreenState extends ConsumerState<TicketsScreen> {
                         },
                         icon: const Icon(Icons.close),
                       ),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                border:
+                    OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
               ),
             ),
           ),
@@ -140,16 +172,22 @@ class _TicketsScreenState extends ConsumerState<TicketsScreen> {
                   final t = st.items[i];
                   final rawName = (t.contact?.name ?? '').trim();
                   final phone = formatPhoneBr(t.contact?.number);
-                  final name = (rawName.isNotEmpty && !RegExp(r'^\d+$').hasMatch(rawName))
+                  final name = (rawName.isNotEmpty &&
+                          !RegExp(r'^\d+$').hasMatch(rawName))
                       ? rawName
                       : (phone.isNotEmpty ? phone : 'Cliente');
                   final last = (t.lastMessage ?? '').trim();
                   return ListTile(
                     leading: CircleAvatar(
-                      backgroundColor: Theme.of(context).colorScheme.primary.withOpacity(0.12),
-                      child: Icon(Icons.person_outline, color: Theme.of(context).colorScheme.primary),
+                      backgroundColor: Theme.of(context)
+                          .colorScheme
+                          .primary
+                          .withOpacity(0.12),
+                      child: Icon(Icons.person_outline,
+                          color: Theme.of(context).colorScheme.primary),
                     ),
-                    title: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis),
+                    title: Text(name,
+                        maxLines: 1, overflow: TextOverflow.ellipsis),
                     subtitle: Text(
                       last.isEmpty ? (phone.isNotEmpty ? phone : '—') : last,
                       maxLines: 1,
@@ -180,4 +218,3 @@ class _TicketsScreenState extends ConsumerState<TicketsScreen> {
     );
   }
 }
-

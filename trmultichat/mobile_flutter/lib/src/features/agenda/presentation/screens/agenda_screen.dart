@@ -109,7 +109,38 @@ class _AgendaScreenState extends ConsumerState<AgendaScreen> {
       ..sort((a, b) => a.startAt.compareTo(b.startAt));
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Agenda')),
+      appBar: AppBar(
+        title: const Text('Agenda'),
+        actions: [
+          IconButton(
+            tooltip: 'Sair',
+            icon: const Icon(Icons.logout),
+            onPressed: () async {
+              final ok = await showDialog<bool>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  title: const Text('Sair'),
+                  content: const Text('Deseja sair da sua conta?'),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx, false),
+                      child: const Text('Cancelar'),
+                    ),
+                    FilledButton(
+                      onPressed: () => Navigator.pop(ctx, true),
+                      child: const Text('Sair'),
+                    ),
+                  ],
+                ),
+              );
+              if (ok != true) return;
+              await ref.read(authControllerProvider.notifier).logout();
+              if (!mounted) return;
+              context.go('/login');
+            },
+          ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _openCreateDialog,
         icon: const Icon(Icons.add),
