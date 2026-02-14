@@ -21,7 +21,6 @@ class ChatController extends StateNotifier<ChatState> {
   StreamSubscription? _connSub;
   StreamSubscription? _socketRecreatedSub;
   Timer? _pollTimer;
-  Timer? _reconcileTimer;
   CancelToken? _cancelToken;
   bool _disposed = false;
 
@@ -33,7 +32,6 @@ class ChatController extends StateNotifier<ChatState> {
     await refresh();
     await _bindSocket();
     _bindPollingFallback();
-    _startRealtimeReconcile();
   }
 
   Future<void> refresh() async {
@@ -110,13 +108,6 @@ class ChatController extends StateNotifier<ChatState> {
       _pollTimer?.cancel();
     } catch (_) {}
     _pollTimer = null;
-  }
-
-  void _startRealtimeReconcile() {
-    _reconcileTimer ??= Timer.periodic(const Duration(seconds: 5), (_) async {
-      if (_disposed) return;
-      await _silentRefresh();
-    });
   }
 
   Future<void> _silentRefresh() async {
@@ -477,9 +468,6 @@ class ChatController extends StateNotifier<ChatState> {
     _connSub?.cancel();
     _socketRecreatedSub?.cancel();
     _stopPolling();
-    try {
-      _reconcileTimer?.cancel();
-    } catch (_) {}
     try {
       _cancelToken?.cancel('dispose');
     } catch (_) {}

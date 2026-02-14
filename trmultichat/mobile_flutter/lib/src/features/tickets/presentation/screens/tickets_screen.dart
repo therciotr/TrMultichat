@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/di/core_providers.dart';
+import '../../../../core/utils/phone_format.dart';
 import '../../../dashboard/presentation/providers/dashboard_providers.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../providers/tickets_providers.dart';
@@ -137,17 +138,23 @@ class _TicketsScreenState extends ConsumerState<TicketsScreen> {
                 separatorBuilder: (_, __) => const Divider(height: 1),
                 itemBuilder: (context, i) {
                   final t = st.items[i];
-                  final number = (t.contact?.number ?? '').trim();
-                  final name = (t.contact?.name ?? '').trim();
-                  final title = name.isNotEmpty && number.isNotEmpty ? '$name - $number' : (name.isNotEmpty ? name : (number.isNotEmpty ? number : 'Cliente'));
+                  final rawName = (t.contact?.name ?? '').trim();
+                  final phone = formatPhoneBr(t.contact?.number);
+                  final name = (rawName.isNotEmpty && !RegExp(r'^\d+$').hasMatch(rawName))
+                      ? rawName
+                      : (phone.isNotEmpty ? phone : 'Cliente');
                   final last = (t.lastMessage ?? '').trim();
                   return ListTile(
                     leading: CircleAvatar(
                       backgroundColor: Theme.of(context).colorScheme.primary.withOpacity(0.12),
                       child: Icon(Icons.person_outline, color: Theme.of(context).colorScheme.primary),
                     ),
-                    title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
-                    subtitle: Text(last.isEmpty ? (number.isEmpty ? '—' : '📞 $number') : last, maxLines: 1, overflow: TextOverflow.ellipsis),
+                    title: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis),
+                    subtitle: Text(
+                      last.isEmpty ? (phone.isNotEmpty ? phone : '—') : last,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                     trailing: t.status.trim().toLowerCase() == 'pending'
                         ? FilledButton.tonal(
                             onPressed: () => _acceptTicket(t.id),

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../auth/presentation/providers/auth_providers.dart';
+import '../controllers/announcements_controller.dart';
 import '../providers/announcements_providers.dart';
 
 class AnnouncementsScreen extends ConsumerStatefulWidget {
@@ -14,6 +16,22 @@ class AnnouncementsScreen extends ConsumerStatefulWidget {
 class _AnnouncementsScreenState extends ConsumerState<AnnouncementsScreen> {
   final _search = TextEditingController();
 
+  Future<void> _openCreateDialog() async {
+    final ctrl = ref.read(announcementsControllerProvider.notifier);
+    final ok = await showModalBottomSheet<bool>(
+      context: context,
+      useSafeArea: true,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) => _CreateInternalChatSheet(controller: ctrl),
+    );
+    if (ok == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Chat interno criado com sucesso.')),
+      );
+    }
+  }
+
   @override
   void dispose() {
     _search.dispose();
@@ -24,9 +42,21 @@ class _AnnouncementsScreenState extends ConsumerState<AnnouncementsScreen> {
   Widget build(BuildContext context) {
     final st = ref.watch(announcementsControllerProvider);
     final ctrl = ref.read(announcementsControllerProvider.notifier);
+    final auth = ref.watch(authControllerProvider);
+    final isAdmin = auth.user?.admin == true ||
+        auth.user?.isSuper == true ||
+        (auth.user?.profile ?? '').toLowerCase() == 'admin' ||
+        (auth.user?.profile ?? '').toLowerCase() == 'super';
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Comunicados')),
+      appBar: AppBar(title: const Text('Chat - Interno')),
+      floatingActionButton: isAdmin
+          ? FloatingActionButton.extended(
+              onPressed: _openCreateDialog,
+              icon: const Icon(Icons.add),
+              label: const Text('Novo chat'),
+            )
+          : null,
       body: Column(
         children: [
           Padding(
@@ -37,7 +67,7 @@ class _AnnouncementsScreenState extends ConsumerState<AnnouncementsScreen> {
               onSubmitted: (_) => ctrl.refresh(),
               decoration: InputDecoration(
                 prefixIcon: const Icon(Icons.search),
-                hintText: 'Buscar comunicados',
+                hintText: 'Buscar no chat interno',
                 filled: true,
                 fillColor: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.55),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
@@ -59,7 +89,7 @@ class _AnnouncementsScreenState extends ConsumerState<AnnouncementsScreen> {
                 itemBuilder: (context, i) {
                   final a = st.items[i];
                   final isRead = st.readIds.contains(a.id);
-                  final title = a.title.trim().isEmpty ? 'Comunicado' : a.title.trim();
+                  final title = a.title.trim().isEmpty ? 'Informativo' : a.title.trim();
                   final sub = a.text.trim().replaceAll('\n', ' ');
                   return ListTile(
                     leading: Stack(
@@ -106,10 +136,112 @@ class _AnnouncementsScreenState extends ConsumerState<AnnouncementsScreen> {
             Padding(
               padding: const EdgeInsets.all(16),
               child: Text(
-                'Nenhum comunicado.',
+                'Nenhuma conversa no Chat Interno.',
                 style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
               ),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CreateInternalChatSheet extends StatefulWidget {
+  final AnnouncementsController controller;
+  const _CreateInternalChatSheet({required this.controller});
+
+  @override
+  State<_CreateInternalChatSheet> createState() => _CreateInternalChatSheetState();
+}
+
+class _CreateInternalChatSheetState extends State<_CreateInternalChatSheet> {
+  final _titleCtrl = TextEditingController();
+  final _textCtrl = TextEditingController();
+  bool _allowReply = true;
+  bool _sendToAll = true;
+  bool _saving = false;
+
+  @override
+  void dispose() {
+    _titleCtrl.dispose();
+    _textCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (_saving) return;
+    setState(() => _saving = true);
+    final ok = await widget.controller.create(
+      title: _titleCtrl.text,
+      text: _textCtrl.text,
+      sendToAll: _sendToAll,
+      allowReply: _allowReply,
+      priority: 3,
+    );
+    if (!mounted) return;
+    setState(() => _saving = false);
+    if (ok == true) {
+      Navigator.of(context).pop(true);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(16, 10, 16, 16 + bottomInset),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'Novo Chat - Interno',
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w900,
+                ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _titleCtrl,
+            decoration: const InputDecoration(
+              labelText: 'Titulo',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: _textCtrl,
+            minLines: 4,
+            maxLines: 8,
+            decoration: const InputDecoration(
+              labelText: 'Mensagem',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 10),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Enviar para todos'),
+            value: _sendToAll,
+            onChanged: (v) => setState(() => _sendToAll = v),
+          ),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Permitir respostas'),
+            value: _allowReply,
+            onChanged: (v) => setState(() => _allowReply = v),
+          ),
+          const SizedBox(height: 8),
+          FilledButton.icon(
+            onPressed: _saving ? null : _submit,
+            icon: const Icon(Icons.send),
+            label: Text(_saving ? 'Criando...' : 'Criar'),
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton(
+            onPressed: _saving ? null : () => Navigator.of(context).pop(false),
+            child: const Text('Cancelar'),
+          ),
         ],
       ),
     );

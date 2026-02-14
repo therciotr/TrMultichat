@@ -8,21 +8,19 @@ final dashboardRemoteDataSourceProvider = Provider<DashboardRemoteDataSource>((r
   return DashboardRemoteDataSource(ref.watch(dioProvider));
 });
 
-String _todayDateOnly() {
-  final now = DateTime.now();
-  final y = now.year.toString().padLeft(4, '0');
-  final m = now.month.toString().padLeft(2, '0');
-  final d = now.day.toString().padLeft(2, '0');
-  return '$y-$m-$d';
-}
-
 final dashboardCountersProvider = FutureProvider<DashboardCounters>((ref) async {
   return ref.watch(dashboardRemoteDataSourceProvider).getCounters();
 });
 
-/// For "Fechados hoje": backend counters are filtered by ticket createdAt range.
 final dashboardCountersTodayProvider = FutureProvider<DashboardCounters>((ref) async {
-  final today = _todayDateOnly();
-  return ref.watch(dashboardRemoteDataSourceProvider).getCounters(dateFrom: today, dateTo: today);
+  final ds = ref.watch(dashboardRemoteDataSourceProvider);
+  final closedToday = await ds.getClosedTodayCountFromTickets();
+  return DashboardCounters(
+    pending: 0,
+    open: 0,
+    closed: closedToday,
+    avgSupportMinutes: 0,
+    avgWaitMinutes: 0,
+  );
 });
 

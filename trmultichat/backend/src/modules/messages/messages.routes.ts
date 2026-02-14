@@ -32,6 +32,50 @@ function detectOutgoingMediaType(mimetype?: string): "image" | "video" | "audio"
   return "application";
 }
 
+async function loadTicketWithContact(ticketId: number, companyId: number) {
+  const rows = await pgQuery<any>(
+    `
+      SELECT
+        t.*,
+        c.id as "contact_id",
+        c.name as "contact_name",
+        c.number as "contact_number",
+        c."profilePicUrl" as "contact_profilePicUrl",
+        q.id as "queue_id",
+        q.name as "queue_name",
+        q.color as "queue_color"
+      FROM "Tickets" t
+      LEFT JOIN "Contacts" c ON c.id = t."contactId"
+      LEFT JOIN "Queues" q ON q.id = t."queueId"
+      WHERE t.id = $1 AND t."companyId" = $2
+      LIMIT 1
+    `,
+    [ticketId, companyId]
+  );
+  const r = rows?.[0];
+  if (!r) return null;
+  const ticket: any = { ...r };
+  ticket.contact = r.contact_id
+    ? {
+        id: r.contact_id,
+        name: r.contact_name,
+        number: r.contact_number,
+        profilePicUrl: r.contact_profilePicUrl,
+      }
+    : null;
+  ticket.queue = r.queue_id
+    ? { id: r.queue_id, name: r.queue_name, color: r.queue_color }
+    : null;
+  delete ticket.contact_id;
+  delete ticket.contact_name;
+  delete ticket.contact_number;
+  delete ticket.contact_profilePicUrl;
+  delete ticket.queue_id;
+  delete ticket.queue_name;
+  delete ticket.queue_color;
+  return ticket;
+}
+
 // Multer: store outbound medias under /public/uploads/messages/:companyId/:ticketId
 const upload = multer({
   storage: multer.diskStorage({
@@ -128,50 +172,6 @@ function tryRunLegacyMessageController(action: "store" | "index", req: any, res:
   } catch {
     return false;
   }
-}
-
-async function loadTicketRealtimePayload(ticketId: number, companyId: number): Promise<any | null> {
-  const rows = await pgQuery<any>(
-    `
-      SELECT
-        t.*,
-        c.id as "contact_id",
-        c.name as "contact_name",
-        c.number as "contact_number",
-        c."profilePicUrl" as "contact_profilePicUrl",
-        q.id as "queue_id",
-        q.name as "queue_name",
-        q.color as "queue_color"
-      FROM "Tickets" t
-      LEFT JOIN "Contacts" c ON c.id = t."contactId"
-      LEFT JOIN "Queues" q ON q.id = t."queueId"
-      WHERE t.id = $1 AND t."companyId" = $2
-      LIMIT 1
-    `,
-    [ticketId, companyId]
-  );
-  const r = rows?.[0];
-  if (!r) return null;
-  const ticket: any = { ...r };
-  ticket.contact = r.contact_id
-    ? {
-        id: r.contact_id,
-        name: r.contact_name,
-        number: r.contact_number,
-        profilePicUrl: r.contact_profilePicUrl
-      }
-    : null;
-  ticket.queue = r.queue_id
-    ? { id: r.queue_id, name: r.queue_name, color: r.queue_color }
-    : null;
-  delete ticket.contact_id;
-  delete ticket.contact_name;
-  delete ticket.contact_number;
-  delete ticket.contact_profilePicUrl;
-  delete ticket.queue_id;
-  delete ticket.queue_name;
-  delete ticket.queue_color;
-  return ticket;
 }
 
 router.get("/:ticketId", authMiddleware, async (req, res) => {
@@ -501,7 +501,7 @@ router.post("/:ticketId", authMiddleware, upload.any(), async (req, res) => {
 
   try {
     const io = getIO();
-    const fullTicket = await loadTicketRealtimePayload(ticketId, companyId);
+    const fullTicket = await loadTicketWithContact(ticketId, companyId);
     io.emit(`company-${companyId}-ticket`, {
       action: "update",
       ticket:
@@ -510,8 +510,8 @@ router.post("/:ticketId", authMiddleware, upload.any(), async (req, res) => {
           lastMessage: lastBodyForTicket,
           updatedAt: new Date().toISOString(),
           fromMe: true,
-          unreadMessages: 0
-        }
+          unreadMessages: 0,
+        },
     });
   } catch {}
 

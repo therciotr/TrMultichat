@@ -47,7 +47,9 @@ class AnnouncementDetailState {
       replies: replies ?? this.replies,
       sending: sending ?? this.sending,
       uploadFileName: identical(uploadFileName, _unset) ? this.uploadFileName : (uploadFileName as String?),
-      uploadProgress: identical(uploadProgress, _unset) ? this.uploadProgress : (uploadProgress as double?),
+      uploadProgress: identical(uploadProgress, _unset)
+          ? this.uploadProgress
+          : ((uploadProgress as num?)?.toDouble()),
       error: error,
     );
   }

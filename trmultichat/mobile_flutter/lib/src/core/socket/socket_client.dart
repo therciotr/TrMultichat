@@ -6,6 +6,7 @@ class SocketClient {
   final String baseUrl;
   io.Socket? _socket;
   final _connected = StreamController<bool>.broadcast();
+  final _socketRecreated = StreamController<void>.broadcast();
   String? _jwt;
 
   int? _pendingChatCompanyId;
@@ -16,13 +17,16 @@ class SocketClient {
 
   bool get isConnected => _socket?.connected == true;
   Stream<bool> get connectedStream => _connected.stream;
+  Stream<void> get socketRecreatedStream => _socketRecreated.stream;
 
   Future<void> connect({String? jwt}) async {
     final nextJwt = jwt?.trim().isEmpty == true ? null : jwt?.trim();
+    var recreated = false;
 
     // If token changed, recreate the socket to update auth headers.
     if (_socket != null && nextJwt != _jwt) {
       _disposeSocketOnly();
+      recreated = true;
     }
 
     if (_socket != null) {
@@ -36,7 +40,7 @@ class SocketClient {
 
     final opts = io.OptionBuilder()
         // Allow polling fallback (improves iOS reliability on some networks)
-        .setTransports(['websocket', 'polling'])
+        .setTransports(['polling', 'websocket'])
         .enableReconnection()
         .setReconnectionAttempts(999999)
         .setReconnectionDelay(800)
@@ -66,6 +70,9 @@ class SocketClient {
     socket.onDisconnect((_) => _connected.add(false));
     socket.onConnectError((_) => _connected.add(false));
     socket.onError((_) => _connected.add(false));
+    if (recreated) {
+      _socketRecreated.add(null);
+    }
   }
 
   void _flushPendingJoins() {
@@ -93,6 +100,9 @@ class SocketClient {
     _disposeSocketOnly();
     try {
       _connected.close();
+    } catch (_) {}
+    try {
+      _socketRecreated.close();
     } catch (_) {}
   }
 

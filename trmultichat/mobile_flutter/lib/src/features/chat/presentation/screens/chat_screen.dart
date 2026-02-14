@@ -40,15 +40,21 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   Timer? _recordTimer;
   String? _statusOverride;
   bool _loadingTicketMeta = false;
+  Timer? _ticketMetaTimer;
 
   @override
   void initState() {
     super.initState();
     _loadTicketMeta();
+    _ticketMetaTimer = Timer.periodic(const Duration(seconds: 4), (_) {
+      _loadTicketMeta(showLoading: false);
+    });
   }
 
-  Future<void> _loadTicketMeta() async {
-    setState(() => _loadingTicketMeta = true);
+  Future<void> _loadTicketMeta({bool showLoading = true}) async {
+    if (showLoading && mounted) {
+      setState(() => _loadingTicketMeta = true);
+    }
     try {
       final res =
           await ref.read(dioProvider).get('/tickets/${widget.ticketId}');
@@ -62,7 +68,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     } catch (_) {
       // keep status from navigation fallback
     } finally {
-      if (mounted) {
+      if (showLoading && mounted) {
         setState(() => _loadingTicketMeta = false);
       }
     }
@@ -127,6 +133,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   @override
   void dispose() {
+    _ticketMetaTimer?.cancel();
     _recordTimer?.cancel();
     _recorder.dispose();
     _text.dispose();
@@ -136,6 +143,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Keep tickets provider alive while this screen can trigger list refreshes.
+    ref.watch(ticketsControllerProvider);
     final st = ref.watch(chatControllerProvider(widget.ticketId));
     final ctrl = ref.read(chatControllerProvider(widget.ticketId).notifier);
     final ticket =
@@ -180,7 +189,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 ),
               ),
             ),
-          if (!_loadingTicketMeta && status == 'pending')
+          if (status == 'pending')
             TextButton.icon(
               onPressed: () async {
                 final ok = await showDialog<bool>(
@@ -205,6 +214,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
               },
               icon: const Icon(Icons.play_arrow, size: 18),
               label: const Text('Aceitar'),
+              style: TextButton.styleFrom(foregroundColor: Colors.white),
             ),
           PopupMenuButton<String>(
             tooltip: 'Ações',

@@ -266,6 +266,23 @@ const useStyles = makeStyles((theme) => ({
     display: "none",
   },
 }));
+
+const formatPhoneBr = (raw) => {
+  const digits = String(raw || "").replace(/\D/g, "");
+  if (!digits) return "";
+  const withCountry = digits.startsWith("55") ? digits : `55${digits}`;
+  const ddd = withCountry.slice(2, 4);
+  const number = withCountry.slice(4);
+  if (number.length >= 9) {
+    const n = number.slice(-9);
+    return `+55 ${ddd} ${n.slice(0, 5)}-${n.slice(5)}`;
+  }
+  if (number.length >= 8) {
+    const n = number.slice(-8);
+    return `+55 ${ddd} ${n.slice(0, 4)}-${n.slice(4)}`;
+  }
+  return `+${withCountry}`;
+};
 /* PLW DESIGN INSERIDO o dentro do const handleChangeTab */
 const TicketListItemCustom = ({ ticket, selectionMode = false, selected = false, onToggleSelect }) => {
   const classes = useStyles();
@@ -282,6 +299,11 @@ const TicketListItemCustom = ({ ticket, selectionMode = false, selected = false,
   const { user } = useContext(AuthContext);
   const { profile } = user;
   const isAdmin = String(user?.profile || "").toLowerCase() === "admin" || String(user?.profile || "").toLowerCase() === "super" || Boolean(user?.admin);
+  const contactName = String(ticket?.contact?.name || "").trim();
+  const contactNumber = formatPhoneBr(ticket?.contact?.number);
+  const displayName = contactName && !/^\d+$/.test(contactName)
+    ? contactName
+    : (contactNumber || contactName || "Cliente");
 
   useEffect(() => {
     if (ticket.userId && ticket.user) {
@@ -453,13 +475,6 @@ const TicketListItemCustom = ({ ticket, selectionMode = false, selected = false,
     }
   };
 
-  const contactName = String(ticket?.contact?.name || "").trim();
-  const contactNumber = String(ticket?.contact?.number || "").trim();
-  const displayName = contactName || contactNumber || `Ticket #${ticket?.id || ""}`;
-  const phoneLabel = contactNumber ? `📞 ${contactNumber}` : "";
-  const lastMsg = String(ticket?.lastMessage || "").trim();
-  const secondaryText = lastMsg || phoneLabel || "—";
-
   return (
     <React.Fragment key={ticket.id}>
       <ConfirmationModal
@@ -568,8 +583,9 @@ const TicketListItemCustom = ({ ticket, selectionMode = false, selected = false,
                 component="span"
                 variant="body2"
                 color="textSecondary"
-              > {String(secondaryText).includes('data:image/png;base64') ? <MarkdownWrapper> Localização</MarkdownWrapper> : <MarkdownWrapper>{secondaryText}</MarkdownWrapper>}
+              > {String(ticket.lastMessage || "").includes('data:image/png;base64') ? <MarkdownWrapper> Localização</MarkdownWrapper> : <MarkdownWrapper>{ticket.lastMessage || ""}</MarkdownWrapper>}
                 <span className={clsx(classes.secondaryContentSecond, classes.secondaryLine)} >
+                  {contactNumber ? <span className={classes.connectionTag}>{contactNumber}</span> : null}
                   {ticket?.whatsapp?.name ? <span className={classes.connectionTag}>{ticket?.whatsapp?.name?.toUpperCase()}</span> : <br></br>}
                   {ticketUser ? <span className={clsx(classes.connectionTag, classes.agentTag)}>{ticketUser}</span> : <br></br>}
                   <span style={{ backgroundColor: ticket.queue?.color || "#7c7c7c", color: contrastColor(ticket.queue?.color || "#7c7c7c") }} className={classes.connectionTag}>{ticket.queue?.name?.toUpperCase() || "SEM FILA"}</span>

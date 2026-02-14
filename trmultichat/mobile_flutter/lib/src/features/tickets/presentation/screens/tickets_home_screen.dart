@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../../core/di/core_providers.dart';
+import '../../../../core/utils/phone_format.dart';
 import '../../../dashboard/presentation/providers/dashboard_providers.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../providers/tickets_providers.dart';
@@ -196,12 +197,16 @@ class _TicketsHomeScreenState extends ConsumerState<TicketsHomeScreen> {
               ),
             const SizedBox(height: 8),
             ...tickets.items.take(10).map((t) {
-              final number = (t.contact?.number ?? '').trim();
-              final name = (t.contact?.name ?? '').trim();
-              final title = name.isNotEmpty && number.isNotEmpty ? '$name - $number' : (name.isNotEmpty ? name : (number.isNotEmpty ? number : 'Cliente'));
-              final sub = (t.lastMessage ?? '').trim().isEmpty ? (number.isEmpty ? '—' : '📞 $number') : (t.lastMessage ?? '').trim();
+              final rawName = (t.contact?.name ?? '').trim();
+              final phone = formatPhoneBr(t.contact?.number);
+              final name = (rawName.isNotEmpty && !RegExp(r'^\d+$').hasMatch(rawName))
+                  ? rawName
+                  : (phone.isNotEmpty ? phone : 'Cliente');
+              final sub = (t.lastMessage ?? '').trim().isEmpty
+                  ? (phone.isNotEmpty ? phone : '—')
+                  : (t.lastMessage ?? '').trim();
               return _TicketRow(
-                title: title,
+                title: name,
                 subtitle: sub,
                 status: t.status,
                 onTap: () => context.push('/tickets/${t.id}', extra: t),

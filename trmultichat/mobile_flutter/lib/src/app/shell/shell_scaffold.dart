@@ -28,9 +28,9 @@ class ShellScaffold extends StatelessWidget {
             label: 'Contatos',
           ),
           NavigationDestination(
-            icon: Icon(Icons.campaign_outlined),
-            selectedIcon: Icon(Icons.campaign),
-            label: 'Comunicado',
+            icon: Icon(Icons.chat_bubble_outline),
+            selectedIcon: Icon(Icons.chat_bubble),
+            label: 'Chat Interno',
           ),
           NavigationDestination(
             icon: Icon(Icons.event_outlined),

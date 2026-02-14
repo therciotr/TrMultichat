@@ -108,43 +108,23 @@ const useStyles = makeStyles((theme) => {
   },
 })});
 
-const toMs = (v) => {
-  const t = Date.parse(String(v || ""));
-  return Number.isFinite(t) ? t : 0;
-};
-
-const sortByRecent = (list) =>
-  [...list].sort((a, b) => toMs(b?.updatedAt) - toMs(a?.updatedAt));
-
-const mergeTicket = (prev, next) => {
-  const a = prev || {};
-  const b = next || {};
-  return {
-    ...a,
-    ...b,
-    contact: b.contact || a.contact || null,
-    queue: b.queue || a.queue || null,
-  };
-};
-
 const reducer = (state, action) => {
   if (action.type === "LOAD_TICKETS") {
     const newTickets = action.payload;
-    const nextState = [...state];
 
     newTickets.forEach((ticket) => {
-      const ticketIndex = nextState.findIndex((t) => t.id === ticket.id);
+      const ticketIndex = state.findIndex((t) => t.id === ticket.id);
       if (ticketIndex !== -1) {
-        nextState[ticketIndex] = mergeTicket(nextState[ticketIndex], ticket);
-        if ((ticket?.unreadMessages || 0) > 0) {
-          nextState.unshift(nextState.splice(ticketIndex, 1)[0]);
+        state[ticketIndex] = ticket;
+        if (ticket.unreadMessages > 0) {
+          state.unshift(state.splice(ticketIndex, 1)[0]);
         }
       } else {
-        nextState.push(ticket);
+        state.push(ticket);
       }
     });
 
-    return sortByRecent(nextState);
+    return [...state];
   }
 
   if (action.type === "RESET_UNREAD") {
@@ -160,29 +140,30 @@ const reducer = (state, action) => {
 
   if (action.type === "UPDATE_TICKET") {
     const ticket = action.payload;
-    const nextState = [...state];
-    const ticketIndex = nextState.findIndex((t) => t.id === ticket.id);
+
+    const ticketIndex = state.findIndex((t) => t.id === ticket.id);
     if (ticketIndex !== -1) {
-      nextState[ticketIndex] = mergeTicket(nextState[ticketIndex], ticket);
+      state[ticketIndex] = { ...state[ticketIndex], ...ticket };
+      state.unshift(state.splice(ticketIndex, 1)[0]);
     } else {
-      nextState.unshift(ticket);
+      state.unshift(ticket);
     }
 
-    return sortByRecent(nextState);
+    return [...state];
   }
 
   if (action.type === "UPDATE_TICKET_UNREAD_MESSAGES") {
     const ticket = action.payload;
-    const nextState = [...state];
-    const ticketIndex = nextState.findIndex((t) => t.id === ticket.id);
+
+    const ticketIndex = state.findIndex((t) => t.id === ticket.id);
     if (ticketIndex !== -1) {
-      nextState[ticketIndex] = mergeTicket(nextState[ticketIndex], ticket);
-      nextState.unshift(nextState.splice(ticketIndex, 1)[0]);
+      state[ticketIndex] = { ...state[ticketIndex], ...ticket };
+      state.unshift(state.splice(ticketIndex, 1)[0]);
     } else {
-      nextState.unshift(ticket);
+      state.unshift(ticket);
     }
 
-    return sortByRecent(nextState);
+    return [...state];
   }
 
   if (action.type === "UPDATE_TICKET_CONTACT") {
@@ -351,10 +332,9 @@ const TicketsListCustom = (props) => {
       if (!t) return;
 
       const queueIds = queues.map((q) => q.id);
-      const queueId = Number(t.queueId || t?.queue?.id || 0);
       if (
         profile === "user" &&
-        (queueId > 0 && queueIds.indexOf(queueId) === -1)
+        (queueIds.indexOf(t.queue?.id) === -1 || t.queue === null)
       ) {
         return;
       }

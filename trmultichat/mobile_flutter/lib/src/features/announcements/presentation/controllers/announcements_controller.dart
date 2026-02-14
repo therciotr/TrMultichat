@@ -55,6 +55,37 @@ class AnnouncementsController extends StateNotifier<AnnouncementsState> {
     }
   }
 
+  Future<bool> create({
+    required String title,
+    required String text,
+    int priority = 3,
+    bool sendToAll = true,
+    bool allowReply = true,
+  }) async {
+    final t = title.trim();
+    final body = text.trim();
+    if (t.isEmpty || body.isEmpty) {
+      state = state.copyWith(error: 'Informe título e mensagem');
+      return false;
+    }
+    state = state.copyWith(loading: true, error: null);
+    try {
+      await _remote.create(
+        title: t,
+        text: body,
+        priority: priority,
+        sendToAll: sendToAll,
+        allowReply: allowReply,
+      );
+      final (items, _) = await _remote.list(pageNumber: 1, searchParam: state.search);
+      state = state.copyWith(loading: false, items: items, error: null);
+      return true;
+    } catch (_) {
+      state = state.copyWith(loading: false, error: 'Falha ao criar chat interno');
+      return false;
+    }
+  }
+
   Future<void> markRead(int id) async {
     if (id <= 0) return;
     if (state.readIds.contains(id)) return;
