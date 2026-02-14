@@ -56,3 +56,4 @@ Workflow: `.github/workflows/mobile-release.yml`
    - conferir API key, certificado e profile iOS.
 
 Última atualização do guia: trigger CI mobile.
+Verificação adicional: novo disparo para validação de secrets no CI.
