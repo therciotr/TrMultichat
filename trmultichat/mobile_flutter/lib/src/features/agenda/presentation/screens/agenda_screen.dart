@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../auth/presentation/providers/auth_providers.dart';
 import '../providers/agenda_providers.dart';
 import '../controllers/agenda_controller.dart';
 
@@ -14,6 +15,54 @@ class AgendaScreen extends ConsumerStatefulWidget {
 
 class _AgendaScreenState extends ConsumerState<AgendaScreen> {
   DateTime _selectedDay = DateTime.now();
+  bool _canPickUser = false;
+  bool _loadingUsers = false;
+  int? _selectedUserId;
+  List<Map<String, dynamic>> _users = const <Map<String, dynamic>>[];
+
+  @override
+  void initState() {
+    super.initState();
+    _initAgendaUserScope();
+  }
+
+  Future<void> _initAgendaUserScope() async {
+    final auth = ref.read(authControllerProvider).user;
+    final profile = (auth?.profile ?? '').toLowerCase();
+    final canPick = auth?.admin == true ||
+        auth?.isSuper == true ||
+        profile == 'admin' ||
+        profile == 'super';
+    final currentId = auth?.id;
+    _selectedUserId = currentId;
+    _canPickUser = canPick;
+
+    final ctrl = ref.read(agendaControllerProvider.notifier);
+    if (canPick && currentId != null && currentId > 0) {
+      ctrl.setUserFilter(currentId);
+    } else {
+      ctrl.setUserFilter(null);
+    }
+
+    if (!canPick) {
+      if (mounted) setState(() {});
+      return;
+    }
+    if (mounted) setState(() => _loadingUsers = true);
+    try {
+      final fetched =
+          await ref.read(agendaRemoteDataSourceProvider).listUsers();
+      if (!mounted) return;
+      setState(() {
+        _users = fetched;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _users = const <Map<String, dynamic>>[]);
+    } finally {
+      if (mounted) setState(() => _loadingUsers = false);
+    }
+  }
 
   bool _isSameDay(DateTime a, DateTime b) {
     return a.year == b.year && a.month == b.month && a.day == b.day;
@@ -51,6 +100,8 @@ class _AgendaScreenState extends ConsumerState<AgendaScreen> {
   Widget build(BuildContext context) {
     final st = ref.watch(agendaControllerProvider);
     final ctrl = ref.read(agendaControllerProvider.notifier);
+    final hasSelectedFilterUser = _selectedUserId != null &&
+        _users.any((u) => (u['id'] as num?)?.toInt() == _selectedUserId);
 
     final selectedEvents = st.items
         .where((e) => _isSameDay(e.startAt, _selectedDay))
@@ -78,6 +129,37 @@ class _AgendaScreenState extends ConsumerState<AgendaScreen> {
               child: ListView(
                 padding: const EdgeInsets.all(14),
                 children: [
+                  if (_canPickUser) ...[
+                    if (_loadingUsers)
+                      const LinearProgressIndicator(minHeight: 2),
+                    DropdownButtonFormField<int>(
+                      value: hasSelectedFilterUser ? _selectedUserId : null,
+                      items: _users
+                          .map(
+                            (u) => DropdownMenuItem<int>(
+                              value: (u['id'] as num?)?.toInt() ?? 0,
+                              child: Text(
+                                (u['name']?.toString().trim().isNotEmpty ==
+                                        true)
+                                    ? u['name'].toString()
+                                    : (u['email']?.toString() ?? 'Usuário'),
+                              ),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (v) {
+                        setState(() => _selectedUserId = v);
+                        ref
+                            .read(agendaControllerProvider.notifier)
+                            .setUserFilter(v);
+                      },
+                      decoration: const InputDecoration(
+                        labelText: 'Usuário',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
                   Card(
                     elevation: 0,
                     shape: RoundedRectangleBorder(
@@ -238,22 +320,60 @@ class _AgendaScreenState extends ConsumerState<AgendaScreen> {
   }
 }
 
-class _CreateAgendaEventSheet extends StatefulWidget {
+const _agendaColorOptions = <Map<String, String>>[
+  {'label': 'Azul', 'value': '#2563EB'},
+  {'label': 'Verde', 'value': '#10B981'},
+  {'label': 'Roxo', 'value': '#7C3AED'},
+  {'label': 'Laranja', 'value': '#F97316'},
+  {'label': 'Vermelho', 'value': '#EF4444'},
+  {'label': 'Cinza', 'value': '#334155'},
+];
+
+const _agendaReminderOptions = <Map<String, dynamic>>[
+  {'label': 'Sem lembrete', 'minutes': 0},
+  {'label': '5 minutos antes', 'minutes': 5},
+  {'label': '10 minutos antes', 'minutes': 10},
+  {'label': '30 minutos antes', 'minutes': 30},
+  {'label': '1 hora antes', 'minutes': 60},
+  {'label': '1 dia antes', 'minutes': 24 * 60},
+];
+
+const _agendaRecurrenceOptions = <Map<String, String>>[
+  {'label': 'Não repetir', 'value': 'none'},
+  {'label': 'Diário', 'value': 'daily'},
+  {'label': 'Semanal', 'value': 'weekly'},
+  {'label': 'Mensal', 'value': 'monthly'},
+];
+
+class _CreateAgendaEventSheet extends ConsumerStatefulWidget {
   final DateTime initialDay;
   final AgendaController controller;
   const _CreateAgendaEventSheet(
       {required this.initialDay, required this.controller});
 
   @override
-  State<_CreateAgendaEventSheet> createState() =>
+  ConsumerState<_CreateAgendaEventSheet> createState() =>
       _CreateAgendaEventSheetState();
 }
 
-class _CreateAgendaEventSheetState extends State<_CreateAgendaEventSheet> {
+class _CreateAgendaEventSheetState
+    extends ConsumerState<_CreateAgendaEventSheet> {
   final _titleCtrl = TextEditingController();
+  final _descriptionCtrl = TextEditingController();
   final _locationCtrl = TextEditingController();
   bool _allDay = false;
   bool _saving = false;
+  bool _canPickUser = false;
+  bool _loadingUsers = false;
+  List<Map<String, dynamic>> _users = const <Map<String, dynamic>>[];
+  int? _selectedUserId;
+  int _reminderMinutes = 0;
+  bool _notifyInChat = true;
+  bool _notifyOnCreate = true;
+  String _recurrenceType = 'none';
+  int _recurrenceInterval = 1;
+  DateTime? _recurrenceUntil;
+  String _color = '#2563EB';
   late DateTime _startAt;
   late DateTime _endAt;
 
@@ -264,11 +384,46 @@ class _CreateAgendaEventSheetState extends State<_CreateAgendaEventSheet> {
         widget.initialDay.day, 9, 0);
     _startAt = base;
     _endAt = base.add(const Duration(hours: 1));
+    _initUserScope();
+  }
+
+  Future<void> _initUserScope() async {
+    final auth = ref.read(authControllerProvider).user;
+    final profile = (auth?.profile ?? '').toLowerCase();
+    final canPick = auth?.admin == true ||
+        auth?.isSuper == true ||
+        profile == 'admin' ||
+        profile == 'super';
+
+    _selectedUserId = auth?.id;
+    _canPickUser = canPick;
+    if (!canPick) {
+      if (mounted) setState(() {});
+      return;
+    }
+
+    if (mounted) setState(() => _loadingUsers = true);
+    try {
+      final remote = ref.read(agendaRemoteDataSourceProvider);
+      final fetched = await remote.listUsers();
+      if (!mounted) return;
+      setState(() {
+        _users = fetched;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _users = const <Map<String, dynamic>>[];
+      });
+    } finally {
+      if (mounted) setState(() => _loadingUsers = false);
+    }
   }
 
   @override
   void dispose() {
     _titleCtrl.dispose();
+    _descriptionCtrl.dispose();
     _locationCtrl.dispose();
     super.dispose();
   }
@@ -283,6 +438,10 @@ class _CreateAgendaEventSheetState extends State<_CreateAgendaEventSheet> {
     final hh = d.hour.toString().padLeft(2, '0');
     final mm = d.minute.toString().padLeft(2, '0');
     return '$hh:$mm';
+  }
+
+  String _fmtDateTime(DateTime d) {
+    return '${_fmtDate(d)} ${_fmtTime(d)}';
   }
 
   Future<void> _pickDate({required bool start}) async {
@@ -340,14 +499,32 @@ class _CreateAgendaEventSheetState extends State<_CreateAgendaEventSheet> {
   Future<void> _submit() async {
     if (_saving) return;
     setState(() => _saving = true);
+    final reminders = _reminderMinutes > 0
+        ? <Map<String, dynamic>>[
+            {
+              'minutesBefore': _reminderMinutes,
+              'notifyInChat': _notifyInChat,
+            }
+          ]
+        : const <Map<String, dynamic>>[];
     final ok = await widget.controller.createEvent(
       title: _titleCtrl.text,
+      description: _descriptionCtrl.text.trim().isEmpty
+          ? null
+          : _descriptionCtrl.text.trim(),
       startAt: _startAt,
       endAt: _allDay
           ? DateTime(_endAt.year, _endAt.month, _endAt.day, 23, 59)
           : _endAt,
       allDay: _allDay,
       location: _locationCtrl.text,
+      color: _color,
+      recurrenceType: _recurrenceType,
+      recurrenceInterval: _recurrenceInterval,
+      recurrenceUntil: _recurrenceType == 'none' ? null : _recurrenceUntil,
+      reminders: reminders.isEmpty ? null : reminders,
+      userId: _canPickUser ? _selectedUserId : null,
+      notify: _notifyOnCreate,
     );
     if (!mounted) return;
     setState(() => _saving = false);
@@ -359,94 +536,274 @@ class _CreateAgendaEventSheetState extends State<_CreateAgendaEventSheet> {
   @override
   Widget build(BuildContext context) {
     final bottom = MediaQuery.of(context).viewInsets.bottom;
+    final hasSelectedUser = _selectedUserId != null &&
+        _users.any((u) => (u['id'] as num?)?.toInt() == _selectedUserId);
     return Padding(
       padding: EdgeInsets.fromLTRB(16, 8, 16, 16 + bottom),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text('Novo evento',
-              style: Theme.of(context)
-                  .textTheme
-                  .titleMedium
-                  ?.copyWith(fontWeight: FontWeight.w900)),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _titleCtrl,
-            decoration: const InputDecoration(
-              labelText: 'Título',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 10),
-          TextField(
-            controller: _locationCtrl,
-            decoration: const InputDecoration(
-              labelText: 'Local (opcional)',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 10),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            value: _allDay,
-            onChanged: (v) => setState(() => _allDay = v),
-            title: const Text('Dia inteiro'),
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () => _pickDate(start: true),
-                  icon: const Icon(Icons.calendar_today_outlined),
-                  label: Text('Início ${_fmtDate(_startAt)}'),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Novo evento',
+                style: Theme.of(context)
+                    .textTheme
+                    .titleMedium
+                    ?.copyWith(fontWeight: FontWeight.w900)),
+            const SizedBox(height: 12),
+            if (_canPickUser) ...[
+              if (_loadingUsers) const LinearProgressIndicator(minHeight: 2),
+              DropdownButtonFormField<int>(
+                value: hasSelectedUser ? _selectedUserId : null,
+                items: _users
+                    .map(
+                      (u) => DropdownMenuItem<int>(
+                        value: (u['id'] as num?)?.toInt() ?? 0,
+                        child: Text(
+                          (u['name']?.toString().trim().isNotEmpty == true)
+                              ? u['name'].toString()
+                              : (u['email']?.toString() ?? 'Usuário'),
+                        ),
+                      ),
+                    )
+                    .toList(),
+                onChanged:
+                    _saving ? null : (v) => setState(() => _selectedUserId = v),
+                decoration: const InputDecoration(
+                  labelText: 'Usuário responsável',
+                  border: OutlineInputBorder(),
                 ),
               ),
-              const SizedBox(width: 8),
-              if (!_allDay)
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () => _pickTime(start: true),
-                    icon: const Icon(Icons.schedule_outlined),
-                    label: Text(_fmtTime(_startAt)),
-                  ),
-                ),
+              const SizedBox(height: 10),
             ],
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () => _pickDate(start: false),
-                  icon: const Icon(Icons.event_available_outlined),
-                  label: Text('Fim ${_fmtDate(_endAt)}'),
-                ),
+            TextField(
+              controller: _titleCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Título',
+                border: OutlineInputBorder(),
               ),
-              const SizedBox(width: 8),
-              if (!_allDay)
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _descriptionCtrl,
+              minLines: 3,
+              maxLines: 5,
+              decoration: const InputDecoration(
+                labelText: 'Descrição',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
                 Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () => _pickTime(start: false),
-                    icon: const Icon(Icons.schedule_outlined),
-                    label: Text(_fmtTime(_endAt)),
+                  child: TextField(
+                    controller: _locationCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Local (opcional)',
+                      border: OutlineInputBorder(),
+                    ),
                   ),
                 ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: DropdownButtonFormField<String>(
+                    value: _color,
+                    items: _agendaColorOptions
+                        .map(
+                          (c) => DropdownMenuItem<String>(
+                            value: c['value'],
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 10,
+                                  height: 10,
+                                  decoration: BoxDecoration(
+                                    color: Color(int.parse(
+                                        c['value']!.replaceFirst('#', '0xff'))),
+                                    borderRadius: BorderRadius.circular(99),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Text(c['label']!),
+                              ],
+                            ),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: _saving
+                        ? null
+                        : (v) => setState(() => _color = v ?? '#2563EB'),
+                    decoration: const InputDecoration(
+                      labelText: 'Cor',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text('Recorrência',
+                style: Theme.of(context)
+                    .textTheme
+                    .labelLarge
+                    ?.copyWith(fontWeight: FontWeight.w800)),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: DropdownButtonFormField<String>(
+                    value: _recurrenceType,
+                    items: _agendaRecurrenceOptions
+                        .map(
+                          (r) => DropdownMenuItem<String>(
+                            value: r['value'],
+                            child: Text(r['label']!),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: _saving
+                        ? null
+                        : (v) => setState(() => _recurrenceType = v ?? 'none'),
+                    decoration: const InputDecoration(
+                      labelText: 'Repetir',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: TextFormField(
+                    key: ValueKey('recurrence-interval-$_recurrenceType'),
+                    enabled: _recurrenceType != 'none' && !_saving,
+                    keyboardType: TextInputType.number,
+                    initialValue: _recurrenceInterval.toString(),
+                    onChanged: (v) {
+                      final n = int.tryParse(v) ?? 1;
+                      setState(() => _recurrenceInterval = n < 1 ? 1 : n);
+                    },
+                    decoration: const InputDecoration(
+                      labelText: 'Intervalo',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: (_saving || _recurrenceType == 'none')
+                  ? null
+                  : () async {
+                      final picked = await showDatePicker(
+                        context: context,
+                        initialDate: _recurrenceUntil ?? _startAt,
+                        firstDate: _startAt,
+                        lastDate: DateTime(2035),
+                      );
+                      if (picked == null) return;
+                      setState(() {
+                        _recurrenceUntil = DateTime(
+                            picked.year, picked.month, picked.day, 23, 59);
+                      });
+                    },
+              icon: const Icon(Icons.repeat),
+              label: Text(
+                _recurrenceType == 'none'
+                    ? 'Sem repetição'
+                    : (_recurrenceUntil == null
+                        ? 'Repetir até (opcional)'
+                        : 'Até ${_fmtDate(_recurrenceUntil!)}'),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text('Lembrete',
+                style: Theme.of(context)
+                    .textTheme
+                    .labelLarge
+                    ?.copyWith(fontWeight: FontWeight.w800)),
+            const SizedBox(height: 8),
+            DropdownButtonFormField<int>(
+              value: _reminderMinutes,
+              items: _agendaReminderOptions
+                  .map(
+                    (r) => DropdownMenuItem<int>(
+                      value: r['minutes'] as int,
+                      child: Text(r['label'] as String),
+                    ),
+                  )
+                  .toList(),
+              onChanged: _saving
+                  ? null
+                  : (v) => setState(() => _reminderMinutes = v ?? 0),
+              decoration: const InputDecoration(
+                labelText: 'Avisar',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: _notifyInChat,
+              onChanged: (_saving || _reminderMinutes <= 0)
+                  ? null
+                  : (v) => setState(() => _notifyInChat = v),
+              title: const Text('Notificar no Chat'),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: _notifyOnCreate,
+              onChanged:
+                  _saving ? null : (v) => setState(() => _notifyOnCreate = v),
+              title: const Text('Notificar responsável ao criar'),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: _allDay,
+              onChanged: (v) => setState(() => _allDay = v),
+              title: const Text('Dia inteiro'),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: () => _pickDate(start: true),
+              icon: const Icon(Icons.calendar_today_outlined),
+              label: Text('Início ${_fmtDate(_startAt)}'),
+            ),
+            if (!_allDay) ...[
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: () => _pickTime(start: true),
+                icon: const Icon(Icons.schedule_outlined),
+                label: Text(_fmtDateTime(_startAt)),
+              ),
             ],
-          ),
-          const SizedBox(height: 12),
-          FilledButton.icon(
-            onPressed: _saving ? null : _submit,
-            icon: const Icon(Icons.save_outlined),
-            label: Text(_saving ? 'Salvando...' : 'Criar evento'),
-          ),
-          const SizedBox(height: 8),
-          OutlinedButton(
-            onPressed: _saving ? null : () => Navigator.of(context).pop(false),
-            child: const Text('Cancelar'),
-          ),
-        ],
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: () => _pickDate(start: false),
+              icon: const Icon(Icons.event_available_outlined),
+              label: Text('Fim ${_fmtDate(_endAt)}'),
+            ),
+            if (!_allDay) ...[
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: () => _pickTime(start: false),
+                icon: const Icon(Icons.schedule_outlined),
+                label: Text(_fmtDateTime(_endAt)),
+              ),
+            ],
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              onPressed: _saving ? null : _submit,
+              icon: const Icon(Icons.save_outlined),
+              label: Text(_saving ? 'Salvando...' : 'Criar evento'),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton(
+              onPressed:
+                  _saving ? null : () => Navigator.of(context).pop(false),
+              child: const Text('Cancelar'),
+            ),
+          ],
+        ),
       ),
     );
   }

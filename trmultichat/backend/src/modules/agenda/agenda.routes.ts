@@ -425,6 +425,7 @@ router.post("/events", async (req, res) => {
   const recurrenceType = normalizeRecurrenceType(body.recurrenceType);
   const recurrenceInterval = normalizeRecurrenceInterval(body.recurrenceInterval);
   const recurrenceUntil = body.recurrenceUntil ? parseDateOrNull(body.recurrenceUntil) : null;
+  const notifyOnCreate = Boolean(body.notify);
 
   const start = parseDateOrNull(body.startAt);
   const end = parseDateOrNull(body.endAt);
@@ -472,6 +473,17 @@ router.post("/events", async (req, res) => {
   try {
     await upsertRemindersForEvent(companyId, targetUserId, id, body.reminders);
   } catch {}
+
+  // Optional immediate notification when creating an event for a user.
+  if (notifyOnCreate) {
+    try {
+      const when = start.toLocaleString("pt-BR");
+      const msgTitle = `Novo evento: ${title}`;
+      const link = `/agenda?eventId=${encodeURIComponent(id)}`;
+      const msgText = `📅 ${title}\nQuando: ${when}\nAbrir: ${link}`;
+      await createChatReminder(companyId, requester.id, targetUserId, msgTitle, msgText);
+    } catch {}
+  }
 
   try {
     const io = getIO();

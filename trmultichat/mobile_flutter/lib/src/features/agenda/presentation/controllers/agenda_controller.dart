@@ -14,6 +14,7 @@ class AgendaController extends StateNotifier<AgendaState> {
   StreamSubscription? _agendaSub;
   StreamSubscription? _socketRecreatedSub;
   bool _disposed = false;
+  int? _selectedUserId;
 
   AgendaController(this._remote, this._ref, this._socket)
       : super(AgendaState.initial()) {
@@ -25,7 +26,7 @@ class AgendaController extends StateNotifier<AgendaState> {
     if (_disposed) return;
     state = state.copyWith(loading: true, error: null);
     try {
-      final list = await _remote.list();
+      final list = await _remote.list(userId: _selectedUserId);
       if (_disposed) return;
       state = state.copyWith(loading: false, items: list, error: null);
     } catch (_) {
@@ -34,13 +35,25 @@ class AgendaController extends StateNotifier<AgendaState> {
     }
   }
 
+  void setUserFilter(int? userId) {
+    _selectedUserId = (userId != null && userId > 0) ? userId : null;
+    refresh();
+  }
+
   Future<bool> createEvent({
     required String title,
+    String? description,
     required DateTime startAt,
     required DateTime endAt,
     bool allDay = false,
     String? location,
     String? color,
+    String recurrenceType = 'none',
+    int recurrenceInterval = 1,
+    DateTime? recurrenceUntil,
+    List<Map<String, dynamic>>? reminders,
+    int? userId,
+    bool notify = false,
   }) async {
     final trimmed = title.trim();
     if (trimmed.isEmpty) {
@@ -57,13 +70,20 @@ class AgendaController extends StateNotifier<AgendaState> {
     try {
       await _remote.createEvent(
         title: trimmed,
+        description: description,
         startAt: startAt,
         endAt: endAt,
         allDay: allDay,
         location: location,
         color: color,
+        recurrenceType: recurrenceType,
+        recurrenceInterval: recurrenceInterval,
+        recurrenceUntil: recurrenceUntil,
+        reminders: reminders,
+        userId: userId,
+        notify: notify,
       );
-      final list = await _remote.list();
+      final list = await _remote.list(userId: _selectedUserId);
       if (_disposed) return false;
       state = state.copyWith(loading: false, items: list, error: null);
       return true;
@@ -86,7 +106,8 @@ class AgendaController extends StateNotifier<AgendaState> {
     }).listen((payload) async {
       if (_disposed) return;
       final action = (payload['action']?.toString() ?? '').trim().toLowerCase();
-      if (action != 'create' && action != 'update' && action != 'delete') return;
+      if (action != 'create' && action != 'update' && action != 'delete')
+        return;
       await refresh();
     });
 

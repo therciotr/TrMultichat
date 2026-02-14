@@ -310,6 +310,8 @@ export default function Agenda() {
     recurrenceUntil: null,
     reminderMinutes: 0,
     notifyInChat: true,
+    notifyOnCreate: true,
+    responsibleUserId: currentUserId,
   });
 
   // Safe setter for pooled events / nullable events (prevents "Cannot read properties of null (reading 'value')")
@@ -326,6 +328,9 @@ export default function Agenda() {
   };
 
   const canPickUser = isAdminLike;
+  const selectedResponsible = canPickUser
+    ? (users || []).find((u) => Number(u?.id || 0) === Number(form?.responsibleUserId || selectedUserId))
+    : null;
 
   const events = useMemo(() => {
     return (records || []).map((r) => ({
@@ -421,6 +426,8 @@ export default function Agenda() {
       recurrenceUntil: null,
       reminderMinutes: 0,
       notifyInChat: true,
+      notifyOnCreate: true,
+      responsibleUserId: Number(selectedUserId || currentUserId || 0),
     });
     setAttachments([]);
     setModalOpen(true);
@@ -444,6 +451,8 @@ export default function Agenda() {
       recurrenceUntil: record.recurrenceUntil ? new Date(record.recurrenceUntil) : null,
       reminderMinutes: reminder ? Number(reminder.minutesBefore || 0) : 0,
       notifyInChat: reminder ? Boolean(reminder.notifyInChat) : true,
+      notifyOnCreate: false,
+      responsibleUserId: Number(record.userId || selectedUserId || currentUserId || 0),
     });
     loadAttachments(seriesId);
     setModalOpen(true);
@@ -471,7 +480,8 @@ export default function Agenda() {
           ? new Date(form.recurrenceUntil).toISOString()
           : null,
       reminders,
-      ...(canPickUser ? { userId: selectedUserId } : {}),
+      ...(canPickUser ? { userId: Number(form.responsibleUserId || selectedUserId || currentUserId || 0) } : {}),
+      notify: Boolean(form.notifyOnCreate),
     };
   };
 
@@ -761,13 +771,34 @@ export default function Agenda() {
                 {form.id ? "Editar evento" : "Novo evento"}
               </Typography>
               <Typography style={{ fontSize: 12, opacity: 0.7 }}>
-                {canPickUser ? `Usuário: ${viewLabel(view)}` : `Visão: ${viewLabel(view)}`}
+                {canPickUser
+                  ? `Usuário: ${selectedResponsible?.name || selectedResponsible?.email || `#${form.responsibleUserId || selectedUserId}`}`
+                  : `Visão: ${viewLabel(view)}`}
               </Typography>
             </div>
           </div>
         </DialogTitle>
         <DialogContent>
           <Grid container spacing={2}>
+            {canPickUser ? (
+              <Grid item xs={12}>
+                <FormControl variant="outlined" size="small" className={classes.field} fullWidth>
+                  <InputLabel id="agenda-modal-user">Usuário responsável</InputLabel>
+                  <Select
+                    labelId="agenda-modal-user"
+                    label="Usuário responsável"
+                    value={Number(form.responsibleUserId || selectedUserId || currentUserId || 0)}
+                    onChange={setFormKey("responsibleUserId", (v) => Number(v || selectedUserId || currentUserId || 0))}
+                  >
+                    {(users || []).map((u) => (
+                      <MenuItem key={u.id} value={Number(u.id)}>
+                        {u.name || u.email || `Usuário #${u.id}`}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+            ) : null}
             <Grid item xs={12}>
               <TextField
                 className={classes.field}
@@ -924,6 +955,23 @@ export default function Agenda() {
                   <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
                     <ChatBubbleOutlineOutlinedIcon style={{ fontSize: 18, opacity: 0.8 }} />
                     Notificar no Chat
+                  </span>
+                }
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={Boolean(form.notifyOnCreate)}
+                    onChange={setFormCheckedKey("notifyOnCreate")}
+                    color="primary"
+                  />
+                }
+                label={
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                    <ChatBubbleOutlineOutlinedIcon style={{ fontSize: 18, opacity: 0.8 }} />
+                    Notificar responsável ao criar
                   </span>
                 }
               />
