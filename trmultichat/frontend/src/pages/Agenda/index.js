@@ -274,10 +274,21 @@ export default function Agenda() {
 
   const email = String(user?.email || "").toLowerCase();
   const isMasterEmail = email === "thercio@trtecnologias.com.br";
-  const isSuper = Boolean(user?.super || isMasterEmail);
+  const isSuper = Boolean(user?.super || user?.isSuper || isMasterEmail);
   const isAdmin = Boolean(user?.admin);
-  const profile = String(user?.profile || "").toLowerCase();
-  const isAdminLike = isSuper || isAdmin || profile === "admin" || profile === "super";
+  const profile = String(user?.profile || "").toLowerCase().trim();
+  const role = String(user?.role || "").toLowerCase().trim();
+  const isAdminLike =
+    isSuper ||
+    isAdmin ||
+    profile === "admin" ||
+    profile === "super" ||
+    profile === "master" ||
+    profile === "administrador" ||
+    role === "admin" ||
+    role === "super" ||
+    role === "master" ||
+    role === "administrator";
 
   const calendarRef = useRef(null);
   const uploadInputRef = useRef(null);
@@ -327,7 +338,9 @@ export default function Agenda() {
     setForm((f) => ({ ...(f || {}), [key]: Boolean(raw) }));
   };
 
-  const canPickUser = isAdminLike;
+  // Keep the user selector visible in Web for consistency with mobile.
+  // Backend still enforces permissions for assigning to other users.
+  const canPickUser = true;
   const selectedResponsible = canPickUser
     ? (users || []).find((u) => Number(u?.id || 0) === Number(form?.responsibleUserId || selectedUserId))
     : null;
@@ -366,13 +379,39 @@ export default function Agenda() {
   };
 
   const loadUsers = async () => {
-    if (!canPickUser) return;
+    if (!isAdminLike) {
+      setUsers([
+        {
+          id: currentUserId || 0,
+          name: user?.name || "Meu usuário",
+          email: user?.email || "",
+        },
+      ]);
+      return;
+    }
     try {
       const { data } = await api.get("/users/list");
       const arr = Array.isArray(data) ? data : [];
-      setUsers(arr);
+      const hasCurrent = arr.some((u) => Number(u?.id || 0) === currentUserId);
+      const merged = hasCurrent
+        ? arr
+        : [
+            {
+              id: currentUserId || 0,
+              name: user?.name || "Meu usuário",
+              email: user?.email || "",
+            },
+            ...arr,
+          ];
+      setUsers(merged);
     } catch (err) {
-      // not critical
+      setUsers([
+        {
+          id: currentUserId || 0,
+          name: user?.name || "Meu usuário",
+          email: user?.email || "",
+        },
+      ]);
     }
   };
 
