@@ -68,6 +68,8 @@ jobs:
         run: flutter pub get
 
       - name: Build Android app bundle
+        env:
+          GRADLE_OPTS: -Dorg.gradle.vfs.watch=false
         run: flutter build appbundle --release --build-number=${{ github.run_number }}
 
       - name: Upload to Google Play (production)
