@@ -75,6 +75,7 @@ As credenciais locais devem ficar fora do git e podem ser armazenadas em:
 Verificação adicional: novo disparo para validação de secrets no CI.
 Disparo solicitado para envio em produção nas lojas oficiais.
 Politica de privacidade publicada em: https://politicadeprivacidade.trmultichat.com.br
+Declaracoes da Play Console revisadas para submissao em producao.
 
 ## 6) Status real da automação (Jan/2026)
 
