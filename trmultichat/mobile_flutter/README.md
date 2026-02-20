@@ -2,6 +2,10 @@
 
 App mobile **Flutter (Android/iOS)** compatível com o backend existente do TR Multichat (`https://api.trmultichat.com.br`).
 
+### Politica de privacidade
+
+- URL de producao: `https://politicadeprivacidade.trmultichat.com.br`
+
 ### Stack
 - Flutter + Clean Architecture + MVVM
 - Riverpod (estado)

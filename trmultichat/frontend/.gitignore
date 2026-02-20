@@ -3,6 +3,9 @@ public/*
 dist
 build
 !public/.gitkeep
+!public/privacy-policy.html
+!public/privacy-policy/
+!public/privacy-policy/index.html
 .env
 .env.test
 

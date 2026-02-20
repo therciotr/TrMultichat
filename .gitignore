@@ -42,3 +42,11 @@ cypress/videos/
 
 # Large archives
 trmultichat.zip
+
+# Mobile signing and local release secrets
+trmultichat/mobile_flutter/android/key.properties
+trmultichat/mobile_flutter/android/app/upload-keystore.jks
+trmultichat/mobile_flutter/secrets/**
+!trmultichat/mobile_flutter/secrets/README.md
+!trmultichat/mobile_flutter/secrets/android/.gitkeep
+!trmultichat/mobile_flutter/secrets/ios/.gitkeep

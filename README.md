@@ -4,6 +4,11 @@
 - Painel web: `trmultichat/frontend`
 - Mobile: `trmultichat/mobile`
 
+## Politica de privacidade
+
+- URL oficial: `https://politicadeprivacidade.trmultichat.com.br`
+- Fonte versionada no repositório: `trmultichat/frontend/public/privacy-policy/index.html`
+
 ⚠️ Padrão de Design System TR
 
 Não use `<Button>` do Material-UI diretamente. Use sempre `<TrButton>` para garantir integração com o tema dinâmico configurado em `/admin/branding`.
