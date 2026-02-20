@@ -74,6 +74,7 @@ As credenciais locais devem ficar fora do git e podem ser armazenadas em:
 Última atualização do guia: trigger CI mobile.
 Verificação adicional: novo disparo para validação de secrets no CI.
 Disparo solicitado para envio em produção nas lojas oficiais.
+Politica de privacidade publicada em: https://politicadeprivacidade.trmultichat.com.br
 
 ## 6) Status real da automação (Jan/2026)
 
