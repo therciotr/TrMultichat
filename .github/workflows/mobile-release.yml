@@ -79,7 +79,7 @@ jobs:
           packageName: com.trmultichat.mobile
           releaseFiles: trmultichat/mobile_flutter/build/app/outputs/bundle/release/app-release.aab
           track: production
-          status: completed
+          status: draft
 
   ios_release:
     name: iOS App Store Connect

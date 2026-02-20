@@ -77,6 +77,21 @@ Disparo solicitado para envio em produção nas lojas oficiais.
 Politica de privacidade publicada em: https://politicadeprivacidade.trmultichat.com.br
 Declaracoes da Play Console revisadas para submissao em producao.
 
+## 7) Icone e screenshots na Google Play
+
+Importante: a API de release envia o AAB para a trilha, mas nao preenche automaticamente os assets da ficha da loja.
+
+Arquivos prontos no projeto:
+
+- Icone app: `trmultichat/mobile_flutter/assets/icone-app.png`
+- Screenshots Android: `trmultichat/mobile_flutter/assets/screenshots/android/`
+- Screenshots iOS: `trmultichat/mobile_flutter/assets/screenshots/ios/`
+
+No Play Console, enviar manualmente em "Presenca na loja" / "Pagina principal da loja":
+
+- Icone (512x512)
+- Capturas de tela do telefone
+
 ## 6) Status real da automação (Jan/2026)
 
 ### 6.1 O que já está configurado
