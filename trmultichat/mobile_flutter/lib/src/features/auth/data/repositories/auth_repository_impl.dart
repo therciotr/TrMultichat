@@ -18,7 +18,11 @@ class AuthRepositoryImpl implements AuthRepository {
     required String password,
   }) async {
     final dto = await _remote.login(email: email, password: password);
-    await saveSession(user: dto.user, accessToken: dto.accessToken, refreshToken: dto.refreshToken);
+    // On macOS, Keychain persistence can fail depending on local permissions/signing.
+    // Do not block login flow when session persistence fails.
+    try {
+      await saveSession(user: dto.user, accessToken: dto.accessToken, refreshToken: dto.refreshToken);
+    } catch (_) {}
     return (dto.user, dto.accessToken, dto.refreshToken);
   }
 
