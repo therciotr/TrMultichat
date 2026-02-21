@@ -44,6 +44,8 @@ dependencies:
   local_auth: ^2.2.0
   share_plus: ^10.0.2
   just_audio: ^0.9.46
+  firebase_core: ^4.4.0
+  firebase_messaging: ^16.1.1
 
 dev_dependencies:
   flutter_test:

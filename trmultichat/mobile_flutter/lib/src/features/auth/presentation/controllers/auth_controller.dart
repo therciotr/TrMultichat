@@ -294,6 +294,9 @@ class AuthController extends StateNotifier<AuthState> {
         try {
           await _ref.read(localNotificationsProvider).warmup();
         } catch (_) {}
+        try {
+          await _ref.read(pushNotificationsProvider).initializeForAuthenticatedUser();
+        } catch (_) {}
       });
     } catch (_) {}
     // Connect socket after restoring session
@@ -327,6 +330,9 @@ class AuthController extends StateNotifier<AuthState> {
   }
 
   Future<void> logout() async {
+    try {
+      await _ref.read(pushNotificationsProvider).unregisterCurrentToken();
+    } catch (_) {}
     await _repo.logout();
     _ref.read(currentAccessTokenProvider.notifier).state = null;
     try {

@@ -3,6 +3,7 @@ import { getIO } from "./socket";
 import fs from "fs";
 import path from "path";
 import crypto from "crypto";
+import { sendInboundMessagePush } from "../services/pushNotificationService";
 
 function quoteIdent(name: string): string {
   const safe = String(name).replace(/"/g, '""');
@@ -1158,6 +1159,19 @@ export async function ingestBaileysMessage(opts: {
     io.emit(`company-${companyId}-appMessage`, { action: "create", ticket: payloadTicket });
     io.emit(`company-${companyId}-contact`, { action: "update", contact: payloadTicket.contact });
   } catch {}
+
+  if (!fromMe) {
+    try {
+      const pushTitle = String(contact.name || "").trim() || "Nova mensagem";
+      const pushBody = String(storedBody || "").trim() || "Nova mensagem recebida";
+      sendInboundMessagePush({
+        companyId,
+        ticketId: payloadTicket.id,
+        title: pushTitle,
+        body: pushBody
+      }).catch(() => {});
+    } catch {}
+  }
 
   // keep Typescript happy; used for debugging if needed
   void nowIso();
