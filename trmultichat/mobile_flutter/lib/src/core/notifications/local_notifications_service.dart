@@ -25,11 +25,6 @@ class LocalNotificationsService {
     if (_permissionsRequested) return;
     var grantedAny = false;
     try {
-      final darwin = _plugin.resolvePlatformSpecificImplementation<DarwinFlutterLocalNotificationsPlugin>();
-      final granted = await darwin?.requestPermissions(alert: true, badge: true, sound: true);
-      if (granted == true) grantedAny = true;
-    } catch (_) {}
-    try {
       // Fallback for environments exposing only iOS-specific implementation.
       final ios = _plugin.resolvePlatformSpecificImplementation<IOSFlutterLocalNotificationsPlugin>();
       final granted = await ios?.requestPermissions(alert: true, badge: true, sound: true);
