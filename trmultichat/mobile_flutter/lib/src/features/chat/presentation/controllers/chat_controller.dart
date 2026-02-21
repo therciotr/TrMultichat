@@ -93,17 +93,15 @@ class ChatController extends StateNotifier<ChatState> {
   }
 
   void _bindPollingFallback() {
+    // Keep a light polling loop always running as a reliability fallback:
+    // some iOS/macOS network transitions can keep socket "connected" without delivering events.
+    _startPolling();
     _connSub?.cancel();
     _connSub = _socket.connectedStream.listen((connected) {
       if (connected) {
-        _stopPolling();
-      } else {
-        _startPolling();
+        _silentRefresh();
       }
     });
-    if (!_socket.isConnected) {
-      _startPolling();
-    }
   }
 
   void _startPolling() {

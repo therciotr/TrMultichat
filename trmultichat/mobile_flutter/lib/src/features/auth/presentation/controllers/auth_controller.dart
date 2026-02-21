@@ -15,6 +15,9 @@ class AuthController extends StateNotifier<AuthState> {
   final Ref _ref;
   StreamSubscription? _msgSub;
   StreamSubscription? _socketRecreatedSub;
+  StreamSubscription? _socketConnectedSub;
+  Timer? _notifPollTimer;
+  final Map<int, DateTime> _knownTicketUpdates = <int, DateTime>{};
   bool _bootstrapped = false;
 
   AuthController(this._repo, this._ref) : super(AuthState.initial()) {
@@ -65,6 +68,104 @@ class AuthController extends StateNotifier<AuthState> {
     return s == '1' || s == 'true' || s == 'yes';
   }
 
+  DateTime? _parseDate(dynamic raw) {
+    final s = (raw?.toString() ?? '').trim();
+    if (s.isEmpty) return null;
+    return DateTime.tryParse(s);
+  }
+
+  String _ticketTitle(Map<String, dynamic> t) {
+    final c = (t['contact'] as Map?)?.cast<String, dynamic>();
+    final name = (c?['name']?.toString() ?? '').trim();
+    if (name.isNotEmpty) return name;
+    final id = int.tryParse(t['id']?.toString() ?? '') ?? 0;
+    return id > 0 ? 'Ticket #$id' : 'Nova mensagem';
+  }
+
+  Future<void> _pollTicketNotifications() async {
+    final dio = _ref.read(dioProvider);
+    final statuses = const ['open', 'pending'];
+    final latest = <int, ({DateTime at, String msg, String title})>{};
+
+    for (final st in statuses) {
+      try {
+        final res = await dio.get('/tickets', queryParameters: {'status': st, 'pageNumber': 1});
+        final data = res.data;
+        if (data is! List) continue;
+        for (final row in data) {
+          if (row is! Map) continue;
+          final t = row.cast<String, dynamic>();
+          final id = int.tryParse(t['id']?.toString() ?? '') ?? 0;
+          if (id <= 0) continue;
+          final at = _parseDate(t['updatedAt']);
+          if (at == null) continue;
+          final msg = (t['lastMessage']?.toString() ?? '').trim();
+          final title = _ticketTitle(t);
+          final existing = latest[id];
+          if (existing == null || at.isAfter(existing.at)) {
+            latest[id] = (at: at, msg: msg, title: title);
+          }
+        }
+      } catch (_) {}
+    }
+
+    if (latest.isEmpty) return;
+
+    // First poll only seeds baseline to avoid burst notifications.
+    if (_knownTicketUpdates.isEmpty) {
+      for (final e in latest.entries) {
+        _knownTicketUpdates[e.key] = e.value.at;
+      }
+      return;
+    }
+
+    for (final e in latest.entries) {
+      final old = _knownTicketUpdates[e.key];
+      if (old != null && e.value.at.isAfter(old)) {
+        final body = e.value.msg.isNotEmpty ? e.value.msg : 'Nova atividade no atendimento';
+        try {
+          await _ref.read(localNotificationsProvider).show(
+                title: e.value.title,
+                body: body,
+                payload: 'ticket:${e.key}',
+              );
+        } catch (_) {}
+      }
+      _knownTicketUpdates[e.key] = e.value.at;
+    }
+  }
+
+  void _stopNotifPolling() {
+    try {
+      _notifPollTimer?.cancel();
+    } catch (_) {}
+    _notifPollTimer = null;
+  }
+
+  void _startNotifPolling() {
+    _notifPollTimer ??= Timer.periodic(const Duration(seconds: 8), (_) {
+      _pollTicketNotifications();
+    });
+  }
+
+  void _bindNotificationFallbackPolling() {
+    try {
+      _socketConnectedSub?.cancel();
+    } catch (_) {}
+    final socket = _ref.read(socketClientProvider);
+    _socketConnectedSub = socket.connectedStream.listen((connected) {
+      if (connected) {
+        _stopNotifPolling();
+      } else {
+        _startNotifPolling();
+      }
+    });
+
+    if (!socket.isConnected) {
+      _startNotifPolling();
+    }
+  }
+
   Future<void> _bootstrap() async {
     if (_bootstrapped) return;
     _bootstrapped = true;
@@ -83,8 +184,14 @@ class AuthController extends StateNotifier<AuthState> {
         try {
           _socketRecreatedSub?.cancel();
         } catch (_) {}
+        try {
+          _socketConnectedSub?.cancel();
+        } catch (_) {}
+        _stopNotifPolling();
+        _knownTicketUpdates.clear();
         _msgSub = null;
         _socketRecreatedSub = null;
+        _socketConnectedSub = null;
         return;
       }
 
@@ -161,6 +268,7 @@ class AuthController extends StateNotifier<AuthState> {
       }
     } catch (_) {}
     _bindGlobalMessageNotifications(user.companyId);
+    _bindNotificationFallbackPolling();
     try {
       _socketRecreatedSub?.cancel();
     } catch (_) {}
@@ -189,8 +297,14 @@ class AuthController extends StateNotifier<AuthState> {
     try {
       _socketRecreatedSub?.cancel();
     } catch (_) {}
+    try {
+      _socketConnectedSub?.cancel();
+    } catch (_) {}
+    _stopNotifPolling();
+    _knownTicketUpdates.clear();
     _msgSub = null;
     _socketRecreatedSub = null;
+    _socketConnectedSub = null;
     state = state.copyWith(
       loading: false,
       isAuthenticated: false,
@@ -209,8 +323,14 @@ class AuthController extends StateNotifier<AuthState> {
     try {
       _socketRecreatedSub?.cancel();
     } catch (_) {}
+    try {
+      _socketConnectedSub?.cancel();
+    } catch (_) {}
+    _stopNotifPolling();
+    _knownTicketUpdates.clear();
     _msgSub = null;
     _socketRecreatedSub = null;
+    _socketConnectedSub = null;
     super.dispose();
   }
 }

@@ -18,6 +18,7 @@ class TicketsController extends StateNotifier<TicketsState> {
   StreamSubscription? _subTicket;
   StreamSubscription? _subMsg;
   StreamSubscription? _subSocketRecreated;
+  Timer? _pollTimer;
   Timer? _syncDebounce;
   bool _syncing = false;
   bool _disposed = false;
@@ -26,6 +27,7 @@ class TicketsController extends StateNotifier<TicketsState> {
     // Default status for the "home" is open (latest tickets)
     refresh();
     _bindSocket();
+    _bindPolling();
   }
 
   void setStatus(String status) {
@@ -187,6 +189,14 @@ class TicketsController extends StateNotifier<TicketsState> {
     });
   }
 
+  void _bindPolling() {
+    _pollTimer?.cancel();
+    _pollTimer = Timer.periodic(const Duration(seconds: 8), (_) {
+      if (_disposed || _syncing) return;
+      _scheduleSync();
+    });
+  }
+
   @override
   void dispose() {
     _disposed = true;
@@ -201,6 +211,9 @@ class TicketsController extends StateNotifier<TicketsState> {
     } catch (_) {}
     try {
       _syncDebounce?.cancel();
+    } catch (_) {}
+    try {
+      _pollTimer?.cancel();
     } catch (_) {}
     super.dispose();
   }
