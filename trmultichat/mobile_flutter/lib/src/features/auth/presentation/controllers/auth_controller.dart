@@ -36,7 +36,12 @@ class AuthController extends StateNotifier<AuthState> {
       try {
         if (payload['action']?.toString() != 'create') return;
         final msg = (payload['message'] as Map?)?.cast<String, dynamic>();
-        if (msg == null) return;
+        if (msg == null) {
+          // Some backend flows emit ticket-only updates. Poll once to avoid
+          // losing iOS notifications when message payload is partial.
+          unawaited(_pollTicketNotifications());
+          return;
+        }
         final fromMe = _isTruthy(msg['fromMe']);
         if (fromMe) return;
         final rawBody = (msg['body']?.toString() ?? '').trim();
@@ -84,30 +89,35 @@ class AuthController extends StateNotifier<AuthState> {
 
   Future<void> _pollTicketNotifications() async {
     final dio = _ref.read(dioProvider);
-    final statuses = const ['open', 'pending'];
+    const statuses = ['open', 'pending'];
+    const maxPagesPerStatus = 5;
     final latest = <int, ({DateTime at, String msg, String title, String fp})>{};
 
     for (final st in statuses) {
-      try {
-        final res = await dio.get('/tickets', queryParameters: {'status': st, 'pageNumber': 1});
-        final data = res.data;
-        if (data is! List) continue;
-        for (final row in data) {
-          if (row is! Map) continue;
-          final t = row.cast<String, dynamic>();
-          final id = int.tryParse(t['id']?.toString() ?? '') ?? 0;
-          if (id <= 0) continue;
-          final at = _parseDate(t['updatedAt']);
-          if (at == null) continue;
-          final msg = (t['lastMessage']?.toString() ?? '').trim();
-          final title = _ticketTitle(t);
-          final fp = '${at.toIso8601String()}|$msg';
-          final existing = latest[id];
-          if (existing == null || at.isAfter(existing.at)) {
-            latest[id] = (at: at, msg: msg, title: title, fp: fp);
+      for (var page = 1; page <= maxPagesPerStatus; page++) {
+        try {
+          final res = await dio.get('/tickets', queryParameters: {'status': st, 'pageNumber': page});
+          final data = res.data;
+          if (data is! List || data.isEmpty) break;
+          for (final row in data) {
+            if (row is! Map) continue;
+            final t = row.cast<String, dynamic>();
+            final id = int.tryParse(t['id']?.toString() ?? '') ?? 0;
+            if (id <= 0) continue;
+            final at = _parseDate(t['updatedAt']);
+            if (at == null) continue;
+            final msg = (t['lastMessage']?.toString() ?? '').trim();
+            final title = _ticketTitle(t);
+            final fp = '${at.toIso8601String()}|$msg';
+            final existing = latest[id];
+            if (existing == null || at.isAfter(existing.at)) {
+              latest[id] = (at: at, msg: msg, title: title, fp: fp);
+            }
           }
+        } catch (_) {
+          break;
         }
-      } catch (_) {}
+      }
     }
 
     if (latest.isEmpty) return;
