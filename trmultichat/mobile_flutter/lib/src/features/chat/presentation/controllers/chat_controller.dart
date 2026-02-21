@@ -69,10 +69,19 @@ class ChatController extends StateNotifier<ChatState> {
       try {
         if (payload['action']?.toString() != 'create') return;
         final msgMap = (payload['message'] as Map?)?.cast<String, dynamic>();
-        if (msgMap == null) return;
-        final incoming = _fromSocketJson(msgMap);
-        if (incoming.ticketId != ticketId) return;
-        _mergeIncoming(incoming);
+        if (msgMap != null) {
+          final incoming = _fromSocketJson(msgMap);
+          if (incoming.ticketId == ticketId) {
+            _mergeIncoming(incoming);
+          }
+          return;
+        }
+        // Some backend flows emit only `ticket` in appMessage; refresh current chat.
+        final rawTicket = (payload['ticket'] as Map?)?.cast<String, dynamic>();
+        final incomingTicketId = int.tryParse(rawTicket?['id']?.toString() ?? '') ?? 0;
+        if (incomingTicketId == ticketId) {
+          _silentRefresh();
+        }
       } catch (_) {}
     });
 

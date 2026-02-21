@@ -155,24 +155,26 @@ class TicketsController extends StateNotifier<TicketsState> {
           _upsertTicketFromSocketMap(rawTicket);
         }
         final msg = (payload['message'] as Map?)?.cast<String, dynamic>();
-        if (msg == null) return;
-        final ticketId = int.tryParse(msg['ticketId']?.toString() ?? '') ?? 0;
-        if (ticketId <= 0) return;
-        final body = (msg['body']?.toString() ?? '').trim();
-        final createdAt = msg['createdAt']?.toString();
-        final cur = state.items;
-        final idx = cur.indexWhere((t) => t.id == ticketId);
-        if (idx >= 0) {
-          final item = cur[idx];
-          final nextItem = item.copyWith(
-            lastMessage: body.isEmpty ? item.lastMessage : body,
-            updatedAt: _safeParseDate(createdAt, item.updatedAt),
-          );
-          final next = [...cur];
-          next[idx] = nextItem;
-          _sortByUpdatedDesc(next);
-          if (_disposed) return;
-          state = state.copyWith(items: next);
+        if (msg != null) {
+          final ticketId = int.tryParse(msg['ticketId']?.toString() ?? '') ?? 0;
+          if (ticketId > 0) {
+            final body = (msg['body']?.toString() ?? '').trim();
+            final createdAt = msg['createdAt']?.toString();
+            final cur = state.items;
+            final idx = cur.indexWhere((t) => t.id == ticketId);
+            if (idx >= 0) {
+              final item = cur[idx];
+              final nextItem = item.copyWith(
+                lastMessage: body.isEmpty ? item.lastMessage : body,
+                updatedAt: _safeParseDate(createdAt, item.updatedAt),
+              );
+              final next = [...cur];
+              next[idx] = nextItem;
+              _sortByUpdatedDesc(next);
+              if (_disposed) return;
+              state = state.copyWith(items: next);
+            }
+          }
         }
         _scheduleSync();
       } catch (_) {}

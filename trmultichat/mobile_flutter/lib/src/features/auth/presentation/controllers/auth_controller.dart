@@ -14,6 +14,7 @@ class AuthController extends StateNotifier<AuthState> {
   final AuthRepository _repo;
   final Ref _ref;
   StreamSubscription? _msgSub;
+  StreamSubscription? _socketRecreatedSub;
   bool _bootstrapped = false;
 
   AuthController(this._repo, this._ref) : super(AuthState.initial()) {
@@ -33,11 +34,22 @@ class AuthController extends StateNotifier<AuthState> {
         if (payload['action']?.toString() != 'create') return;
         final msg = (payload['message'] as Map?)?.cast<String, dynamic>();
         if (msg == null) return;
-        final fromMe = msg['fromMe'] == true;
+        final fromMe = _isTruthy(msg['fromMe']);
         if (fromMe) return;
-        final body = (msg['body']?.toString() ?? '').trim();
+        final rawBody = (msg['body']?.toString() ?? '').trim();
+        final mediaUrl = (msg['mediaUrl']?.toString() ?? '').trim();
+        final mediaType = (msg['mediaType']?.toString() ?? '').trim().toLowerCase();
+        final body = rawBody.isNotEmpty
+            ? rawBody
+            : (mediaUrl.isNotEmpty
+                ? (mediaType.startsWith('image') ? 'Nova imagem recebida' : 'Novo arquivo recebido')
+                : '');
         if (body.isEmpty) return;
-        final title = (msg['contactName']?.toString() ?? '').trim().isNotEmpty ? msg['contactName']!.toString() : 'Nova mensagem';
+        final contactName = ((msg['contact'] as Map?)?['name']?.toString() ?? '').trim();
+        final contactNameFallback = (msg['contactName']?.toString() ?? '').trim();
+        final title = contactName.isNotEmpty
+            ? contactName
+            : (contactNameFallback.isNotEmpty ? contactNameFallback : 'Nova mensagem');
         _ref.read(localNotificationsProvider).show(
               title: title,
               body: body,
@@ -45,6 +57,12 @@ class AuthController extends StateNotifier<AuthState> {
             );
       } catch (_) {}
     });
+  }
+
+  bool _isTruthy(dynamic v) {
+    if (v == true) return true;
+    final s = (v?.toString() ?? '').trim().toLowerCase();
+    return s == '1' || s == 'true' || s == 'yes';
   }
 
   Future<void> _bootstrap() async {
@@ -62,7 +80,11 @@ class AuthController extends StateNotifier<AuthState> {
         try {
           _msgSub?.cancel();
         } catch (_) {}
+        try {
+          _socketRecreatedSub?.cancel();
+        } catch (_) {}
         _msgSub = null;
+        _socketRecreatedSub = null;
         return;
       }
 
@@ -139,6 +161,13 @@ class AuthController extends StateNotifier<AuthState> {
       }
     } catch (_) {}
     _bindGlobalMessageNotifications(user.companyId);
+    try {
+      _socketRecreatedSub?.cancel();
+    } catch (_) {}
+    _socketRecreatedSub = _ref.read(socketClientProvider).socketRecreatedStream.listen((_) {
+      final cid = state.user?.companyId ?? user.companyId;
+      _bindGlobalMessageNotifications(cid);
+    });
   }
 
   Future<void> login({required String email, required String password}) async {
@@ -157,7 +186,11 @@ class AuthController extends StateNotifier<AuthState> {
     try {
       _msgSub?.cancel();
     } catch (_) {}
+    try {
+      _socketRecreatedSub?.cancel();
+    } catch (_) {}
     _msgSub = null;
+    _socketRecreatedSub = null;
     state = state.copyWith(
       loading: false,
       isAuthenticated: false,
@@ -173,7 +206,11 @@ class AuthController extends StateNotifier<AuthState> {
     try {
       _msgSub?.cancel();
     } catch (_) {}
+    try {
+      _socketRecreatedSub?.cancel();
+    } catch (_) {}
     _msgSub = null;
+    _socketRecreatedSub = null;
     super.dispose();
   }
 }
