@@ -340,6 +340,13 @@ router.put("/:id", async (req, res) => {
   const tenantId = extractTenantIdFromAuth(req.headers.authorization as string);
   if (!tenantId) return res.status(401).json({ error: true, message: "missing tenantId" });
   if (!id) return res.status(400).json({ error: true, message: "invalid id" });
+  const forceRestart =
+    String((req.query as any)?.forceRestart || (req.query as any)?.force || "")
+      .trim()
+      .toLowerCase() === "1" ||
+    String((req.query as any)?.forceRestart || (req.query as any)?.force || "")
+      .trim()
+      .toLowerCase() === "true";
 
   // Refresh QR (Baileys)
   try {
@@ -371,9 +378,10 @@ router.put("/:id", async (req, res) => {
     const shouldForceNewQr = !hasAuthCreds || lastDiscCode === 401 || lastDiscCode === 440;
 
     // If already connected and we have auth, do NOT force a new QR.
-    // Also avoid restarting a running in-memory socket on refresh.
+    // Also avoid restarting a running in-memory socket on regular refresh.
+    // But allow explicit forced restart (useful when session is "connected" but not receiving messages).
     const hasRunningSocket = Boolean(getInlineSock(id));
-    if (isConnected && hasAuthCreds && hasRunningSocket) {
+    if (!forceRestart && isConnected && hasAuthCreds && hasRunningSocket) {
       const sessNow: any = getInlineSnapshot(id) || snap || {};
       return res.json({
         id,
@@ -385,7 +393,12 @@ router.put("/:id", async (req, res) => {
     }
 
     // Start / refresh the inline manager (this one ingests incoming messages).
-    await startOrRefreshInlineSession({ companyId: tenantId, whatsappId: id, forceNewQr: shouldForceNewQr });
+    await startOrRefreshInlineSession({
+      companyId: tenantId,
+      whatsappId: id,
+      // On forced restart, keep auth/creds when possible to avoid unnecessary QR re-scan.
+      forceNewQr: forceRestart ? false : shouldForceNewQr
+    });
 
     const sess: any = getInlineSnapshot(id) || {};
     return res.json({
