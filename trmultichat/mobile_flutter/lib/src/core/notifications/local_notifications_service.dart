@@ -4,6 +4,7 @@ class LocalNotificationsService {
   final FlutterLocalNotificationsPlugin _plugin = FlutterLocalNotificationsPlugin();
   bool _initialized = false;
   bool _permissionsRequested = false;
+  int _notifSeq = 0;
 
   Future<void> init() async {
     if (_initialized) return;
@@ -22,12 +23,20 @@ class LocalNotificationsService {
 
   Future<void> requestPermissions() async {
     if (_permissionsRequested) return;
+    var grantedAny = false;
     try {
-      // flutter_local_notifications v19.x uses the iOS-specific implementation type.
-      final ios = _plugin.resolvePlatformSpecificImplementation<IOSFlutterLocalNotificationsPlugin>();
-      await ios?.requestPermissions(alert: true, badge: true, sound: true);
+      final darwin = _plugin.resolvePlatformSpecificImplementation<DarwinFlutterLocalNotificationsPlugin>();
+      final granted = await darwin?.requestPermissions(alert: true, badge: true, sound: true);
+      if (granted == true) grantedAny = true;
     } catch (_) {}
-    _permissionsRequested = true;
+    try {
+      // Fallback for environments exposing only iOS-specific implementation.
+      final ios = _plugin.resolvePlatformSpecificImplementation<IOSFlutterLocalNotificationsPlugin>();
+      final granted = await ios?.requestPermissions(alert: true, badge: true, sound: true);
+      if (granted == true) grantedAny = true;
+    } catch (_) {}
+    // Keep trying on later calls when permission was not granted yet.
+    _permissionsRequested = grantedAny;
   }
 
   Future<void> warmup() async {
@@ -64,9 +73,10 @@ class LocalNotificationsService {
     );
 
     const details = NotificationDetails(android: androidDetails, iOS: iosDetails);
+    final id = (DateTime.now().microsecondsSinceEpoch + (_notifSeq++ % 997)) & 0x7fffffff;
 
     await _plugin.show(
-      DateTime.now().millisecondsSinceEpoch.remainder(1 << 31),
+      id,
       title,
       body,
       details,

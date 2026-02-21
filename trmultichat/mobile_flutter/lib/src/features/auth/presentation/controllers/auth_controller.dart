@@ -17,6 +17,7 @@ class AuthController extends StateNotifier<AuthState> {
   StreamSubscription? _socketRecreatedSub;
   Timer? _notifPollTimer;
   final Map<int, DateTime> _knownTicketUpdates = <int, DateTime>{};
+  final Map<int, String> _knownTicketFingerprints = <int, String>{};
   bool _bootstrapped = false;
 
   AuthController(this._repo, this._ref) : super(AuthState.initial()) {
@@ -84,7 +85,7 @@ class AuthController extends StateNotifier<AuthState> {
   Future<void> _pollTicketNotifications() async {
     final dio = _ref.read(dioProvider);
     final statuses = const ['open', 'pending'];
-    final latest = <int, ({DateTime at, String msg, String title})>{};
+    final latest = <int, ({DateTime at, String msg, String title, String fp})>{};
 
     for (final st in statuses) {
       try {
@@ -100,9 +101,10 @@ class AuthController extends StateNotifier<AuthState> {
           if (at == null) continue;
           final msg = (t['lastMessage']?.toString() ?? '').trim();
           final title = _ticketTitle(t);
+          final fp = '${at.toIso8601String()}|$msg';
           final existing = latest[id];
           if (existing == null || at.isAfter(existing.at)) {
-            latest[id] = (at: at, msg: msg, title: title);
+            latest[id] = (at: at, msg: msg, title: title, fp: fp);
           }
         }
       } catch (_) {}
@@ -114,13 +116,17 @@ class AuthController extends StateNotifier<AuthState> {
     if (_knownTicketUpdates.isEmpty) {
       for (final e in latest.entries) {
         _knownTicketUpdates[e.key] = e.value.at;
+        _knownTicketFingerprints[e.key] = e.value.fp;
       }
       return;
     }
 
     for (final e in latest.entries) {
       final old = _knownTicketUpdates[e.key];
-      if (old != null && e.value.at.isAfter(old)) {
+      final oldFp = _knownTicketFingerprints[e.key];
+      final changedAt = old != null && e.value.at.isAfter(old);
+      final changedPayload = oldFp != null && oldFp != e.value.fp;
+      if (old != null && (changedAt || changedPayload)) {
         final body = e.value.msg.isNotEmpty ? e.value.msg : 'Nova atividade no atendimento';
         try {
           await _ref.read(localNotificationsProvider).show(
@@ -131,6 +137,7 @@ class AuthController extends StateNotifier<AuthState> {
         } catch (_) {}
       }
       _knownTicketUpdates[e.key] = e.value.at;
+      _knownTicketFingerprints[e.key] = e.value.fp;
     }
   }
 
@@ -142,7 +149,7 @@ class AuthController extends StateNotifier<AuthState> {
   }
 
   void _startNotifPolling() {
-    _notifPollTimer ??= Timer.periodic(const Duration(seconds: 8), (_) {
+    _notifPollTimer ??= Timer.periodic(const Duration(seconds: 4), (_) {
       _pollTicketNotifications();
     });
   }
@@ -173,6 +180,7 @@ class AuthController extends StateNotifier<AuthState> {
         } catch (_) {}
         _stopNotifPolling();
         _knownTicketUpdates.clear();
+        _knownTicketFingerprints.clear();
         _msgSub = null;
         _socketRecreatedSub = null;
         return;
@@ -282,6 +290,7 @@ class AuthController extends StateNotifier<AuthState> {
     } catch (_) {}
     _stopNotifPolling();
     _knownTicketUpdates.clear();
+    _knownTicketFingerprints.clear();
     _msgSub = null;
     _socketRecreatedSub = null;
     state = state.copyWith(
@@ -304,6 +313,7 @@ class AuthController extends StateNotifier<AuthState> {
     } catch (_) {}
     _stopNotifPolling();
     _knownTicketUpdates.clear();
+    _knownTicketFingerprints.clear();
     _msgSub = null;
     _socketRecreatedSub = null;
     super.dispose();
