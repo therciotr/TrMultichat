@@ -15,7 +15,6 @@ class AuthController extends StateNotifier<AuthState> {
   final Ref _ref;
   StreamSubscription? _msgSub;
   StreamSubscription? _socketRecreatedSub;
-  StreamSubscription? _socketConnectedSub;
   Timer? _notifPollTimer;
   final Map<int, DateTime> _knownTicketUpdates = <int, DateTime>{};
   bool _bootstrapped = false;
@@ -149,21 +148,9 @@ class AuthController extends StateNotifier<AuthState> {
   }
 
   void _bindNotificationFallbackPolling() {
-    try {
-      _socketConnectedSub?.cancel();
-    } catch (_) {}
-    final socket = _ref.read(socketClientProvider);
-    _socketConnectedSub = socket.connectedStream.listen((connected) {
-      if (connected) {
-        _stopNotifPolling();
-      } else {
-        _startNotifPolling();
-      }
-    });
-
-    if (!socket.isConnected) {
-      _startNotifPolling();
-    }
+    _startNotifPolling();
+    // Trigger one immediate cycle on bind to reduce time-to-first-alert.
+    _pollTicketNotifications();
   }
 
   Future<void> _bootstrap() async {
@@ -184,14 +171,10 @@ class AuthController extends StateNotifier<AuthState> {
         try {
           _socketRecreatedSub?.cancel();
         } catch (_) {}
-        try {
-          _socketConnectedSub?.cancel();
-        } catch (_) {}
         _stopNotifPolling();
         _knownTicketUpdates.clear();
         _msgSub = null;
         _socketRecreatedSub = null;
-        _socketConnectedSub = null;
         return;
       }
 
@@ -297,14 +280,10 @@ class AuthController extends StateNotifier<AuthState> {
     try {
       _socketRecreatedSub?.cancel();
     } catch (_) {}
-    try {
-      _socketConnectedSub?.cancel();
-    } catch (_) {}
     _stopNotifPolling();
     _knownTicketUpdates.clear();
     _msgSub = null;
     _socketRecreatedSub = null;
-    _socketConnectedSub = null;
     state = state.copyWith(
       loading: false,
       isAuthenticated: false,
@@ -323,14 +302,10 @@ class AuthController extends StateNotifier<AuthState> {
     try {
       _socketRecreatedSub?.cancel();
     } catch (_) {}
-    try {
-      _socketConnectedSub?.cancel();
-    } catch (_) {}
     _stopNotifPolling();
     _knownTicketUpdates.clear();
     _msgSub = null;
     _socketRecreatedSub = null;
-    _socketConnectedSub = null;
     super.dispose();
   }
 }
