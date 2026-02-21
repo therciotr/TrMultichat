@@ -44,25 +44,19 @@ class AuthController extends StateNotifier<AuthState> {
         }
         final fromMe = _isTruthy(msg['fromMe']);
         if (fromMe) return;
-        final rawBody = (msg['body']?.toString() ?? '').trim();
-        final mediaUrl = (msg['mediaUrl']?.toString() ?? '').trim();
-        final mediaType = (msg['mediaType']?.toString() ?? '').trim().toLowerCase();
-        final body = rawBody.isNotEmpty
-            ? rawBody
-            : (mediaUrl.isNotEmpty
-                ? (mediaType.startsWith('image') ? 'Nova imagem recebida' : 'Novo arquivo recebido')
-                : '');
-        if (body.isEmpty) return;
+        final body = _notificationBodyFromMessage(msg);
         final contactName = ((msg['contact'] as Map?)?['name']?.toString() ?? '').trim();
         final contactNameFallback = (msg['contactName']?.toString() ?? '').trim();
         final title = contactName.isNotEmpty
             ? contactName
             : (contactNameFallback.isNotEmpty ? contactNameFallback : 'Nova mensagem');
-        _ref.read(localNotificationsProvider).show(
-              title: title,
-              body: body,
-              payload: 'ticket:${msg['ticketId'] ?? ''}',
-            );
+        unawaited(
+          _showLocalNotification(
+            title: title,
+            body: body,
+            payload: 'ticket:${msg['ticketId'] ?? ''}',
+          ),
+        );
       } catch (_) {}
     });
   }
@@ -85,6 +79,49 @@ class AuthController extends StateNotifier<AuthState> {
     if (name.isNotEmpty) return name;
     final id = int.tryParse(t['id']?.toString() ?? '') ?? 0;
     return id > 0 ? 'Ticket #$id' : 'Nova mensagem';
+  }
+
+  String _notificationBodyFromMessage(Map<String, dynamic> msg) {
+    final rawBody = (msg['body']?.toString() ?? '').trim();
+    if (rawBody.isNotEmpty) return rawBody;
+    final altBody = (msg['message']?.toString() ?? '').trim();
+    if (altBody.isNotEmpty) return altBody;
+    final textBody = (msg['text']?.toString() ?? '').trim();
+    if (textBody.isNotEmpty) return textBody;
+    final mediaUrl = (msg['mediaUrl']?.toString() ?? '').trim();
+    final mediaType = (msg['mediaType']?.toString() ?? '').trim().toLowerCase();
+    if (mediaUrl.isNotEmpty) {
+      if (mediaType.startsWith('image')) return 'Nova imagem recebida';
+      if (mediaType.startsWith('audio')) return 'Novo audio recebido';
+      if (mediaType.startsWith('video')) return 'Novo video recebido';
+      return 'Novo arquivo recebido';
+    }
+    // Some backend payloads are partial; never skip the alert entirely.
+    return 'Nova mensagem recebida';
+  }
+
+  Future<void> _showLocalNotification({
+    required String title,
+    required String body,
+    String? payload,
+  }) async {
+    try {
+      await _ref.read(localNotificationsProvider).show(
+            title: title,
+            body: body,
+            payload: payload,
+          );
+    } catch (_) {
+      // Retry after warmup to recover from init/permission races in iOS builds.
+      try {
+        await _ref.read(localNotificationsProvider).warmup();
+        await _ref.read(localNotificationsProvider).show(
+              title: title,
+              body: body,
+              payload: payload,
+            );
+      } catch (_) {}
+    }
   }
 
   Future<void> _pollTicketNotifications() async {
@@ -139,11 +176,11 @@ class AuthController extends StateNotifier<AuthState> {
       if (old != null && (changedAt || changedPayload)) {
         final body = e.value.msg.isNotEmpty ? e.value.msg : 'Nova atividade no atendimento';
         try {
-          await _ref.read(localNotificationsProvider).show(
-                title: e.value.title,
-                body: body,
-                payload: 'ticket:${e.key}',
-              );
+          await _showLocalNotification(
+            title: e.value.title,
+            body: body,
+            payload: 'ticket:${e.key}',
+          );
         } catch (_) {}
       }
       _knownTicketUpdates[e.key] = e.value.at;
