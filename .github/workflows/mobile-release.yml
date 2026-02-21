@@ -72,13 +72,13 @@ jobs:
           GRADLE_OPTS: -Dorg.gradle.vfs.watch=false
         run: flutter build appbundle --release --build-number=${{ github.run_number }}
 
-      - name: Upload to Google Play (production)
+      - name: Upload to Google Play (internal)
         uses: r0adkll/upload-google-play@v1
         with:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
           packageName: com.trmultichat.mobile
           releaseFiles: trmultichat/mobile_flutter/build/app/outputs/bundle/release/app-release.aab
-          track: production
+          track: internal
           status: draft
 
   ios_release:
