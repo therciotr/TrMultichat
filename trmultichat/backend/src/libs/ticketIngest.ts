@@ -410,6 +410,31 @@ type ContactRow = {
   whatsappId: number | null;
 };
 
+function normalizeNameForCompare(s: string): string {
+  return String(s || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+}
+
+function isInternalLikeName(name: string): boolean {
+  const n = normalizeNameForCompare(name);
+  if (!n) return false;
+  return (
+    n.includes("thercio tr tecnologias") ||
+    n.includes("rec trtecnologias") ||
+    n.includes("trtecnologias") ||
+    n.includes("tr tecnologia")
+  );
+}
+
+function pickSafeContactName(inputName: string, fallbackNumber: string): string {
+  const s = String(inputName || "").trim();
+  if (!s) return fallbackNumber;
+  return s;
+}
+
 type TicketRow = {
   id: number;
   status: string;
@@ -582,17 +607,44 @@ async function findOrCreateContact(opts: {
   whatsappId: number;
   jid: string;
   name?: string;
+  fromMe?: boolean;
   profilePicUrl?: string | null;
 }): Promise<ContactRow> {
   const { number, isGroup } = normalizeNumberFromJid(opts.jid);
-  const name = String(opts.name || number).trim() || number;
+  const incomingName = pickSafeContactName(String(opts.name || "").trim(), number);
 
   const existing = await pgQuery<ContactRow>(
     'SELECT id, name, number, "profilePicUrl", "companyId", "whatsappId" FROM "Contacts" WHERE number = $1 AND "companyId" = $2 LIMIT 1',
     [number, opts.companyId]
   );
-  if (existing[0]) return existing[0];
+  if (existing[0]) {
+    const cur = existing[0];
+    // Only trust names from inbound customer messages.
+    if (!opts.fromMe) {
+      const curName = String(cur.name || "").trim();
+      const shouldRefreshName =
+        !curName ||
+        curName === cur.number ||
+        isInternalLikeName(curName);
+      if (shouldRefreshName && incomingName && incomingName != curName) {
+        try {
+          const updated = await pgQuery<ContactRow>(
+            `
+              UPDATE "Contacts"
+              SET name = $1, "updatedAt" = NOW()
+              WHERE id = $2 AND "companyId" = $3
+              RETURNING id, name, number, "profilePicUrl", "companyId", "whatsappId"
+            `,
+            [incomingName, cur.id, opts.companyId]
+          );
+          if (updated[0]) return updated[0];
+        } catch {}
+      }
+    }
+    return cur;
+  }
 
+  const name = opts.fromMe ? number : incomingName;
   const created = await pgQuery<ContactRow>(
     `
       INSERT INTO "Contacts"
@@ -766,7 +818,8 @@ export async function ingestBaileysMessage(opts: {
     companyId,
     whatsappId,
     jid: remoteJid,
-    name: pushName || undefined
+    name: pushName || undefined,
+    fromMe
   });
 
   const { isGroup } = normalizeNumberFromJid(remoteJid);
