@@ -438,6 +438,18 @@ function normalizeNumberFromJid(jid: string): { number: string; isGroup: boolean
   return { number, isGroup };
 }
 
+function resolveCanonicalRemoteJid(msg: any): string {
+  const raw = String(msg?.key?.remoteJid || "").trim();
+  const alt = String(msg?.key?.remoteJidAlt || "").trim();
+  const mode = String(msg?.key?.addressingMode || "").trim().toLowerCase();
+  if (!raw) return alt || raw;
+  // LID addressing can point to ephemeral identifiers; prefer the phone JID when available.
+  if ((raw.endsWith("@lid") || mode === "lid") && alt.includes("@")) {
+    return alt;
+  }
+  return raw;
+}
+
 export function extractTextBody(msg: any): string {
   const m = msg?.message || {};
   return (
@@ -727,7 +739,7 @@ export async function ingestBaileysMessage(opts: {
   const { companyId, whatsappId, msg, sock } = opts;
 
   // ignore empty or protocol/status messages
-  const remoteJid = String(msg?.key?.remoteJid || "");
+  const remoteJid = resolveCanonicalRemoteJid(msg);
   if (!remoteJid || remoteJid === "status@broadcast") return;
 
   const messageId =

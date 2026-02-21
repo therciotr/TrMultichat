@@ -340,15 +340,25 @@ router.post("/:ticketId", authMiddleware, upload.any(), async (req, res) => {
     });
   }
 
-  // Prefer the ticket's last known remoteJid (more reliable than reformatting number)
+  // Prefer the ticket's last known remoteJid (more reliable than reformatting number).
+  // If the last JID is in LID mode, use remoteJidAlt (phone JID) when available.
   let remoteJid = `${String(contact.number).replace(/\D/g, "")}@s.whatsapp.net`;
   try {
-    const r = await pgQuery<{ remoteJid: string }>(
-      `SELECT "remoteJid" FROM "Messages" WHERE "ticketId" = $1 AND "companyId" = $2 ORDER BY "createdAt" DESC LIMIT 1`,
+    const r = await pgQuery<{ remoteJid: string; dataJson: string | null }>(
+      `SELECT "remoteJid", "dataJson" FROM "Messages" WHERE "ticketId" = $1 AND "companyId" = $2 ORDER BY "createdAt" DESC LIMIT 1`,
       [ticketId, companyId]
     );
     const last = String(r?.[0]?.remoteJid || "").trim();
-    if (last) remoteJid = last;
+    if (last) {
+      remoteJid = last;
+      if (last.endsWith("@lid")) {
+        try {
+          const dj = JSON.parse(String(r?.[0]?.dataJson || "{}"));
+          const alt = String(dj?.key?.remoteJidAlt || "").trim();
+          if (alt.includes("@")) remoteJid = alt;
+        } catch {}
+      }
+    }
   } catch {}
 
   const createdIds: string[] = [];
