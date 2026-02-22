@@ -46,6 +46,15 @@ trmultichat.zip
 # Mobile signing and local release secrets
 trmultichat/mobile_flutter/android/key.properties
 trmultichat/mobile_flutter/android/app/upload-keystore.jks
+trmultichat/mobile_flutter/android/app/upload-keystore.txt
+trmultichat/mobile_flutter/**/*.p8
+trmultichat/mobile_flutter/**/*.p12
+trmultichat/mobile_flutter/**/*.p12.base64.txt
+trmultichat/mobile_flutter/**/firebase-adminsdk-*.json
+trmultichat/mobile_flutter/ios/Runner/*firebase-adminsdk*.json
+trmultichat/mobile_flutter/.flutter_sdk/
+trmultichat/mobile_flutter/.gradle-home/
+ios_distribution_trmultichat.p12
 trmultichat/mobile_flutter/secrets/**
 !trmultichat/mobile_flutter/secrets/README.md
 !trmultichat/mobile_flutter/secrets/android/.gitkeep

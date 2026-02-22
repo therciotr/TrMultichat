@@ -105,7 +105,7 @@ class ChatController extends StateNotifier<ChatState> {
   }
 
   void _startPolling() {
-    _pollTimer ??= Timer.periodic(const Duration(seconds: 6), (_) async {
+    _pollTimer ??= Timer.periodic(const Duration(seconds: 2), (_) async {
       await _silentRefresh();
     });
   }

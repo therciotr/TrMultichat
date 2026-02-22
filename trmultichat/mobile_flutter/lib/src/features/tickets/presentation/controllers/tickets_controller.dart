@@ -191,7 +191,7 @@ class TicketsController extends StateNotifier<TicketsState> {
 
   void _bindPolling() {
     _pollTimer?.cancel();
-    _pollTimer = Timer.periodic(const Duration(seconds: 8), (_) {
+    _pollTimer = Timer.periodic(const Duration(seconds: 4), (_) {
       if (_disposed || _syncing) return;
       _scheduleSync();
     });
