@@ -80,6 +80,12 @@ class AgendaRemoteDataSource {
     return AgendaEventDto.fromJson(data);
   }
 
+  Future<void> deleteEvent(String eventId) async {
+    final id = eventId.trim();
+    if (id.isEmpty) return;
+    await _dio.delete('/agenda/events/$id');
+  }
+
   Future<List<AgendaAttachment>> listAttachments(String eventId) async {
     final res = await _dio.get('/agenda/events/$eventId/attachments');
     final data = (res.data as Map).cast<String, dynamic>();

@@ -94,6 +94,27 @@ class AgendaController extends StateNotifier<AgendaState> {
     }
   }
 
+  Future<bool> deleteEvent(String eventId) async {
+    final id = eventId.trim();
+    if (id.isEmpty) {
+      state = state.copyWith(error: 'Evento inválido para exclusão');
+      return false;
+    }
+
+    state = state.copyWith(loading: true, error: null);
+    try {
+      await _remote.deleteEvent(id);
+      final list = await _remote.list(userId: _selectedUserId);
+      if (_disposed) return false;
+      state = state.copyWith(loading: false, items: list, error: null);
+      return true;
+    } catch (_) {
+      if (_disposed) return false;
+      state = state.copyWith(loading: false, error: 'Falha ao excluir evento');
+      return false;
+    }
+  }
+
   void _bindSocket() {
     final companyId = _ref.read(authControllerProvider).user?.companyId ?? 0;
     if (companyId <= 0) return;

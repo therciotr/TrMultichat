@@ -96,6 +96,44 @@ class _AgendaScreenState extends ConsumerState<AgendaScreen> {
     }
   }
 
+  Future<bool> _confirmAndDeleteEvent(
+    BuildContext context,
+    AgendaController ctrl,
+    String eventId,
+  ) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Excluir evento'),
+        content: const Text('Deseja excluir este evento?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Excluir'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return false;
+
+    final deleted = await ctrl.deleteEvent(eventId);
+    if (!mounted) return false;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          deleted
+              ? 'Evento excluído com sucesso.'
+              : 'Não foi possível excluir o evento.',
+        ),
+      ),
+    );
+    return deleted;
+  }
+
   @override
   Widget build(BuildContext context) {
     final st = ref.watch(agendaControllerProvider);
@@ -271,8 +309,35 @@ class _AgendaScreenState extends ConsumerState<AgendaScreen> {
                     final timeLabel = ev.allDay
                         ? 'Dia inteiro'
                         : '${_fmtTime(start)} - ${_fmtTime(end)}';
-                    return InkWell(
-                        onTap: () => context.push('/agenda/event', extra: ev),
+                    return Dismissible(
+                        key: ValueKey('agenda-event-${ev.id}-${ev.seriesId}'),
+                        direction: DismissDirection.endToStart,
+                        confirmDismiss: (_) async => _confirmAndDeleteEvent(
+                            context, ctrl, ev.seriesId),
+                        background: Container(
+                          margin: const EdgeInsets.only(bottom: 10),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.errorContainer,
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          alignment: Alignment.centerRight,
+                          padding: const EdgeInsets.only(right: 16),
+                          child: Icon(Icons.delete_outline,
+                              color: Theme.of(context).colorScheme.onErrorContainer),
+                        ),
+                        child: InkWell(
+                        onTap: () async {
+                          final deleted =
+                              await context.push('/agenda/event', extra: ev);
+                          if (deleted == true && mounted) {
+                            await ctrl.refresh();
+                            if (!mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                  content: Text('Evento excluído com sucesso.')),
+                            );
+                          }
+                        },
                         borderRadius: BorderRadius.circular(16),
                         child: Padding(
                           padding: const EdgeInsets.only(bottom: 10),
@@ -339,7 +404,7 @@ class _AgendaScreenState extends ConsumerState<AgendaScreen> {
                               ],
                             ),
                           ),
-                        ));
+                        )));
                   }),
                 ],
               ),

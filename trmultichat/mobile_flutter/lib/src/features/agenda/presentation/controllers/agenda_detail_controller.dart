@@ -63,5 +63,23 @@ class AgendaDetailController extends StateNotifier<AgendaDetailState> {
       _cancelToken?.cancel('user_cancel');
     } catch (_) {}
   }
+
+  Future<bool> deleteEvent() async {
+    final id = eventId.trim();
+    if (id.isEmpty) {
+      state = state.copyWith(error: 'Evento inválido para exclusão');
+      return false;
+    }
+
+    state = state.copyWith(loading: true, error: null);
+    try {
+      await _remote.deleteEvent(id);
+      state = state.copyWith(loading: false);
+      return true;
+    } catch (_) {
+      state = state.copyWith(loading: false, error: 'Falha ao excluir evento');
+      return false;
+    }
+  }
 }
 

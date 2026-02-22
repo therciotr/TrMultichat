@@ -17,6 +17,43 @@ class AgendaDetailScreen extends ConsumerWidget {
   final AgendaEvent event;
   const AgendaDetailScreen({super.key, required this.event});
 
+  Future<void> _confirmAndDelete(
+    BuildContext context,
+    AgendaDetailController ctrl,
+  ) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Excluir evento'),
+        content: const Text('Deseja excluir este evento?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Excluir'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+
+    final deleted = await ctrl.deleteEvent();
+    if (!context.mounted) return;
+    if (deleted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Evento excluído com sucesso.')),
+      );
+      Navigator.of(context).pop(true);
+      return;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Não foi possível excluir o evento.')),
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final st = ref.watch(agendaDetailProvider(event));
@@ -30,7 +67,18 @@ class AgendaDetailScreen extends ConsumerWidget {
             '${end.hour.toString().padLeft(2, '0')}:${end.minute.toString().padLeft(2, '0')}';
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Evento')),
+      appBar: AppBar(
+        title: const Text('Evento'),
+        actions: [
+          IconButton(
+            tooltip: 'Excluir evento',
+            onPressed: (st.loading || st.uploading)
+                ? null
+                : () => _confirmAndDelete(context, ctrl),
+            icon: const Icon(Icons.delete_outline),
+          ),
+        ],
+      ),
       body: SafeArea(
         child: Column(
           children: [
