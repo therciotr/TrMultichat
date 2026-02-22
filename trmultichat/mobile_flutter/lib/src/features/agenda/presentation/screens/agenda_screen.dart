@@ -142,7 +142,13 @@ class _AgendaScreenState extends ConsumerState<AgendaScreen> {
         _users.any((u) => (u['id'] as num?)?.toInt() == _selectedUserId);
 
     final selectedEvents = st.items
-        .where((e) => _isSameDay(e.startAt, _selectedDay))
+        .where((e) {
+          // Backend may expand recurring occurrences as synthetic ids (baseId__occurrence).
+          // For all-day cards in day view, keep only the base event to avoid day+1 bleed.
+          final isSyntheticOccurrence = e.id.contains('__');
+          if (e.allDay && isSyntheticOccurrence) return false;
+          return _isSameDay(e.startAt, _selectedDay);
+        })
         .toList()
       ..sort((a, b) => a.startAt.compareTo(b.startAt));
 
