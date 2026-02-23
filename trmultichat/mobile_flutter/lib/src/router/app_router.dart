@@ -17,10 +17,13 @@ import '../features/announcements/presentation/screens/announcement_detail_scree
 import '../features/agenda/presentation/screens/agenda_screen.dart';
 import '../features/agenda/presentation/screens/agenda_detail_screen.dart';
 import '../features/agenda/domain/entities/agenda_event.dart';
+import '../features/web_modules/presentation/screens/web_module_screen.dart';
 
 final _rootKey = GlobalKey<NavigatorState>(debugLabel: 'root');
 
-final appRouterProvider = Provider<GoRouter Function({required bool isAuthed, required bool isBootstrapping})>((ref) {
+final appRouterProvider = Provider<
+    GoRouter Function(
+        {required bool isAuthed, required bool isBootstrapping})>((ref) {
   return ({required bool isAuthed, required bool isBootstrapping}) {
     return GoRouter(
       navigatorKey: _rootKey,
@@ -29,7 +32,8 @@ final appRouterProvider = Provider<GoRouter Function({required bool isAuthed, re
         GoRoute(path: '/splash', builder: (ctx, st) => const SplashScreen()),
         GoRoute(path: '/login', builder: (ctx, st) => const LoginScreen()),
         StatefulShellRoute.indexedStack(
-          builder: (context, state, navigationShell) => ShellScaffold(navigationShell: navigationShell),
+          builder: (context, state, navigationShell) =>
+              ShellScaffold(navigationShell: navigationShell),
           branches: [
             StatefulShellBranch(
               routes: [
@@ -56,7 +60,8 @@ final appRouterProvider = Provider<GoRouter Function({required bool isAuthed, re
                   routes: [
                     GoRoute(
                       path: ':id',
-                      builder: (ctx, st) => ContactDetailScreen(id: int.tryParse(st.pathParameters['id'] ?? '') ?? 0),
+                      builder: (ctx, st) => ContactDetailScreen(
+                          id: int.tryParse(st.pathParameters['id'] ?? '') ?? 0),
                     ),
                   ],
                 ),
@@ -70,7 +75,8 @@ final appRouterProvider = Provider<GoRouter Function({required bool isAuthed, re
                   routes: [
                     GoRoute(
                       path: ':id',
-                      builder: (ctx, st) => AnnouncementDetailScreen(id: int.tryParse(st.pathParameters['id'] ?? '') ?? 0),
+                      builder: (ctx, st) => AnnouncementDetailScreen(
+                          id: int.tryParse(st.pathParameters['id'] ?? '') ?? 0),
                     ),
                   ],
                 ),
@@ -84,7 +90,8 @@ final appRouterProvider = Provider<GoRouter Function({required bool isAuthed, re
                   routes: [
                     GoRoute(
                       path: 'event',
-                      builder: (ctx, st) => AgendaDetailScreen(event: st.extra as AgendaEvent),
+                      builder: (ctx, st) =>
+                          AgendaDetailScreen(event: st.extra as AgendaEvent),
                     ),
                   ],
                 ),
@@ -98,6 +105,20 @@ final appRouterProvider = Provider<GoRouter Function({required bool isAuthed, re
           builder: (ctx, st) {
             final id = int.tryParse(st.pathParameters['ticketId'] ?? '') ?? 0;
             return ChatScreen(ticketId: id, ticketExtra: st.extra);
+          },
+        ),
+        GoRoute(
+          parentNavigatorKey: _rootKey,
+          path: '/web-module',
+          builder: (ctx, st) {
+            final title = (st.uri.queryParameters['title'] ?? 'Módulo');
+            final path = (st.uri.queryParameters['path'] ?? '/');
+            final origin = st.uri.queryParameters['origin'];
+            return WebModuleScreen(
+              title: title,
+              modulePath: path,
+              originOverride: origin,
+            );
           },
         ),
       ],
@@ -124,4 +145,3 @@ final appRouterProvider = Provider<GoRouter Function({required bool isAuthed, re
     );
   };
 });
-

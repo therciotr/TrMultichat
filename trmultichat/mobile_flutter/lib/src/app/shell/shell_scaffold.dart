@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/env/app_env.dart';
 
@@ -47,29 +46,27 @@ class ShellScaffold extends StatelessWidget {
     return Uri.parse('https://app.trmultichat.com.br');
   }
 
-  Uri _webModuleUri(String path) {
-    final base = _webAppUri();
-    final normalized = path.trim().isEmpty
-        ? '/'
-        : (path.trim().startsWith('/') ? path.trim() : '/${path.trim()}');
-    return base.replace(path: normalized);
+  void _openWebModuleInsideApp(
+    BuildContext context, {
+    required String title,
+    required String path,
+  }) {
+    final route = Uri(
+      path: '/web-module',
+      queryParameters: <String, String>{
+        'title': title,
+        'path': path,
+        'origin': _webAppUri().toString(),
+      },
+    ).toString();
+    context.push(route);
   }
 
-  Future<void> _openWebApp(BuildContext context) async {
-    final uri = _webAppUri();
-    final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
-    if (!context.mounted || ok) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Não foi possível abrir o web app.')),
-    );
-  }
-
-  Future<void> _openWebModule(BuildContext context, String path) async {
-    final uri = _webModuleUri(path);
-    final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
-    if (!context.mounted || ok) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Não foi possível abrir este módulo web.')),
+  void _openFullWebInsideApp(BuildContext context) {
+    _openWebModuleInsideApp(
+      context,
+      title: 'Web completo',
+      path: '/',
     );
   }
 
@@ -221,30 +218,47 @@ class ShellScaffold extends StatelessWidget {
                             _DesktopModuleChip(
                               icon: Icons.dashboard_outlined,
                               label: 'Dashboard',
-                              onTap: () =>
-                                  _openWebModule(context, '/dashboard'),
+                              onTap: () => _openWebModuleInsideApp(
+                                context,
+                                title: 'Dashboard',
+                                path: '/dashboard',
+                              ),
                             ),
                             _DesktopModuleChip(
                               icon: Icons.payments_outlined,
                               label: 'Financeiro',
-                              onTap: () =>
-                                  _openWebModule(context, '/financeiro'),
+                              onTap: () => _openWebModuleInsideApp(
+                                context,
+                                title: 'Financeiro',
+                                path: '/financeiro',
+                              ),
                             ),
                             _DesktopModuleChip(
                               icon: Icons.checklist_rtl_outlined,
                               label: 'To-do',
-                              onTap: () => _openWebModule(context, '/todo'),
+                              onTap: () => _openWebModuleInsideApp(
+                                context,
+                                title: 'To-do',
+                                path: '/todolist',
+                              ),
                             ),
                             _DesktopModuleChip(
                               icon: Icons.quickreply_outlined,
                               label: 'Respostas',
-                              onTap: () =>
-                                  _openWebModule(context, '/quick-messages'),
+                              onTap: () => _openWebModuleInsideApp(
+                                context,
+                                title: 'Respostas rápidas',
+                                path: '/quick-messages',
+                              ),
                             ),
                             _DesktopModuleChip(
                               icon: Icons.settings_outlined,
                               label: 'Configurações',
-                              onTap: () => _openWebModule(context, '/settings'),
+                              onTap: () => _openWebModuleInsideApp(
+                                context,
+                                title: 'Configurações',
+                                path: '/settings',
+                              ),
                             ),
                           ],
                         ),
@@ -252,14 +266,14 @@ class ShellScaffold extends StatelessWidget {
                       ],
                       if (wide)
                         FilledButton.tonalIcon(
-                          onPressed: () => _openWebApp(context),
+                          onPressed: () => _openFullWebInsideApp(context),
                           icon: const Icon(Icons.open_in_new),
                           label: const Text('Web completo'),
                         )
                       else
                         IconButton(
                           tooltip: 'Abrir web completo',
-                          onPressed: () => _openWebApp(context),
+                          onPressed: () => _openFullWebInsideApp(context),
                           icon: const Icon(Icons.open_in_new),
                         ),
                     ],
