@@ -9,7 +9,8 @@ class ShellScaffold extends StatelessWidget {
   const ShellScaffold({super.key, required this.navigationShell});
 
   void _goBranch(int index) {
-    navigationShell.goBranch(index, initialLocation: index == navigationShell.currentIndex);
+    navigationShell.goBranch(index,
+        initialLocation: index == navigationShell.currentIndex);
   }
 
   bool _useDesktopLayout(BuildContext context) {
@@ -35,7 +36,8 @@ class ShellScaffold extends StatelessWidget {
         host: host.replaceFirst('api.', 'app.'),
       );
     }
-    if (host.contains('localhost') || RegExp(r'^\d+\.\d+\.\d+\.\d+$').hasMatch(host)) {
+    if (host.contains('localhost') ||
+        RegExp(r'^\d+\.\d+\.\d+\.\d+$').hasMatch(host)) {
       return Uri(
         scheme: parsed.scheme.isEmpty ? 'http' : parsed.scheme,
         host: host,
@@ -45,12 +47,29 @@ class ShellScaffold extends StatelessWidget {
     return Uri.parse('https://app.trmultichat.com.br');
   }
 
+  Uri _webModuleUri(String path) {
+    final base = _webAppUri();
+    final normalized = path.trim().isEmpty
+        ? '/'
+        : (path.trim().startsWith('/') ? path.trim() : '/${path.trim()}');
+    return base.replace(path: normalized);
+  }
+
   Future<void> _openWebApp(BuildContext context) async {
     final uri = _webAppUri();
     final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!context.mounted || ok) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Não foi possível abrir o web app.')),
+    );
+  }
+
+  Future<void> _openWebModule(BuildContext context, String path) async {
+    final uri = _webModuleUri(path);
+    final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!context.mounted || ok) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Não foi possível abrir este módulo web.')),
     );
   }
 
@@ -101,12 +120,16 @@ class ShellScaffold extends StatelessWidget {
                 Container(
                   width: wide ? 280 : 92,
                   margin: const EdgeInsets.fromLTRB(14, 14, 0, 14),
-                  padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 10),
+                  padding:
+                      const EdgeInsets.symmetric(vertical: 14, horizontal: 10),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(24),
                     color: Theme.of(context).colorScheme.surface,
                     border: Border.all(
-                      color: Theme.of(context).colorScheme.outlineVariant.withOpacity(0.45),
+                      color: Theme.of(context)
+                          .colorScheme
+                          .outlineVariant
+                          .withOpacity(0.45),
                     ),
                     boxShadow: [
                       BoxShadow(
@@ -126,7 +149,8 @@ class ShellScaffold extends StatelessWidget {
                           CircleAvatar(
                             radius: 16,
                             backgroundColor: cs.primary.withOpacity(0.12),
-                            child: Icon(Icons.all_inbox_rounded, color: cs.primary),
+                            child: Icon(Icons.all_inbox_rounded,
+                                color: cs.primary),
                           ),
                           if (wide) ...[
                             const SizedBox(width: 10),
@@ -135,7 +159,8 @@ class ShellScaffold extends StatelessWidget {
                                 'TR Multichat',
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(fontWeight: FontWeight.w900),
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w900),
                               ),
                             ),
                           ],
@@ -172,6 +197,59 @@ class ShellScaffold extends StatelessWidget {
                           ],
                         ),
                       ),
+                      if (wide) ...[
+                        const Divider(height: 18),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Padding(
+                            padding: const EdgeInsets.only(left: 8, bottom: 8),
+                            child: Text(
+                              'Módulos web',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w800,
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurfaceVariant,
+                              ),
+                            ),
+                          ),
+                        ),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            _DesktopModuleChip(
+                              icon: Icons.dashboard_outlined,
+                              label: 'Dashboard',
+                              onTap: () =>
+                                  _openWebModule(context, '/dashboard'),
+                            ),
+                            _DesktopModuleChip(
+                              icon: Icons.payments_outlined,
+                              label: 'Financeiro',
+                              onTap: () =>
+                                  _openWebModule(context, '/financeiro'),
+                            ),
+                            _DesktopModuleChip(
+                              icon: Icons.checklist_rtl_outlined,
+                              label: 'To-do',
+                              onTap: () => _openWebModule(context, '/todo'),
+                            ),
+                            _DesktopModuleChip(
+                              icon: Icons.quickreply_outlined,
+                              label: 'Respostas',
+                              onTap: () =>
+                                  _openWebModule(context, '/quick-messages'),
+                            ),
+                            _DesktopModuleChip(
+                              icon: Icons.settings_outlined,
+                              label: 'Configurações',
+                              onTap: () => _openWebModule(context, '/settings'),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                      ],
                       if (wide)
                         FilledButton.tonalIcon(
                           onPressed: () => _openWebApp(context),
@@ -195,7 +273,10 @@ class ShellScaffold extends StatelessWidget {
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(24),
                       border: Border.all(
-                        color: Theme.of(context).colorScheme.outlineVariant.withOpacity(0.45),
+                        color: Theme.of(context)
+                            .colorScheme
+                            .outlineVariant
+                            .withOpacity(0.45),
                       ),
                       color: Theme.of(context).colorScheme.surface,
                     ),
@@ -220,3 +301,27 @@ class ShellScaffold extends StatelessWidget {
   }
 }
 
+class _DesktopModuleChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  const _DesktopModuleChip({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ActionChip(
+      avatar:
+          Icon(icon, size: 16, color: Theme.of(context).colorScheme.primary),
+      label: Text(label),
+      onPressed: onTap,
+      side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      labelStyle: const TextStyle(fontWeight: FontWeight.w700),
+    );
+  }
+}

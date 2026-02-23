@@ -1,0 +1,53 @@
+name: macOS Desktop Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "trmultichat/mobile_flutter/**"
+      - ".github/workflows/macos-desktop.yml"
+
+jobs:
+  build_macos:
+    name: Build macOS App
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: trmultichat/mobile_flutter
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build macOS release
+        run: flutter build macos --release
+
+      - name: Resolve .app path
+        id: resolve_app
+        run: |
+          APP_PATH=$(ls build/macos/Build/Products/Release/*.app | head -n 1)
+          echo "app_path=$APP_PATH" >> "$GITHUB_OUTPUT"
+
+      - name: Zip .app bundle
+        run: |
+          APP_PATH="${{ steps.resolve_app.outputs.app_path }}"
+          APP_DIR=$(dirname "$APP_PATH")
+          APP_NAME=$(basename "$APP_PATH")
+          cd "$APP_DIR"
+          ditto -c -k --sequesterRsrc --keepParent "$APP_NAME" "$APP_NAME.zip"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-desktop-app
+          path: trmultichat/mobile_flutter/${{ steps.resolve_app.outputs.app_path }}.zip
+          if-no-files-found: error
