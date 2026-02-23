@@ -34,7 +34,7 @@ jobs:
       - name: Resolve .app path
         id: resolve_app
         run: |
-          APP_PATH=$(ls build/macos/Build/Products/Release/*.app | head -n 1)
+          APP_PATH=$(ls -d build/macos/Build/Products/Release/*.app | head -n 1)
           echo "app_path=$APP_PATH" >> "$GITHUB_OUTPUT"
 
       - name: Zip .app bundle
