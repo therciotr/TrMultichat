@@ -333,7 +333,11 @@ class AuthController extends StateNotifier<AuthState> {
     try {
       await _ref.read(pushNotificationsProvider).unregisterCurrentToken();
     } catch (_) {}
-    await _repo.logout();
+    try {
+      await _repo.logout();
+    } catch (_) {
+      // Even if secure storage/keychain fails, force local logout state.
+    }
     _ref.read(currentAccessTokenProvider.notifier).state = null;
     try {
       _msgSub?.cancel();

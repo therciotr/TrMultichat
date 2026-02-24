@@ -17,7 +17,13 @@ import '../features/announcements/presentation/screens/announcement_detail_scree
 import '../features/agenda/presentation/screens/agenda_screen.dart';
 import '../features/agenda/presentation/screens/agenda_detail_screen.dart';
 import '../features/agenda/domain/entities/agenda_event.dart';
-import '../features/web_modules/presentation/screens/web_module_screen.dart';
+import '../features/desktop_modules/presentation/screens/desktop_admin_modules_screens.dart';
+import '../features/desktop_modules/presentation/screens/desktop_dashboard_screen.dart';
+import '../features/desktop_modules/presentation/screens/desktop_finance_screen.dart';
+import '../features/desktop_modules/presentation/screens/desktop_module_placeholder_screen.dart';
+import '../features/desktop_modules/presentation/screens/desktop_todo_screen.dart';
+import '../features/desktop_modules/presentation/screens/desktop_quick_messages_screen.dart';
+import '../features/desktop_modules/presentation/screens/desktop_settings_screen.dart';
 
 final _rootKey = GlobalKey<NavigatorState>(debugLabel: 'root');
 
@@ -97,6 +103,70 @@ final appRouterProvider = Provider<
                 ),
               ],
             ),
+            StatefulShellBranch(
+              routes: [
+                GoRoute(
+                  path: '/workspace/dashboard',
+                  builder: (ctx, st) => const DesktopDashboardScreen(),
+                ),
+                GoRoute(
+                  path: '/workspace/finance',
+                  builder: (ctx, st) => const DesktopFinanceScreen(),
+                ),
+                GoRoute(
+                  path: '/workspace/todo',
+                  builder: (ctx, st) => const DesktopTodoScreen(),
+                ),
+                GoRoute(
+                  path: '/workspace/quick-messages',
+                  builder: (ctx, st) => const DesktopQuickMessagesScreen(),
+                ),
+                GoRoute(
+                  path: '/workspace/settings',
+                  builder: (ctx, st) => const DesktopSettingsScreen(),
+                ),
+                GoRoute(
+                  path: '/workspace/users',
+                  builder: (ctx, st) => const DesktopUsersScreen(),
+                ),
+                GoRoute(
+                  path: '/workspace/queues',
+                  builder: (ctx, st) => const DesktopQueuesScreen(),
+                ),
+                GoRoute(
+                  path: '/workspace/connections',
+                  builder: (ctx, st) => const DesktopConnectionsScreen(),
+                ),
+                GoRoute(
+                  path: '/workspace/tags',
+                  builder: (ctx, st) => const DesktopTagsScreen(),
+                ),
+                GoRoute(
+                  path: '/workspace/files',
+                  builder: (ctx, st) => const DesktopFilesScreen(),
+                ),
+                GoRoute(
+                  path: '/workspace/campaigns',
+                  builder: (ctx, st) => const DesktopCampaignsScreen(),
+                ),
+                GoRoute(
+                  path: '/workspace/plans',
+                  builder: (ctx, st) => const DesktopPlansScreen(),
+                ),
+                GoRoute(
+                  path: '/workspace/helps',
+                  builder: (ctx, st) => const DesktopHelpsScreen(),
+                ),
+                GoRoute(
+                  path: '/workspace/module/:name',
+                  builder: (ctx, st) {
+                    final raw = (st.pathParameters['name'] ?? 'modulo').replaceAll('-', ' ');
+                    final title = raw.isEmpty ? 'Módulo' : '${raw[0].toUpperCase()}${raw.substring(1)}';
+                    return DesktopModulePlaceholderScreen(title: title);
+                  },
+                ),
+              ],
+            ),
           ],
         ),
         GoRoute(
@@ -105,20 +175,6 @@ final appRouterProvider = Provider<
           builder: (ctx, st) {
             final id = int.tryParse(st.pathParameters['ticketId'] ?? '') ?? 0;
             return ChatScreen(ticketId: id, ticketExtra: st.extra);
-          },
-        ),
-        GoRoute(
-          parentNavigatorKey: _rootKey,
-          path: '/web-module',
-          builder: (ctx, st) {
-            final title = (st.uri.queryParameters['title'] ?? 'Módulo');
-            final path = (st.uri.queryParameters['path'] ?? '/');
-            final origin = st.uri.queryParameters['origin'];
-            return WebModuleScreen(
-              title: title,
-              modulePath: path,
-              originOverride: origin,
-            );
           },
         ),
       ],

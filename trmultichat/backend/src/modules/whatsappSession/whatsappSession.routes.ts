@@ -4,6 +4,7 @@ import path from "path";
 import jwt from "jsonwebtoken";
 import env from "../../config/env";
 import { getIO } from "../../libs/socket";
+import { getStoredQr } from "../../libs/baileysManager";
 import { getInlineSock, getInlineSnapshot, startOrRefreshInlineSession } from "../../libs/waInlineManager";
 import { pgQuery } from "../../utils/pgClient";
 
@@ -302,10 +303,17 @@ router.get("/:id", (req, res) => {
   } catch {}
 
   // Inline manager snapshot is the authoritative one.
-  const sess = getInlineSnapshot(id) || (readSessions()[String(id)] || {});
+  const stored = getStoredQr(id);
+  const sess = getInlineSnapshot(id) || stored || (readSessions()[String(id)] || {});
+  const statusRaw = String(sess.status || "").toUpperCase();
+  const hasQr = Boolean((sess as any).qrcode);
+  const normalizedStatus =
+    (statusRaw === "OPENING" || statusRaw === "DISCONNECTED") && hasQr
+      ? "qrcode"
+      : (sess.status || (hasQr ? "qrcode" : "DISCONNECTED"));
   return res.json({
     id,
-    status: sess.status || (sess.qrcode ? "qrcode" : "DISCONNECTED"),
+    status: normalizedStatus,
     qrcode: sess.qrcode || "",
     updatedAt: sess.updatedAt || new Date().toISOString(),
     retries: typeof sess.retries === "number" ? sess.retries : 0,
@@ -347,6 +355,13 @@ router.put("/:id", async (req, res) => {
     String((req.query as any)?.forceRestart || (req.query as any)?.force || "")
       .trim()
       .toLowerCase() === "true";
+  const forceNewQrRequested =
+    String((req.query as any)?.forceNewQr || (req.query as any)?.newQr || "")
+      .trim()
+      .toLowerCase() === "1" ||
+    String((req.query as any)?.forceNewQr || (req.query as any)?.newQr || "")
+      .trim()
+      .toLowerCase() === "true";
 
   // Refresh QR (Baileys)
   try {
@@ -381,7 +396,7 @@ router.put("/:id", async (req, res) => {
     // Also avoid restarting a running in-memory socket on regular refresh.
     // But allow explicit forced restart (useful when session is "connected" but not receiving messages).
     const hasRunningSocket = Boolean(getInlineSock(id));
-    if (!forceRestart && isConnected && hasAuthCreds && hasRunningSocket) {
+    if (!forceRestart && !forceNewQrRequested && isConnected && hasAuthCreds && hasRunningSocket) {
       const sessNow: any = getInlineSnapshot(id) || snap || {};
       return res.json({
         id,
@@ -396,14 +411,22 @@ router.put("/:id", async (req, res) => {
     await startOrRefreshInlineSession({
       companyId: tenantId,
       whatsappId: id,
-      // On forced restart, keep auth/creds when possible to avoid unnecessary QR re-scan.
-      forceNewQr: forceRestart ? false : shouldForceNewQr
+      // On explicit QR refresh, always drop creds to force a brand-new QR.
+      // On forced restart, keep auth when possible (unless forceNewQr was requested).
+      forceNewQr: forceNewQrRequested ? true : (forceRestart ? false : shouldForceNewQr)
     });
 
-    const sess: any = getInlineSnapshot(id) || {};
+    const stored = getStoredQr(id);
+    const sess: any = getInlineSnapshot(id) || stored || {};
+    const statusRaw = String(sess?.status || "").toUpperCase();
+    const hasQr = Boolean(sess?.qrcode);
+    const normalizedStatus =
+      (statusRaw === "OPENING" || statusRaw === "DISCONNECTED") && hasQr
+        ? "qrcode"
+        : (sess?.status || (hasQr ? "qrcode" : "OPENING"));
     return res.json({
       id,
-      status: sess?.status || "OPENING",
+      status: normalizedStatus,
       qrcode: sess?.qrcode || "",
       updatedAt: sess?.updatedAt || new Date().toISOString(),
       retries: typeof sess?.retries === "number" ? sess.retries : 0

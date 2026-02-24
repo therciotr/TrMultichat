@@ -63,7 +63,11 @@ class AuthRepositoryImpl implements AuthRepository {
 
   @override
   Future<void> logout() async {
-    await _store.clear();
+    try {
+      await _store.clear();
+    } catch (_) {
+      // macOS keychain may fail in some local unsigned runs.
+    }
   }
 }
 

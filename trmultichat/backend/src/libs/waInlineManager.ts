@@ -114,6 +114,8 @@ export async function startOrRefreshInlineSession(opts: { companyId: number; wha
   const makeWASocket = baileysMod?.makeWASocket || baileysMod?.default;
   const useMultiFileAuthState = baileysMod?.useMultiFileAuthState;
   const DisconnectReason = baileysMod?.DisconnectReason;
+  const fetchLatestBaileysVersion = baileysMod?.fetchLatestBaileysVersion;
+  const Browsers = baileysMod?.Browsers;
 
   if (typeof makeWASocket !== "function" || typeof useMultiFileAuthState !== "function") {
     throw new Error("Baileys module exports missing (makeWASocket/useMultiFileAuthState)");
@@ -149,12 +151,25 @@ export async function startOrRefreshInlineSession(opts: { companyId: number; wha
   saveSessionSnapshot(companyId, whatsappId, { status: "OPENING", qrcode: "", retries: 0 });
   void updateWhatsAppStatus(companyId, whatsappId, "OPENING");
 
+  // Keep protocol/browser aligned with latest WA Web to avoid connection failures
+  // on stale default versions (e.g. immediate close with code 405).
+  let waVersion: number[] | undefined;
+  try {
+    if (typeof fetchLatestBaileysVersion === "function") {
+      const latest = await fetchLatestBaileysVersion();
+      if (Array.isArray(latest?.version)) waVersion = latest.version;
+    }
+  } catch {}
+
   // Critical: use the SAME minimal config shape we proved works on this VPS.
   const sock = makeWASocket({
     printQRInTerminal: false,
     auth: state,
     logger,
-    msgRetryCounterCache
+    msgRetryCounterCache,
+    ...(waVersion ? { version: waVersion } : {}),
+    ...(Browsers?.macOS ? { browser: Browsers.macOS("Desktop") } : {}),
+    connectTimeoutMs: 60_000,
   });
   inlineSessions.set(whatsappId, sock);
 

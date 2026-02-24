@@ -39,13 +39,16 @@ services:
       ALLOW_ORIGIN: http://localhost:9089,http://127.0.0.1:9089
       FRONTEND_URL: http://localhost:9089,http://127.0.0.1:9089
       DEV_MODE: "true"
+      START_QUEUE_PROCESS: "false"
+      LOAD_LEGACY_APP: "false"
+      LOAD_LEGACY_WHATSAPP_ROUTES: "false"
       # License (local DEV_MODE bypassa)
       LICENSE_AUD: trmultichat
       LICENSE_ISS: "TR MULTICHAT"
       LICENSE_PUBLIC_KEY_PATH: /app/certs/public.pem
       LICENSE_FILE: /app/license.json
       LICENSE_REQUIRED: "false"
-    command: bash -lc 'npm install && npm run build && npm run start'
+    command: bash -lc 'npm install && npm run build && node dist/server.js'
     depends_on:
       - postgres
       - redis

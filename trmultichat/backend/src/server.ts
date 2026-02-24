@@ -55,6 +55,11 @@ const app: express.Express = express();
 // Load existing compiled app to preserve legacy routes and behavior (optional)
 // eslint-disable-next-line @typescript-eslint/no-var-requires, @typescript-eslint/no-explicit-any
 const compiledApp: any = (() => {
+  const loadLegacyApp =
+    String(process.env.LOAD_LEGACY_APP ?? "true").toLowerCase() !== "false";
+  if (!loadLegacyApp) {
+    return (_req: any, _res: any, next: any) => next();
+  }
   try {
     // Attempt to require legacy compiled app; if missing, continue without it
     // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -103,10 +108,16 @@ function loadLegacyDistRouter(moduleRelPath: string): any | null {
 
 // Prefer legacy WhatsApp routes (real Baileys integration) when available.
 // Our simplified TS routes are only a fallback for environments without legacy dist.
+const loadLegacyWhatsAppRoutes =
+  String(process.env.LOAD_LEGACY_WHATSAPP_ROUTES ?? "true").toLowerCase() !== "false";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const legacyWhatsAppSessionRoutes: any = loadLegacyDistRouter("routes/whatsappSessionRoutes");
+const legacyWhatsAppSessionRoutes: any = loadLegacyWhatsAppRoutes
+  ? loadLegacyDistRouter("routes/whatsappSessionRoutes")
+  : null;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const legacyWhatsAppRoutes: any = loadLegacyDistRouter("routes/whatsappRoutes");
+const legacyWhatsAppRoutes: any = loadLegacyWhatsAppRoutes
+  ? loadLegacyDistRouter("routes/whatsappRoutes")
+  : null;
 
 // Global middlewares
 app.use(express.json());
@@ -937,12 +948,10 @@ app.use(compiledApp);
 
 // Health endpoint (MySQL + Redis)
 app.get("/health", async (_req, res) => {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const sequelize = (require("./database").default || require("./database"));
   const result: any = {};
   let dbUp = false;
   try {
-    await sequelize.authenticate();
+    await pgQuery("SELECT 1", []);
     result.db = "up";
     dbUp = true;
   } catch (e) {
@@ -1031,16 +1040,22 @@ server.listen(env.PORT, async () => {
     logger.info("Legacy StartAllWhatsAppsSessions skipped (inline manager active). Set START_LEGACY_WBOT=true to enable legacy startup.");
   }
 
-  // Start queues
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const queues = require("./queues");
-    const startQueueProcess = queues.startQueueProcess || queues.default || queues;
-    if (typeof startQueueProcess === "function") {
-      startQueueProcess();
+  // Start queues (can be disabled in some local/dev environments)
+  const startQueueProcessEnabled =
+    String(process.env.START_QUEUE_PROCESS ?? "true").toLowerCase() !== "false";
+  if (startQueueProcessEnabled) {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const queues = require("./queues");
+      const startQueueProcess = queues.startQueueProcess || queues.default || queues;
+      if (typeof startQueueProcess === "function") {
+        startQueueProcess();
+      }
+    } catch (e) {
+      logger.warn("Queue start skipped", e);
     }
-  } catch (e) {
-    logger.warn("Queue start skipped", e);
+  } else {
+    logger.info("Queue process startup skipped (START_QUEUE_PROCESS=false).");
   }
 
   // Billing e-mail auto dispatcher (MASTER only settings)

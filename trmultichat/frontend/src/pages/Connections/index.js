@@ -161,8 +161,8 @@ const Connections = () => {
 
 	const handleStartWhatsAppSession = async whatsAppId => {
 		try {
-			// Gerar/reiniciar sessão para obter QR Code (método correto: PUT)
-			await api.put(`/whatsappsession/${whatsAppId}`);
+			// Reinicia a sessão mantendo auth quando possível
+			await api.put(`/whatsappsession/${whatsAppId}?forceRestart=1`);
 			setSelectedWhatsApp({ id: whatsAppId });
 			setQrModalOpen(true);
 		} catch (err) {
@@ -172,7 +172,8 @@ const Connections = () => {
 
 	const handleRequestNewQrCode = async whatsAppId => {
 		try {
-			await api.put(`/whatsappsession/${whatsAppId}`);
+			// Gera um novo QR limpo (remove credenciais da sessão)
+			await api.put(`/whatsappsession/${whatsAppId}?forceNewQr=1`);
 			setSelectedWhatsApp({ id: whatsAppId });
 			setQrModalOpen(true);
 		} catch (err) {

@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../core/env/app_env.dart';
+import '../../features/auth/presentation/providers/auth_providers.dart';
 
-class ShellScaffold extends StatelessWidget {
+class ShellScaffold extends ConsumerWidget {
   final StatefulNavigationShell navigationShell;
   const ShellScaffold({super.key, required this.navigationShell});
 
@@ -14,60 +15,6 @@ class ShellScaffold extends StatelessWidget {
 
   bool _useDesktopLayout(BuildContext context) {
     return MediaQuery.sizeOf(context).width >= 1024;
-  }
-
-  Uri _webAppUri() {
-    final api = AppEnv.baseUrl();
-    final parsed = Uri.tryParse(api);
-    if (parsed == null || parsed.host.isEmpty) {
-      return Uri.parse('https://app.trmultichat.com.br');
-    }
-    final host = parsed.host;
-    if (host == 'api.trmultichat.com.br') {
-      return Uri(
-        scheme: parsed.scheme.isEmpty ? 'https' : parsed.scheme,
-        host: 'app.trmultichat.com.br',
-      );
-    }
-    if (host.startsWith('api.')) {
-      return Uri(
-        scheme: parsed.scheme.isEmpty ? 'https' : parsed.scheme,
-        host: host.replaceFirst('api.', 'app.'),
-      );
-    }
-    if (host.contains('localhost') ||
-        RegExp(r'^\d+\.\d+\.\d+\.\d+$').hasMatch(host)) {
-      return Uri(
-        scheme: parsed.scheme.isEmpty ? 'http' : parsed.scheme,
-        host: host,
-        port: 3000,
-      );
-    }
-    return Uri.parse('https://app.trmultichat.com.br');
-  }
-
-  void _openWebModuleInsideApp(
-    BuildContext context, {
-    required String title,
-    required String path,
-  }) {
-    final route = Uri(
-      path: '/web-module',
-      queryParameters: <String, String>{
-        'title': title,
-        'path': path,
-        'origin': _webAppUri().toString(),
-      },
-    ).toString();
-    context.push(route);
-  }
-
-  void _openFullWebInsideApp(BuildContext context) {
-    _openWebModuleInsideApp(
-      context,
-      title: 'Web completo',
-      path: '/',
-    );
   }
 
   List<NavigationDestination> get _destinations => const [
@@ -91,13 +38,47 @@ class ShellScaffold extends StatelessWidget {
           selectedIcon: Icon(Icons.calendar_month),
           label: 'Agenda',
         ),
+        NavigationDestination(
+          icon: Icon(Icons.apps_outlined),
+          selectedIcon: Icon(Icons.apps),
+          label: 'Módulos',
+        ),
       ];
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     if (_useDesktopLayout(context)) {
+      final auth = ref.watch(authControllerProvider);
+      final user = auth.user;
+      final profile = (user?.profile ?? '').toLowerCase();
+      final isAdminLike = user?.admin == true || user?.isSuper == true || profile == 'admin' || profile == 'super';
       final cs = Theme.of(context).colorScheme;
       final wide = MediaQuery.sizeOf(context).width >= 1320;
+      final currentPath = GoRouterState.of(context).uri.path;
+      final modules = isAdminLike
+          ? const <({String label, IconData icon, String route})>[
+              (label: 'Dashboard', icon: Icons.dashboard_outlined, route: '/workspace/dashboard'),
+              (label: 'Financeiro', icon: Icons.payments_outlined, route: '/workspace/finance'),
+              (label: 'To-do', icon: Icons.checklist_rtl_outlined, route: '/workspace/todo'),
+              (label: 'Respostas', icon: Icons.quickreply_outlined, route: '/workspace/quick-messages'),
+              (label: 'Configurações', icon: Icons.settings_outlined, route: '/workspace/settings'),
+              (label: 'Usuários', icon: Icons.group_outlined, route: '/workspace/users'),
+              (label: 'Filas', icon: Icons.account_tree_outlined, route: '/workspace/queues'),
+              (label: 'Conexões', icon: Icons.wifi_tethering_outlined, route: '/workspace/connections'),
+              (label: 'Tags', icon: Icons.sell_outlined, route: '/workspace/tags'),
+              (label: 'Arquivos', icon: Icons.folder_outlined, route: '/workspace/files'),
+              (label: 'Campanhas', icon: Icons.campaign_outlined, route: '/workspace/campaigns'),
+              (label: 'Planos', icon: Icons.workspace_premium_outlined, route: '/workspace/plans'),
+              (label: 'Ajuda', icon: Icons.help_outline, route: '/workspace/helps'),
+            ]
+          : const <({String label, IconData icon, String route})>[
+              (label: 'Dashboard', icon: Icons.dashboard_outlined, route: '/workspace/dashboard'),
+              (label: 'Financeiro', icon: Icons.payments_outlined, route: '/workspace/finance'),
+              (label: 'To-do', icon: Icons.checklist_rtl_outlined, route: '/workspace/todo'),
+              (label: 'Respostas', icon: Icons.quickreply_outlined, route: '/workspace/quick-messages'),
+              (label: 'Ajuda', icon: Icons.help_outline, route: '/workspace/helps'),
+            ];
+
       return Scaffold(
         body: Container(
           decoration: BoxDecoration(
@@ -138,144 +119,150 @@ class ShellScaffold extends StatelessWidget {
                   ),
                   child: Column(
                     children: [
-                      Row(
-                        mainAxisAlignment: wide
-                            ? MainAxisAlignment.start
-                            : MainAxisAlignment.center,
-                        children: [
-                          CircleAvatar(
-                            radius: 16,
-                            backgroundColor: cs.primary.withOpacity(0.12),
-                            child: Icon(Icons.all_inbox_rounded,
-                                color: cs.primary),
-                          ),
-                          if (wide) ...[
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Text(
-                                'TR Multichat',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.w900),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(14),
+                          color: cs.primary.withOpacity(0.07),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: wide ? MainAxisAlignment.start : MainAxisAlignment.center,
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(10),
+                              child: Image.asset(
+                                'assets/logo_login.png',
+                                width: 34,
+                                height: 34,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => CircleAvatar(
+                                  radius: 16,
+                                  backgroundColor: cs.primary.withOpacity(0.12),
+                                  child: Icon(Icons.all_inbox_rounded, color: cs.primary),
+                                ),
                               ),
                             ),
+                            if (wide) ...[
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(
+                                      'TR Multichat',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(fontWeight: FontWeight.w900),
+                                    ),
+                                    Text(
+                                      isAdminLike ? 'Administrador' : 'Usuário',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: cs.onSurfaceVariant,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
                           ],
-                        ],
+                        ),
                       ),
                       const SizedBox(height: 16),
                       Expanded(
-                        child: NavigationRail(
-                          selectedIndex: navigationShell.currentIndex,
-                          onDestinationSelected: _goBranch,
-                          extended: wide,
-                          leading: const SizedBox.shrink(),
-                          destinations: const [
-                            NavigationRailDestination(
-                              icon: Icon(Icons.confirmation_number_outlined),
-                              selectedIcon: Icon(Icons.confirmation_number),
-                              label: Text('Tickets'),
+                        child: ListView(
+                          padding: EdgeInsets.zero,
+                          children: [
+                            _SidebarItem(
+                              compact: !wide,
+                              icon: Icons.confirmation_number_outlined,
+                              label: 'Tickets',
+                              selected: navigationShell.currentIndex == 0,
+                              onTap: () => _goBranch(0),
                             ),
-                            NavigationRailDestination(
-                              icon: Icon(Icons.people_outline),
-                              selectedIcon: Icon(Icons.people),
-                              label: Text('Contatos'),
+                            _SidebarItem(
+                              compact: !wide,
+                              icon: Icons.people_outline,
+                              label: 'Contatos',
+                              selected: navigationShell.currentIndex == 1,
+                              onTap: () => _goBranch(1),
                             ),
-                            NavigationRailDestination(
-                              icon: Icon(Icons.forum_outlined),
-                              selectedIcon: Icon(Icons.forum),
-                              label: Text('Chat Interno'),
+                            _SidebarItem(
+                              compact: !wide,
+                              icon: Icons.forum_outlined,
+                              label: 'Chat Interno',
+                              selected: navigationShell.currentIndex == 2,
+                              onTap: () => _goBranch(2),
                             ),
-                            NavigationRailDestination(
-                              icon: Icon(Icons.calendar_month_outlined),
-                              selectedIcon: Icon(Icons.calendar_month),
-                              label: Text('Agenda'),
+                            _SidebarItem(
+                              compact: !wide,
+                              icon: Icons.calendar_month_outlined,
+                              label: 'Agenda',
+                              selected: navigationShell.currentIndex == 3,
+                              onTap: () => _goBranch(3),
+                            ),
+                            _SidebarItem(
+                              compact: !wide,
+                              icon: Icons.apps_outlined,
+                              label: 'Módulos',
+                              selected: navigationShell.currentIndex == 4,
+                              onTap: () => context.go('/workspace/dashboard'),
+                            ),
+                            const SizedBox(height: 14),
+                            if (wide)
+                              Padding(
+                                padding: const EdgeInsets.only(left: 8, bottom: 6),
+                                child: Text(
+                                  isAdminLike ? 'Módulos administrativos' : 'Módulos',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w800,
+                                    color: cs.onSurfaceVariant,
+                                  ),
+                                ),
+                              ),
+                            ...modules.map(
+                              (m) => _SidebarItem(
+                                compact: !wide,
+                                icon: m.icon,
+                                label: m.label,
+                                selected: currentPath == m.route || currentPath.startsWith('${m.route}/'),
+                                onTap: () => context.go(m.route),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            _SidebarItem(
+                              compact: !wide,
+                              icon: Icons.logout,
+                              label: 'Sair',
+                              selected: false,
+                              onTap: () async {
+                                final ok = await showDialog<bool>(
+                                  context: context,
+                                  builder: (ctx) => AlertDialog(
+                                    title: const Text('Sair'),
+                                    content: const Text('Deseja sair da sua conta?'),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(ctx, false),
+                                        child: const Text('Cancelar'),
+                                      ),
+                                      FilledButton(
+                                        onPressed: () => Navigator.pop(ctx, true),
+                                        child: const Text('Sair'),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                                if (ok != true || !context.mounted) return;
+                                await ref.read(authControllerProvider.notifier).logout();
+                                if (context.mounted) context.go('/login');
+                              },
                             ),
                           ],
                         ),
                       ),
-                      if (wide) ...[
-                        const Divider(height: 18),
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: Padding(
-                            padding: const EdgeInsets.only(left: 8, bottom: 8),
-                            child: Text(
-                              'Módulos web',
-                              style: TextStyle(
-                                fontWeight: FontWeight.w800,
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .onSurfaceVariant,
-                              ),
-                            ),
-                          ),
-                        ),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: [
-                            _DesktopModuleChip(
-                              icon: Icons.dashboard_outlined,
-                              label: 'Dashboard',
-                              onTap: () => _openWebModuleInsideApp(
-                                context,
-                                title: 'Dashboard',
-                                path: '/dashboard',
-                              ),
-                            ),
-                            _DesktopModuleChip(
-                              icon: Icons.payments_outlined,
-                              label: 'Financeiro',
-                              onTap: () => _openWebModuleInsideApp(
-                                context,
-                                title: 'Financeiro',
-                                path: '/financeiro',
-                              ),
-                            ),
-                            _DesktopModuleChip(
-                              icon: Icons.checklist_rtl_outlined,
-                              label: 'To-do',
-                              onTap: () => _openWebModuleInsideApp(
-                                context,
-                                title: 'To-do',
-                                path: '/todolist',
-                              ),
-                            ),
-                            _DesktopModuleChip(
-                              icon: Icons.quickreply_outlined,
-                              label: 'Respostas',
-                              onTap: () => _openWebModuleInsideApp(
-                                context,
-                                title: 'Respostas rápidas',
-                                path: '/quick-messages',
-                              ),
-                            ),
-                            _DesktopModuleChip(
-                              icon: Icons.settings_outlined,
-                              label: 'Configurações',
-                              onTap: () => _openWebModuleInsideApp(
-                                context,
-                                title: 'Configurações',
-                                path: '/settings',
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                      ],
-                      if (wide)
-                        FilledButton.tonalIcon(
-                          onPressed: () => _openFullWebInsideApp(context),
-                          icon: const Icon(Icons.open_in_new),
-                          label: const Text('Web completo'),
-                        )
-                      else
-                        IconButton(
-                          tooltip: 'Abrir web completo',
-                          onPressed: () => _openFullWebInsideApp(context),
-                          icon: const Icon(Icons.open_in_new),
-                        ),
                     ],
                   ),
                 ),
@@ -315,27 +302,64 @@ class ShellScaffold extends StatelessWidget {
   }
 }
 
-class _DesktopModuleChip extends StatelessWidget {
+class _SidebarItem extends StatelessWidget {
+  final bool compact;
   final IconData icon;
   final String label;
+  final bool selected;
   final VoidCallback onTap;
 
-  const _DesktopModuleChip({
+  const _SidebarItem({
+    required this.compact,
     required this.icon,
     required this.label,
+    required this.selected,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return ActionChip(
-      avatar:
-          Icon(icon, size: 16, color: Theme.of(context).colorScheme.primary),
-      label: Text(label),
-      onPressed: onTap,
-      side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
-      backgroundColor: Theme.of(context).colorScheme.surface,
-      labelStyle: const TextStyle(fontWeight: FontWeight.w700),
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Material(
+        color: selected ? cs.primary.withOpacity(0.12) : Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: EdgeInsets.symmetric(
+              horizontal: compact ? 8 : 10,
+              vertical: compact ? 10 : 9,
+            ),
+            child: Row(
+              mainAxisAlignment: compact ? MainAxisAlignment.center : MainAxisAlignment.start,
+              children: [
+                Icon(
+                  icon,
+                  size: 18,
+                  color: selected ? cs.primary : cs.onSurfaceVariant,
+                ),
+                if (!compact) ...[
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                        color: selected ? cs.primary : cs.onSurface,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
