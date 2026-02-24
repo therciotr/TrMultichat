@@ -286,13 +286,48 @@ router.post("/:ticketId", authMiddleware, upload.any(), async (req, res) => {
   if (!ticket) return res.status(404).json({ error: true, message: "ticket not found" });
 
   const contactRows = await pgQuery<any>(
-    `SELECT id, number, name FROM "Contacts" WHERE id = $1 AND "companyId" = $2 LIMIT 1`,
+    `SELECT id, number, name, "whatsappId" FROM "Contacts" WHERE id = $1 AND "companyId" = $2 LIMIT 1`,
     [Number(ticket.contactId || 0), companyId]
   );
   const contact = contactRows[0];
   if (!contact) return res.status(404).json({ error: true, message: "contact not found" });
 
-  const whatsappId = Number(ticket.whatsappId || 0);
+  let whatsappId = Number(ticket.whatsappId || 0);
+  if (!whatsappId) {
+    // Backward compatibility for old/migrated tickets without whatsappId:
+    // 1) try contact.whatsappId
+    // 2) fallback to company default/connected WhatsApp
+    const contactWhatsappId = Number(contact.whatsappId || 0);
+    if (contactWhatsappId > 0) {
+      whatsappId = contactWhatsappId;
+    } else {
+      const whatsappRows = await pgQuery<any>(
+        `
+          SELECT id
+          FROM "Whatsapps"
+          WHERE "companyId" = $1
+          ORDER BY
+            CASE WHEN status = 'CONNECTED' THEN 1 ELSE 0 END DESC,
+            CASE WHEN "isDefault" = true THEN 1 ELSE 0 END DESC,
+            "updatedAt" DESC,
+            id ASC
+          LIMIT 1
+        `,
+        [companyId]
+      );
+      whatsappId = Number(whatsappRows?.[0]?.id || 0);
+    }
+
+    if (whatsappId > 0) {
+      // Persist the recovered mapping so next sends are direct.
+      try {
+        await pgQuery(
+          `UPDATE "Tickets" SET "whatsappId" = $1, "updatedAt" = NOW() WHERE id = $2 AND "companyId" = $3`,
+          [whatsappId, ticketId, companyId]
+        );
+      } catch {}
+    }
+  }
   if (!whatsappId) return res.status(400).json({ error: true, message: "ticket has no whatsappId" });
 
   function sockReady(s: any): boolean {
