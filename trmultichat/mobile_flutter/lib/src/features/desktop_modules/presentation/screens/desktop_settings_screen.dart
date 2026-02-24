@@ -8,7 +8,8 @@ class DesktopSettingsScreen extends ConsumerStatefulWidget {
   const DesktopSettingsScreen({super.key});
 
   @override
-  ConsumerState<DesktopSettingsScreen> createState() => _DesktopSettingsScreenState();
+  ConsumerState<DesktopSettingsScreen> createState() =>
+      _DesktopSettingsScreenState();
 }
 
 class _DesktopSettingsScreenState extends ConsumerState<DesktopSettingsScreen> {
@@ -39,7 +40,8 @@ class _DesktopSettingsScreenState extends ConsumerState<DesktopSettingsScreen> {
     try {
       final res = await _dio.get('/settings');
       final data = (res.data as List?) ?? const <dynamic>[];
-      _settings = data.whereType<Map>().map((e) => e.cast<String, dynamic>()).toList();
+      _settings =
+          data.whereType<Map>().map((e) => e.cast<String, dynamic>()).toList();
     } catch (_) {
       _error = 'Falha ao carregar configurações';
     } finally {
@@ -147,7 +149,8 @@ class _DesktopSettingsScreenState extends ConsumerState<DesktopSettingsScreen> {
                 final value = (item['value'] ?? '').toString();
                 return Card(
                   child: Padding(
-                    padding: const EdgeInsets.all(10),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 10),
                     child: Row(
                       children: [
                         Expanded(
@@ -167,9 +170,17 @@ class _DesktopSettingsScreenState extends ConsumerState<DesktopSettingsScreen> {
                           ),
                         ),
                         const SizedBox(width: 8),
-                        FilledButton(
-                          onPressed: () => _editValueDialog(key, value),
-                          child: const Text('Editar'),
+                        SizedBox(
+                          width: 96,
+                          child: OutlinedButton.icon(
+                            onPressed: () => _editValueDialog(key, value),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 10),
+                            ),
+                            icon: const Icon(Icons.edit_outlined, size: 14),
+                            label: const Text('Editar'),
+                          ),
                         ),
                       ],
                     ),

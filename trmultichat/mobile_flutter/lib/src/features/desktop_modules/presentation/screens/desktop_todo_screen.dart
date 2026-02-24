@@ -117,7 +117,7 @@ class _DesktopTodoScreenState extends State<DesktopTodoScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('To-do')),
+      appBar: AppBar(title: const Text('Tarefa')),
       body: Column(
         children: [
           Padding(

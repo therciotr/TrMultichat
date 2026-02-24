@@ -59,9 +59,8 @@ class ShellScaffold extends ConsumerWidget {
           ? const <({String label, IconData icon, String route})>[
               (label: 'Dashboard', icon: Icons.dashboard_outlined, route: '/workspace/dashboard'),
               (label: 'Financeiro', icon: Icons.payments_outlined, route: '/workspace/finance'),
-              (label: 'To-do', icon: Icons.checklist_rtl_outlined, route: '/workspace/todo'),
+              (label: 'Tarefa', icon: Icons.checklist_rtl_outlined, route: '/workspace/todo'),
               (label: 'Respostas', icon: Icons.quickreply_outlined, route: '/workspace/quick-messages'),
-              (label: 'Configurações', icon: Icons.settings_outlined, route: '/workspace/settings'),
               (label: 'Usuários', icon: Icons.group_outlined, route: '/workspace/users'),
               (label: 'Filas', icon: Icons.account_tree_outlined, route: '/workspace/queues'),
               (label: 'Conexões', icon: Icons.wifi_tethering_outlined, route: '/workspace/connections'),
@@ -70,11 +69,12 @@ class ShellScaffold extends ConsumerWidget {
               (label: 'Campanhas', icon: Icons.campaign_outlined, route: '/workspace/campaigns'),
               (label: 'Planos', icon: Icons.workspace_premium_outlined, route: '/workspace/plans'),
               (label: 'Ajuda', icon: Icons.help_outline, route: '/workspace/helps'),
+              (label: 'Configurações', icon: Icons.settings_outlined, route: '/workspace/settings'),
             ]
           : const <({String label, IconData icon, String route})>[
               (label: 'Dashboard', icon: Icons.dashboard_outlined, route: '/workspace/dashboard'),
               (label: 'Financeiro', icon: Icons.payments_outlined, route: '/workspace/finance'),
-              (label: 'To-do', icon: Icons.checklist_rtl_outlined, route: '/workspace/todo'),
+              (label: 'Tarefa', icon: Icons.checklist_rtl_outlined, route: '/workspace/todo'),
               (label: 'Respostas', icon: Icons.quickreply_outlined, route: '/workspace/quick-messages'),
               (label: 'Ajuda', icon: Icons.help_outline, route: '/workspace/helps'),
             ];
@@ -201,13 +201,6 @@ class ShellScaffold extends ConsumerWidget {
                               label: 'Agenda',
                               selected: navigationShell.currentIndex == 3,
                               onTap: () => _goBranch(3),
-                            ),
-                            _SidebarItem(
-                              compact: !wide,
-                              icon: Icons.apps_outlined,
-                              label: 'Módulos',
-                              selected: navigationShell.currentIndex == 4,
-                              onTap: () => context.go('/workspace/dashboard'),
                             ),
                             const SizedBox(height: 14),
                             if (wide)

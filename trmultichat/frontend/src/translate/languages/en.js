@@ -247,13 +247,13 @@ const messages = {
 			mainDrawer: {
 				listItems: {
 					dashboard: "Dashboard",
-					connections: "Connections",
+					connections: "Conexões",
 					tickets: "Tickets",
 					contacts: "Contacts",
-					queues: "Queues",
-					administration: "Administration",
-					users: "Users",
-					settings: "Settings",
+					queues: "Filas",
+					administration: "Administração",
+					users: "Usuários",
+					settings: "Configurações",
 				},
 				appBar: {
 					user: {

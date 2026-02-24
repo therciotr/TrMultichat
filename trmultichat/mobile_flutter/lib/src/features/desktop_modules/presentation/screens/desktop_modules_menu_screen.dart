@@ -9,7 +9,7 @@ class DesktopModulesMenuScreen extends StatelessWidget {
     final modules = <_ModuleItem>[
       const _ModuleItem('Dashboard', Icons.dashboard_outlined, '/desktop/dashboard'),
       const _ModuleItem('Financeiro', Icons.payments_outlined, '/desktop/finance'),
-      const _ModuleItem('To-do', Icons.checklist_rtl_outlined, '/desktop/todo'),
+      const _ModuleItem('Tarefa', Icons.checklist_rtl_outlined, '/desktop/todo'),
       const _ModuleItem('Respostas rápidas', Icons.quickreply_outlined, '/desktop/quick-messages'),
       const _ModuleItem('Configurações', Icons.settings_outlined, '/desktop/settings'),
       const _ModuleItem('Usuários', Icons.group_outlined, '/desktop/module/usuarios'),
