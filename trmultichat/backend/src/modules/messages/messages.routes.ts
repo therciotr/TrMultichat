@@ -274,7 +274,7 @@ router.post("/:ticketId", authMiddleware, upload.any(), async (req, res) => {
   // For media messages, if body/caption is empty we use the filename as caption to avoid blocking the send.
   const firstFileName = files?.[0]?.originalname ? String(files[0].originalname).trim() : "";
   const bodyTextRaw = String((req.body as any)?.body || "").trim();
-  const bodyText = hasMedia ? (bodyTextRaw || firstFileName || "[Arquivo]") : bodyTextRaw;
+  let bodyText = hasMedia ? (bodyTextRaw || firstFileName || "[Arquivo]") : bodyTextRaw;
   if (!ticketId) return res.status(400).json({ error: true, message: "invalid ticketId" });
   if (!bodyText) return res.status(400).json({ error: true, message: "body is required" });
 
@@ -291,6 +291,26 @@ router.post("/:ticketId", authMiddleware, upload.any(), async (req, res) => {
   );
   const contact = contactRows[0];
   if (!contact) return res.status(404).json({ error: true, message: "contact not found" });
+
+  // Keep outgoing format consistent with web:
+  // prefix plain agent messages as "*Agent Name:*\\nmessage" when not already prefixed.
+  try {
+    const uid = Number((req as any)?.userId || 0);
+    if (uid > 0 && bodyText) {
+      const userRows = await pgQuery<{ name: string }>(
+        `SELECT name FROM "Users" WHERE id = $1 AND "companyId" = $2 LIMIT 1`,
+        [uid, companyId]
+      );
+      const senderName = String(userRows?.[0]?.name || "").trim();
+      const normalized = String(bodyText).replace(/\r\n/g, "\n");
+      const alreadyPrefixed = /^\*[^*\n]{1,100}:\*\n/.test(normalized);
+      if (senderName && !alreadyPrefixed) {
+        bodyText = `*${senderName}:*\n${normalized}`;
+      } else {
+        bodyText = normalized;
+      }
+    }
+  } catch {}
 
   let whatsappId = Number(ticket.whatsappId || 0);
   if (!whatsappId) {

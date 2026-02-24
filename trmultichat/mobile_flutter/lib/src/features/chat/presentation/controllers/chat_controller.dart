@@ -191,19 +191,20 @@ class ChatController extends StateNotifier<ChatState> {
   Future<void> sendText(String body) async {
     final trimmed = body.trim();
     if (trimmed.isEmpty) return;
+    final outgoing = _withAgentPrefix(trimmed);
 
     final optimistic = ChatMessage(
       id: 'local-${DateTime.now().microsecondsSinceEpoch}',
       ticketId: ticketId,
       fromMe: true,
-      body: trimmed,
+      body: outgoing,
       createdAt: DateTime.now(),
       pending: true,
     );
     state = state.copyWith(messages: [...state.messages, optimistic]);
 
     try {
-      await _repo.sendText(ticketId: ticketId, body: trimmed);
+      await _repo.sendText(ticketId: ticketId, body: outgoing);
       // Final message will arrive via Socket.IO. If not, keep it but mark as delivered-ish.
       _markPendingAsSent(optimistic.id);
     } catch (e) {
@@ -219,11 +220,12 @@ class ChatController extends StateNotifier<ChatState> {
     String? mimeType,
   }) async {
     final caption = body.trim().isEmpty ? fileName : body.trim();
+    final outgoing = _withAgentPrefix(caption);
     final optimistic = ChatMessage(
       id: 'local-${DateTime.now().microsecondsSinceEpoch}',
       ticketId: ticketId,
       fromMe: true,
-      body: caption,
+      body: outgoing,
       createdAt: DateTime.now(),
       pending: true,
       mediaType: mimeType,
@@ -242,7 +244,7 @@ class ChatController extends StateNotifier<ChatState> {
     try {
       await _repo.sendMedia(
         ticketId: ticketId,
-        body: caption,
+        body: outgoing,
         filePath: filePath,
         fileBytes: fileBytes,
         fileName: fileName,
@@ -277,13 +279,14 @@ class ChatController extends StateNotifier<ChatState> {
     if (files.isEmpty) return;
 
     final captionFirst = body.trim().isEmpty ? files.first.name : body.trim();
+    final outgoingFirst = _withAgentPrefix(captionFirst);
     final now = DateTime.now();
 
     // optimistic bubbles (one per file)
     final optimistic = <ChatMessage>[];
     for (var i = 0; i < files.length; i++) {
       final f = files[i];
-      final cap = i == 0 ? captionFirst : f.name;
+      final cap = i == 0 ? outgoingFirst : _withAgentPrefix(f.name);
       optimistic.add(
         ChatMessage(
           id: 'local-${DateTime.now().microsecondsSinceEpoch}-$i',
@@ -310,7 +313,7 @@ class ChatController extends StateNotifier<ChatState> {
     try {
       for (var i = 0; i < files.length; i++) {
         final f = files[i];
-        final cap = i == 0 ? captionFirst : f.name;
+        final cap = i == 0 ? outgoingFirst : _withAgentPrefix(f.name);
         state = state.copyWith(
           uploading: true,
           uploadFileName: f.name,
@@ -442,6 +445,18 @@ class ChatController extends StateNotifier<ChatState> {
       return 'Falha ao enviar';
     }
     return 'Falha ao enviar';
+  }
+
+  String _withAgentPrefix(String text) {
+    final msg = text.trim().replaceAll('\r\n', '\n');
+    if (msg.isEmpty) return msg;
+
+    final alreadyPrefixed = RegExp(r'^\*[^*\n]{1,100}:\*\n').hasMatch(msg);
+    if (alreadyPrefixed) return msg;
+
+    final senderName = _ref.read(authControllerProvider).user?.name.trim() ?? '';
+    if (senderName.isEmpty) return msg;
+    return '*$senderName:*\n$msg';
   }
 
   void cancelUpload() {
