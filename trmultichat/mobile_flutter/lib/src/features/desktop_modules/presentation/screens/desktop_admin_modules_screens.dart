@@ -1,8 +1,10 @@
 import 'package:dio/dio.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/di/core_providers.dart';
+import '../../../../features/auth/presentation/providers/auth_providers.dart';
 
 abstract class _BaseCrudScreen<T extends ConsumerStatefulWidget>
     extends ConsumerState<T> {
@@ -38,6 +40,10 @@ class DesktopUsersScreen extends ConsumerStatefulWidget {
 
 class _DesktopUsersScreenState extends _BaseCrudScreen<DesktopUsersScreen> {
   List<Map<String, dynamic>> rows = const [];
+  List<Map<String, dynamic>> _queueOptions = const [];
+  List<Map<String, dynamic>> _whatsappOptions = const [];
+  List<Map<String, dynamic>> _companies = const [];
+  Map<int, String> _companyNameById = const {};
 
   @override
   void initState() {
@@ -45,29 +51,157 @@ class _DesktopUsersScreenState extends _BaseCrudScreen<DesktopUsersScreen> {
     fetch();
   }
 
+  int? _asInt(dynamic value) {
+    if (value == null) return null;
+    if (value is num) return value.toInt();
+    return int.tryParse(value.toString().trim());
+  }
+
+  List<Map<String, dynamic>> _asMapList(dynamic raw) {
+    if (raw is List) {
+      final out = <Map<String, dynamic>>[];
+      for (final item in raw) {
+        if (item is Map) {
+          out.add(item.map((k, v) => MapEntry(k.toString(), v)));
+        } else if (item is List) {
+          out.addAll(_asMapList(item));
+        }
+      }
+      return out;
+    }
+    if (raw is Map) {
+      const keys = ['users', 'records', 'items', 'rows', 'data', 'result'];
+      for (final key in keys) {
+        if (raw[key] is List || raw[key] is Map) {
+          return _asMapList(raw[key]);
+        }
+      }
+    }
+    return const [];
+  }
+
+  Future<List<Map<String, dynamic>>> _safeGetList(
+    String path, {
+    Map<String, dynamic>? queryParameters,
+  }) async {
+    try {
+      final res = await dio.get(path, queryParameters: queryParameters);
+      return _asMapList(res.data);
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  Future<void> _loadUserFormSources({required bool loadCompanies}) async {
+    final futures = <Future<void>>[
+      _safeGetList('/queue').then((v) => _queueOptions = v),
+      _safeGetList('/whatsapp').then((v) => _whatsappOptions = v),
+    ];
+    if (loadCompanies) {
+      futures.add(
+        _safeGetList('/companies').then((v) => _companies = v),
+      );
+    }
+    await Future.wait(futures);
+  }
+
   Future<void> fetch() async {
     await safeRun(() async {
-      final res = await dio.get('/users/list');
-      final data = res.data;
-      final list = (data is List
-          ? data
-          : (data is Map && data['users'] is List
-              ? data['users']
-              : const <dynamic>[]));
-      rows =
-          list.whereType<Map>().map((e) => e.cast<String, dynamic>()).toList();
+      final auth = ref.read(authControllerProvider);
+      final user = auth.user;
+      final profile = (user?.profile ?? '').toLowerCase();
+      final isSuperLike = user?.isSuper == true ||
+          user?.admin == true ||
+          profile == 'super' ||
+          profile == 'admin' ||
+          _asInt(user?.companyId) == 1;
+
+      final companies = await _safeGetList('/companies');
+      _companies = companies;
+      _companyNameById = {
+        for (final c in companies)
+          if (_asInt(c['id']) != null) _asInt(c['id'])!: (c['name'] ?? 'Empresa').toString(),
+      };
+
+      if (isSuperLike && companies.isNotEmpty) {
+        final all = <Map<String, dynamic>>[];
+        final seen = <int>{};
+        for (final c in companies) {
+          final cid = _asInt(c['id']);
+          if (cid == null || cid <= 0) continue;
+          final perCompany =
+              await _safeGetList('/users/list', queryParameters: {'companyId': cid});
+          for (final u in perCompany) {
+            final uid = _asInt(u['id']);
+            if (uid != null && seen.add(uid)) all.add(u);
+          }
+        }
+        rows = all;
+      } else {
+        final res = await dio.get('/users/list', queryParameters: {'pageNumber': 1});
+        rows = _asMapList(res.data);
+      }
     });
   }
 
   Future<void> openForm([Map<String, dynamic>? initial]) async {
+    final auth = ref.read(authControllerProvider);
+    final logged = auth.user;
+    final loggedProfile = (logged?.profile ?? '').toLowerCase();
+    final isSuperLike = logged?.isSuper == true ||
+        logged?.admin == true ||
+        loggedProfile == 'super' ||
+        loggedProfile == 'admin' ||
+        _asInt(logged?.companyId) == 1;
+
+    await _loadUserFormSources(loadCompanies: isSuperLike);
+
     final name =
         TextEditingController(text: (initial?['name'] ?? '').toString());
     final email =
         TextEditingController(text: (initial?['email'] ?? '').toString());
     final password = TextEditingController();
-    String profile = (initial?['profile'] ?? 'user').toString();
-    bool admin = initial?['admin'] == true;
-    final id = (initial?['id'] as num?)?.toInt();
+    String profile = (initial?['profile'] ?? 'user').toString().toLowerCase();
+    if (profile != 'admin' && profile != 'super') profile = 'user';
+    final id = _asInt(initial?['id']);
+    int? companyId = _asInt(initial?['companyId']) ?? _asInt(logged?.companyId);
+    int? whatsappId = _asInt(initial?['whatsappId']);
+    final selectedQueueIds = <int>{};
+
+    if (initial?['queues'] is List) {
+      for (final q in (initial?['queues'] as List)) {
+        if (q is Map) {
+          final qid = _asInt(q['id']);
+          if (qid != null && qid > 0) selectedQueueIds.add(qid);
+        }
+      }
+    }
+
+    if (id != null) {
+      try {
+        final res = await dio.get('/users/$id');
+        final data = res.data is Map
+            ? (res.data as Map).map((k, v) => MapEntry(k.toString(), v))
+            : <String, dynamic>{};
+        name.text = (data['name'] ?? name.text).toString();
+        email.text = (data['email'] ?? email.text).toString();
+        final p = (data['profile'] ?? profile).toString().toLowerCase();
+        if (p == 'admin' || p == 'super' || p == 'user') profile = p;
+        companyId = _asInt(data['companyId']) ?? companyId;
+        whatsappId = _asInt(data['whatsappId']) ?? whatsappId;
+
+        final queuesRaw = data['queues'];
+        if (queuesRaw is List) {
+          selectedQueueIds.clear();
+          for (final q in queuesRaw) {
+            if (q is Map) {
+              final qid = _asInt(q['id']);
+              if (qid != null && qid > 0) selectedQueueIds.add(qid);
+            }
+          }
+        }
+      } catch (_) {}
+    }
 
     await showDialog<void>(
       context: context,
@@ -79,6 +213,42 @@ class _DesktopUsersScreenState extends _BaseCrudScreen<DesktopUsersScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                if (isSuperLike)
+                  DropdownButtonFormField<int?>(
+                    value: companyId,
+                    isExpanded: true,
+                    decoration: const InputDecoration(labelText: 'Empresa'),
+                    items: [
+                      const DropdownMenuItem<int?>(
+                          value: null, child: Text('Selecionar empresa')),
+                      ..._companies.map(
+                        (c) => DropdownMenuItem<int?>(
+                          value: _asInt(c['id']),
+                          child: Text(
+                            (c['name'] ?? 'Empresa').toString(),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                          ),
+                        ),
+                      ),
+                    ],
+                    onChanged: (v) => setLocal(() => companyId = v),
+                  )
+                else
+                  TextField(
+                    readOnly: true,
+                    controller: TextEditingController(
+                      text: _companies
+                                  .firstWhere(
+                                    (c) => _asInt(c['id']) == companyId,
+                                    orElse: () => const <String, dynamic>{},
+                                  )['name']
+                                  ?.toString() ??
+                              (companyId == null ? '-' : 'Empresa #$companyId'),
+                    ),
+                    decoration: const InputDecoration(labelText: 'Empresa'),
+                  ),
+                const SizedBox(height: 8),
                 TextField(
                     controller: name,
                     decoration: const InputDecoration(labelText: 'Nome')),
@@ -97,6 +267,7 @@ class _DesktopUsersScreenState extends _BaseCrudScreen<DesktopUsersScreen> {
                 const SizedBox(height: 8),
                 DropdownButtonFormField<String>(
                   value: profile,
+                  isExpanded: true,
                   items: const [
                     DropdownMenuItem(value: 'user', child: Text('Usuário')),
                     DropdownMenuItem(
@@ -107,10 +278,57 @@ class _DesktopUsersScreenState extends _BaseCrudScreen<DesktopUsersScreen> {
                   decoration: const InputDecoration(labelText: 'Perfil'),
                 ),
                 const SizedBox(height: 8),
-                SwitchListTile(
-                  value: admin,
-                  title: const Text('Admin'),
-                  onChanged: (v) => setLocal(() => admin = v),
+                DropdownButtonFormField<int?>(
+                  value: whatsappId,
+                  isExpanded: true,
+                  decoration:
+                      const InputDecoration(labelText: 'Conexão (WhatsApp)'),
+                  items: [
+                    const DropdownMenuItem<int?>(
+                        value: null, child: Text('Nenhuma')),
+                    ..._whatsappOptions.map(
+                      (w) => DropdownMenuItem<int?>(
+                        value: _asInt(w['id']),
+                        child: Text((w['name'] ?? 'Conexão').toString()),
+                      ),
+                    ),
+                  ],
+                  onChanged: (v) => setLocal(() => whatsappId = v),
+                ),
+                const SizedBox(height: 10),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Filas vinculadas',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: _queueOptions.map((q) {
+                    final qid = _asInt(q['id']) ?? 0;
+                    final selected = qid > 0 && selectedQueueIds.contains(qid);
+                    return FilterChip(
+                      label: Text((q['name'] ?? 'Fila').toString()),
+                      selected: selected,
+                      onSelected: qid <= 0
+                          ? null
+                          : (v) {
+                              setLocal(() {
+                                if (v) {
+                                  selectedQueueIds.add(qid);
+                                } else {
+                                  selectedQueueIds.remove(qid);
+                                }
+                              });
+                            },
+                    );
+                  }).toList(),
                 ),
               ],
             ),
@@ -121,11 +339,20 @@ class _DesktopUsersScreenState extends _BaseCrudScreen<DesktopUsersScreen> {
                 child: const Text('Cancelar')),
             FilledButton(
               onPressed: () async {
+                if (id == null && password.text.trim().isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Informe uma senha para o novo usuário.')),
+                  );
+                  return;
+                }
                 final payload = <String, dynamic>{
                   'name': name.text.trim(),
                   'email': email.text.trim(),
                   'profile': profile,
-                  'admin': admin,
+                  'admin': profile == 'admin' || profile == 'super',
+                  'whatsappId': whatsappId,
+                  'queueIds': selectedQueueIds.toList(),
+                  if (companyId != null) 'companyId': companyId,
                 };
                 if (id == null) {
                   payload['password'] = password.text.trim().isEmpty
@@ -163,6 +390,15 @@ class _DesktopUsersScreenState extends _BaseCrudScreen<DesktopUsersScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final auth = ref.watch(authControllerProvider);
+    final user = auth.user;
+    final profile = (user?.profile ?? '').toLowerCase();
+    final isSuperLike = user?.isSuper == true ||
+        user?.admin == true ||
+        profile == 'super' ||
+        profile == 'admin' ||
+        _asInt(user?.companyId) == 1;
+
     return Scaffold(
       appBar: AppBar(title: const Text('Usuários')),
       body: Column(
@@ -173,29 +409,11 @@ class _DesktopUsersScreenState extends _BaseCrudScreen<DesktopUsersScreen> {
                 padding: const EdgeInsets.all(10),
                 child: Text(error!, style: const TextStyle(color: Colors.red))),
           Expanded(
-            child: ListView.separated(
-              padding: const EdgeInsets.all(14),
-              itemCount: rows.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 10),
-              itemBuilder: (_, i) {
-                final r = rows[i];
-                final id = (r['id'] as num?)?.toInt() ?? 0;
-                return Card(
-                  child: ListTile(
-                    contentPadding:
-                        const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-                    title: Text((r['name'] ?? '').toString(),
-                        style: const TextStyle(fontWeight: FontWeight.w800)),
-                    subtitle: Text(
-                        '${r['email'] ?? ''} • perfil: ${r['profile'] ?? 'user'}'),
-                    trailing: _CrudActionButtons(
-                      onEdit: () => openForm(r),
-                      onDelete: id <= 0 ? null : () => deleteRow(id),
-                    ),
-                  ),
-                );
-              },
-            ),
+            child: rows.isEmpty
+                ? const Center(child: Text('Nenhum usuário encontrado.'))
+                : isSuperLike
+                    ? _buildUsersByCompanyList()
+                    : _buildFlatUsersList(rows),
           ),
         ],
       ),
@@ -203,6 +421,79 @@ class _DesktopUsersScreenState extends _BaseCrudScreen<DesktopUsersScreen> {
         onPressed: () => openForm(),
         label: const Text('Novo usuário'),
         icon: const Icon(Icons.add),
+      ),
+    );
+  }
+
+  Widget _buildFlatUsersList(List<Map<String, dynamic>> items) {
+    return ListView.separated(
+      padding: const EdgeInsets.all(14),
+      itemCount: items.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 10),
+      itemBuilder: (_, i) => _buildUserTile(items[i]),
+    );
+  }
+
+  Widget _buildUsersByCompanyList() {
+    final grouped = <int, List<Map<String, dynamic>>>{};
+    for (final r in rows) {
+      final cid = _asInt(r['companyId']) ?? 0;
+      grouped.putIfAbsent(cid, () => <Map<String, dynamic>>[]).add(r);
+    }
+    final companyIds = grouped.keys.toList()..sort();
+    return ListView.separated(
+      padding: const EdgeInsets.all(14),
+      itemCount: companyIds.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 12),
+      itemBuilder: (_, i) {
+        final cid = companyIds[i];
+        final users = grouped[cid] ?? const <Map<String, dynamic>>[];
+        final companyName = _companyNameById[cid] ?? 'Empresa #$cid';
+        return Card(
+          child: Padding(
+            padding: const EdgeInsets.all(10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  companyName,
+                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+                ),
+                const SizedBox(height: 8),
+                ...users.map(_buildUserTile),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildUserTile(Map<String, dynamic> r) {
+    final id = _asInt(r['id']) ?? 0;
+    final profile = (r['profile'] ?? 'user').toString();
+    final companyId = _asInt(r['companyId']);
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+      leading: CircleAvatar(
+        radius: 16,
+        child: Text(
+          ((r['name'] ?? 'U').toString().trim().isEmpty
+                  ? 'U'
+                  : (r['name'] ?? 'U').toString().trim().substring(0, 1))
+              .toUpperCase(),
+        ),
+      ),
+      title: Text((r['name'] ?? '').toString(),
+          style: const TextStyle(fontWeight: FontWeight.w800)),
+      subtitle: Text(
+        '${r['email'] ?? ''} • perfil: $profile • empresa: ${_companyNameById[companyId ?? 0] ?? (companyId ?? '-')}',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      trailing: _CrudActionButtons(
+        onEdit: () => openForm(r),
+        onDelete: id <= 0 ? null : () => deleteRow(id),
       ),
     );
   }
@@ -363,143 +654,98 @@ class _DesktopQueuesScreenState extends _BaseCrudScreen<DesktopQueuesScreen> {
   }
 
   Future<void> openForm([Map<String, dynamic>? initial]) async {
-    final id = (initial?['id'] as num?)?.toInt();
-    final name =
-        TextEditingController(text: (initial?['name'] ?? '').toString());
-    final color = TextEditingController(
-        text: (initial?['color'] ?? '#0B4C46').toString());
-    final greeting = TextEditingController(
-        text: (initial?['greetingMessage'] ?? '').toString());
-    final outOfHours = TextEditingController(
-        text: (initial?['outOfHoursMessage'] ?? '').toString());
-    final orderQueue =
-        TextEditingController(text: (initial?['orderQueue'] ?? '').toString());
-    final integrationId = TextEditingController(
-        text: (initial?['integrationId'] ?? '').toString());
-    final promptId =
-        TextEditingController(text: (initial?['promptId'] ?? '').toString());
-
     await showDialog<void>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(id == null ? 'Nova fila' : 'Editar fila'),
-        content: SizedBox(
-          width: 620,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                    controller: name,
-                    decoration: const InputDecoration(labelText: 'Nome')),
-                const SizedBox(height: 8),
-                TextField(
-                    controller: color,
-                    decoration: const InputDecoration(labelText: 'Cor (hex)')),
-                const SizedBox(height: 8),
-                TextField(
-                    controller: greeting,
-                    decoration: const InputDecoration(
-                        labelText: 'Mensagem de saudação')),
-                const SizedBox(height: 8),
-                TextField(
-                    controller: outOfHours,
-                    decoration: const InputDecoration(
-                        labelText: 'Mensagem fora de horário')),
-                const SizedBox(height: 8),
-                TextField(
-                    controller: orderQueue,
-                    decoration:
-                        const InputDecoration(labelText: 'Ordem da fila')),
-                const SizedBox(height: 8),
-                TextField(
-                    controller: integrationId,
-                    decoration:
-                        const InputDecoration(labelText: 'ID integração')),
-                const SizedBox(height: 8),
-                TextField(
-                    controller: promptId,
-                    decoration: const InputDecoration(labelText: 'ID prompt')),
-              ],
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancelar')),
-          FilledButton(
-            onPressed: () async {
-              final payload = <String, dynamic>{
-                'name': name.text.trim(),
-                'color': color.text.trim(),
-                'greetingMessage': greeting.text.trim(),
-                'outOfHoursMessage': outOfHours.text.trim(),
-                'orderQueue': orderQueue.text.trim(),
-                'integrationId': integrationId.text.trim(),
-                'promptId': promptId.text.trim(),
-                'schedules': const [],
-              };
-              if (id == null) {
-                await dio.post('/queue', data: payload);
-              } else {
-                await dio.put('/queue/$id', data: payload);
-              }
-              if (!mounted) return;
-              Navigator.pop(ctx);
-              await fetch();
-            },
-            child: const Text('Salvar'),
-          ),
-        ],
+      barrierDismissible: false,
+      builder: (ctx) => _QueueFormDialog(
+        dio: dio,
+        initial: initial,
+        onSaved: fetch,
       ),
     );
-    name.dispose();
-    color.dispose();
-    greeting.dispose();
-    outOfHours.dispose();
-    orderQueue.dispose();
-    integrationId.dispose();
-    promptId.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(title: const Text('Filas')),
       body: Column(
         children: [
           if (loading) const LinearProgressIndicator(minHeight: 2),
           Expanded(
-            child: ListView.separated(
-              padding: const EdgeInsets.all(14),
-              itemCount: rows.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 10),
-              itemBuilder: (_, i) {
-                final r = rows[i];
-                final id = (r['id'] as num?)?.toInt() ?? 0;
-                return Card(
-                  child: ListTile(
-                    contentPadding:
-                        const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-                    title: Text((r['name'] ?? '').toString(),
-                        style: const TextStyle(fontWeight: FontWeight.w800)),
-                    subtitle: Text('Cor: ${r['color'] ?? '#0B4C46'}'),
-                    trailing: _CrudActionButtons(
-                      onEdit: () => openForm(r),
-                      onDelete: id <= 0
-                          ? null
-                          : () async {
-                              await safeRun(() async {
-                                await dio.delete('/queue/$id');
-                                await fetch();
-                              });
-                            },
-                    ),
+            child: rows.isEmpty
+                ? const Center(child: Text('Nenhuma fila cadastrada.'))
+                : ListView.separated(
+                    padding: const EdgeInsets.all(14),
+                    itemCount: rows.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 12),
+                    itemBuilder: (_, i) {
+                      final r = rows[i];
+                      final id = (r['id'] as num?)?.toInt() ?? 0;
+                      final queueColor =
+                          _parseColor((r['color'] ?? '#0B4C46').toString());
+                      final greeting =
+                          (r['greetingMessage'] ?? '').toString().trim();
+                      return Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(14),
+                          color: cs.surface,
+                          border: Border.all(
+                              color: cs.outlineVariant.withValues(alpha: 0.55)),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.03),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: ListTile(
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 8),
+                          leading: Container(
+                            width: 12,
+                            height: 44,
+                            decoration: BoxDecoration(
+                              color: queueColor,
+                              borderRadius: BorderRadius.circular(99),
+                            ),
+                          ),
+                          title: Text(
+                            (r['name'] ?? '').toString(),
+                            style: const TextStyle(fontWeight: FontWeight.w800),
+                          ),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const SizedBox(height: 4),
+                              Text('Cor: ${r['color'] ?? '#0B4C46'}'),
+                              if (greeting.isNotEmpty) ...[
+                                const SizedBox(height: 2),
+                                Text(
+                                  greeting,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ],
+                          ),
+                          trailing: _CrudActionButtons(
+                            onEdit: () => openForm(r),
+                            onDelete: id <= 0
+                                ? null
+                                : () async {
+                                    await safeRun(() async {
+                                      await dio.delete('/queue/$id');
+                                      await fetch();
+                                    });
+                                  },
+                          ),
+                        ),
+                      );
+                    },
                   ),
-                );
-              },
-            ),
           ),
         ],
       ),
@@ -1223,6 +1469,819 @@ class _DesktopCampaignsScreenState
           ),
         ],
       ),
+    );
+  }
+}
+
+class _QueueFormDialog extends StatefulWidget {
+  final Dio dio;
+  final Map<String, dynamic>? initial;
+  final Future<void> Function() onSaved;
+
+  const _QueueFormDialog({
+    required this.dio,
+    required this.initial,
+    required this.onSaved,
+  });
+
+  @override
+  State<_QueueFormDialog> createState() => _QueueFormDialogState();
+}
+
+class _QueueFormDialogState extends State<_QueueFormDialog>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabController;
+
+  late final TextEditingController _nameCtrl;
+  late final TextEditingController _colorCtrl;
+  late final TextEditingController _orderCtrl;
+  late final TextEditingController _greetingCtrl;
+  late final TextEditingController _outOfHoursCtrl;
+
+  bool _loading = false;
+  bool _saving = false;
+  int? _queueId;
+  int? _integrationId;
+  int? _promptId;
+  PlatformFile? _pickedAttachment;
+  String? _existingMediaName;
+  bool _removeExistingMedia = false;
+
+  List<Map<String, dynamic>> _integrations = const [];
+  List<Map<String, dynamic>> _prompts = const [];
+  List<_QueueSchedule> _schedules = _QueueSchedule.defaults();
+  List<_QueueOptionNode> _options = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+    final initial = widget.initial ?? const <String, dynamic>{};
+    _queueId = _asInt(initial['id']);
+    _nameCtrl = TextEditingController(text: (initial['name'] ?? '').toString());
+    _colorCtrl =
+        TextEditingController(text: (initial['color'] ?? '#006b76').toString());
+    _orderCtrl =
+        TextEditingController(text: (initial['orderQueue'] ?? '').toString());
+    _greetingCtrl = TextEditingController(
+        text: (initial['greetingMessage'] ?? '').toString());
+    _outOfHoursCtrl = TextEditingController(
+        text: (initial['outOfHoursMessage'] ?? '').toString());
+    _integrationId = _asInt(initial['integrationId']);
+    _promptId = _asInt(initial['promptId']);
+    _existingMediaName = (initial['mediaName'] ?? '').toString().trim().isEmpty
+        ? null
+        : (initial['mediaName'] ?? '').toString();
+    _bootstrap();
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    _nameCtrl.dispose();
+    _colorCtrl.dispose();
+    _orderCtrl.dispose();
+    _greetingCtrl.dispose();
+    _outOfHoursCtrl.dispose();
+    super.dispose();
+  }
+
+  int? _asInt(dynamic value) {
+    if (value == null) return null;
+    final v = value.toString().trim();
+    if (v.isEmpty) return null;
+    return int.tryParse(v);
+  }
+
+  Future<void> _bootstrap() async {
+    setState(() => _loading = true);
+    try {
+      await Future.wait([
+        _loadIntegrations(),
+        _loadPrompts(),
+        _loadQueueDetails(),
+      ]);
+      if (_queueId != null) {
+        await _loadOptions();
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _loadIntegrations() async {
+    try {
+      final res = await widget.dio.get('/queueIntegration');
+      final data = (res.data as Map?)?.cast<String, dynamic>() ?? const {};
+      final list = (data['queueIntegrations'] as List? ?? const <dynamic>[]);
+      _integrations =
+          list.whereType<Map>().map((e) => e.cast<String, dynamic>()).toList();
+    } catch (_) {
+      _integrations = const [];
+    }
+  }
+
+  Future<void> _loadPrompts() async {
+    try {
+      final res = await widget.dio.get('/prompt');
+      final data = (res.data as Map?)?.cast<String, dynamic>() ?? const {};
+      final list = (data['prompts'] as List? ?? const <dynamic>[]);
+      _prompts =
+          list.whereType<Map>().map((e) => e.cast<String, dynamic>()).toList();
+    } catch (_) {
+      _prompts = const [];
+    }
+  }
+
+  Future<void> _loadQueueDetails() async {
+    if (_queueId == null) return;
+    try {
+      final res = await widget.dio.get('/queue/$_queueId');
+      final q = (res.data as Map?)?.cast<String, dynamic>() ?? const {};
+      _nameCtrl.text = (q['name'] ?? _nameCtrl.text).toString();
+      _colorCtrl.text = (q['color'] ?? _colorCtrl.text).toString();
+      _orderCtrl.text = (q['orderQueue'] ?? _orderCtrl.text).toString();
+      _greetingCtrl.text =
+          (q['greetingMessage'] ?? _greetingCtrl.text).toString();
+      _outOfHoursCtrl.text =
+          (q['outOfHoursMessage'] ?? _outOfHoursCtrl.text).toString();
+      _integrationId = _asInt(q['integrationId']);
+      _promptId = _asInt(q['promptId']);
+      _existingMediaName = (q['mediaName'] ?? '').toString().trim().isEmpty
+          ? _existingMediaName
+          : q['mediaName'].toString();
+
+      final rawSchedules = q['schedules'];
+      if (rawSchedules is List) {
+        _schedules = rawSchedules
+            .whereType<Map>()
+            .map((e) => _QueueSchedule.fromMap(e.cast<String, dynamic>()))
+            .toList();
+      }
+      if (_schedules.isEmpty) _schedules = _QueueSchedule.defaults();
+    } catch (_) {}
+  }
+
+  Future<void> _loadOptions() async {
+    if (_queueId == null) return;
+    final tree = await _loadOptionTree(parentId: null, depth: 0);
+    if (mounted) {
+      setState(() => _options = tree);
+    }
+  }
+
+  Future<List<_QueueOptionNode>> _loadOptionTree({
+    required int? parentId,
+    required int depth,
+  }) async {
+    if (depth > 6) return const [];
+    final current = await _fetchOptionsByParent(parentId);
+    final result = <_QueueOptionNode>[];
+    for (final item in current) {
+      final children =
+          await _loadOptionTree(parentId: item.id, depth: depth + 1);
+      result.add(item.copyWith(children: children));
+    }
+    return result;
+  }
+
+  Future<List<_QueueOptionNode>> _fetchOptionsByParent(int? parentId) async {
+    if (_queueId == null) return const [];
+    final candidates = <Map<String, dynamic>>[
+      {
+        'queueId': _queueId,
+        if (parentId != null) 'parentId': parentId else 'parentId': -1,
+      },
+      {
+        'queueId': _queueId,
+        if (parentId != null) 'parentId': parentId else 'parentId': null,
+      },
+      {
+        'queueId': _queueId,
+        if (parentId != null) 'parentId': parentId,
+      },
+    ];
+
+    for (final params in candidates) {
+      try {
+        final res =
+            await widget.dio.get('/queue-options', queryParameters: params);
+        final data = res.data;
+        final list = data is List
+            ? data
+            : (data is Map && data['records'] is List
+                ? data['records'] as List
+                : const <dynamic>[]);
+        return list
+            .whereType<Map>()
+            .map((e) => _QueueOptionNode.fromMap(e.cast<String, dynamic>()))
+            .toList();
+      } catch (_) {}
+    }
+    return const [];
+  }
+
+  Future<void> _openOptionDialog(
+      {int? parentId, _QueueOptionNode? editing}) async {
+    if (_queueId == null) return;
+    final titleCtrl = TextEditingController(text: editing?.title ?? '');
+    final messageCtrl = TextEditingController(text: editing?.message ?? '');
+    final optionCtrl = TextEditingController(
+        text: (editing?.option ?? _nextOption(parentId)).toString());
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(editing == null ? 'Adicionar opção' : 'Editar opção'),
+        content: SizedBox(
+          width: 560,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: titleCtrl,
+                decoration: const InputDecoration(labelText: 'Título'),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: messageCtrl,
+                minLines: 2,
+                maxLines: 5,
+                decoration: const InputDecoration(labelText: 'Mensagem'),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: optionCtrl,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'Ordem'),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Salvar'),
+          ),
+        ],
+      ),
+    );
+    final titleValue = titleCtrl.text.trim();
+    final messageValue = messageCtrl.text.trim();
+    final optionValue =
+        int.tryParse(optionCtrl.text.trim()) ?? _nextOption(parentId);
+    titleCtrl.dispose();
+    messageCtrl.dispose();
+    optionCtrl.dispose();
+    if (ok != true) return;
+
+    final payload = <String, dynamic>{
+      'queueId': _queueId,
+      'parentId': parentId ?? -1,
+      'title': titleValue,
+      'message': messageValue,
+      'option': optionValue,
+    };
+
+    try {
+      if (editing == null) {
+        await widget.dio.post('/queue-options', data: payload);
+      } else {
+        await widget.dio.put('/queue-options/${editing.id}', data: payload);
+      }
+      await _loadOptions();
+    } catch (e) {
+      if (!mounted) return;
+      String message = 'Falha ao salvar opção da fila.';
+      if (e is DioException) {
+        final data = e.response?.data;
+        if (data is Map && data['message'] != null) {
+          final apiMessage = data['message'].toString().trim();
+          if (apiMessage.isNotEmpty) message = apiMessage;
+        }
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+    }
+  }
+
+  int _nextOption(int? parentId) {
+    if (parentId == null) return _options.length + 1;
+    final parent = _findOptionById(_options, parentId);
+    return (parent?.children.length ?? 0) + 1;
+  }
+
+  _QueueOptionNode? _findOptionById(List<_QueueOptionNode> nodes, int id) {
+    for (final node in nodes) {
+      if (node.id == id) return node;
+      final hit = _findOptionById(node.children, id);
+      if (hit != null) return hit;
+    }
+    return null;
+  }
+
+  Future<void> _deleteOption(_QueueOptionNode node) async {
+    try {
+      await widget.dio.delete('/queue-options/${node.id}');
+      await _loadOptions();
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Falha ao excluir opção da fila.')),
+      );
+    }
+  }
+
+  Future<void> _pickQueueAttachment() async {
+    try {
+      final picked = await FilePicker.platform.pickFiles(
+        withData: false,
+        allowMultiple: false,
+        lockParentWindow: true,
+      );
+      if (picked == null || picked.files.isEmpty) return;
+      setState(() {
+        _pickedAttachment = picked.files.first;
+        _removeExistingMedia = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Falha ao abrir seletor de arquivo: $e')),
+      );
+    }
+  }
+
+  Future<void> _saveQueue() async {
+    if (_nameCtrl.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Informe o nome da fila.')),
+      );
+      return;
+    }
+    setState(() => _saving = true);
+    try {
+      final payload = <String, dynamic>{
+        'name': _nameCtrl.text.trim(),
+        'color':
+            _colorCtrl.text.trim().isEmpty ? '#006b76' : _colorCtrl.text.trim(),
+        'greetingMessage': _greetingCtrl.text.trim(),
+        'outOfHoursMessage': _outOfHoursCtrl.text.trim(),
+        'orderQueue': _orderCtrl.text.trim(),
+        'integrationId': _integrationId,
+        'promptId': _promptId,
+        'schedules': _schedules.map((s) => s.toMap()).toList(),
+      };
+
+      final Response response;
+      if (_queueId == null) {
+        response = await widget.dio.post('/queue', data: payload);
+        _queueId = _asInt((response.data as Map?)?['id']);
+      } else {
+        response = await widget.dio.put('/queue/$_queueId', data: payload);
+        _queueId ??= _asInt((response.data as Map?)?['id']);
+      }
+
+      if (_removeExistingMedia && _queueId != null) {
+        await widget.dio.delete('/queue/$_queueId/media-upload');
+      }
+
+      if (_pickedAttachment?.path != null && _queueId != null) {
+        final form = FormData.fromMap({
+          'file': await MultipartFile.fromFile(
+            _pickedAttachment!.path!,
+            filename: _pickedAttachment!.name,
+          ),
+        });
+        await widget.dio.post('/queue/$_queueId/media-upload', data: form);
+      }
+
+      if (!mounted) return;
+      await widget.onSaved();
+      Navigator.pop(context);
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Falha ao salvar fila.')),
+      );
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    final dialogWidth = size.width > 1120 ? 980.0 : size.width * 0.92;
+    double dialogHeight = size.height * 0.68;
+    if (dialogHeight < 380) dialogHeight = 380;
+    if (dialogHeight > 640) dialogHeight = 640;
+
+    return AlertDialog(
+      title: Text(_queueId == null ? 'Nova fila' : 'Edite Filas'),
+      content: SizedBox(
+        width: dialogWidth,
+        child: _loading
+            ? SizedBox(
+                height: dialogHeight * 0.55,
+                child: const Padding(
+                  padding: EdgeInsets.all(32),
+                  child: Center(child: CircularProgressIndicator()),
+                ),
+              )
+            : SizedBox(
+                height: dialogHeight,
+                child: Column(
+                  children: [
+                    TabBar(
+                      controller: _tabController,
+                      tabs: const [
+                        Tab(text: 'DADOS DA FILA'),
+                        Tab(text: 'HORÁRIOS DE ATENDIMENTO'),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Expanded(
+                      child: TabBarView(
+                        controller: _tabController,
+                        children: [
+                          _buildQueueDataTab(),
+                          _buildSchedulesTab(),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+      ),
+      actions: [
+        OutlinedButton.icon(
+          onPressed: _pickQueueAttachment,
+          icon: const Icon(Icons.attach_file),
+          label: Text(_pickedAttachment == null
+              ? 'Anexar Arquivo'
+              : _pickedAttachment!.name),
+        ),
+        TextButton(
+          onPressed: _saving ? null : () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: _saving ? null : _saveQueue,
+          child: Text(_saving ? 'Salvando...' : 'Save'),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildQueueDataTab() {
+    return SingleChildScrollView(
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _nameCtrl,
+                  decoration: const InputDecoration(labelText: 'Name'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextField(
+                  controller: _colorCtrl,
+                  decoration: const InputDecoration(labelText: 'Color'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextField(
+                  controller: _orderCtrl,
+                  keyboardType: TextInputType.number,
+                  decoration:
+                      const InputDecoration(labelText: 'Ordem da fila (Bot)'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          DropdownButtonFormField<int?>(
+            value: _integrationId,
+            decoration: const InputDecoration(labelText: 'Integração'),
+            items: [
+              const DropdownMenuItem<int?>(value: null, child: Text('Nenhum')),
+              ..._integrations.map(
+                (i) => DropdownMenuItem<int?>(
+                  value: (i['id'] as num?)?.toInt(),
+                  child: Text((i['name'] ?? 'Integração').toString()),
+                ),
+              ),
+            ],
+            onChanged: (v) => setState(() => _integrationId = v),
+          ),
+          const SizedBox(height: 8),
+          DropdownButtonFormField<int?>(
+            value: _promptId,
+            decoration: const InputDecoration(labelText: 'Prompt'),
+            items: [
+              const DropdownMenuItem<int?>(value: null, child: Text('Nenhum')),
+              ..._prompts.map(
+                (p) => DropdownMenuItem<int?>(
+                  value: (p['id'] as num?)?.toInt(),
+                  child: Text((p['name'] ?? 'Prompt').toString()),
+                ),
+              ),
+            ],
+            onChanged: (v) => setState(() => _promptId = v),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _greetingCtrl,
+            minLines: 3,
+            maxLines: 5,
+            decoration: const InputDecoration(labelText: 'Greeting Message'),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _outOfHoursCtrl,
+            minLines: 3,
+            maxLines: 5,
+            decoration: const InputDecoration(
+                labelText: 'Mensagem de fora de expediente'),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Opções',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                ),
+              ),
+              FilledButton.icon(
+                onPressed: _queueId == null
+                    ? null
+                    : () => _openOptionDialog(parentId: null),
+                icon: const Icon(Icons.add),
+                label: const Text('Adicionar'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (_queueId == null)
+            const Align(
+              alignment: Alignment.centerLeft,
+              child: Text('Salve a fila para habilitar o cadastro de opções.'),
+            )
+          else if (_options.isEmpty)
+            const Align(
+              alignment: Alignment.centerLeft,
+              child: Text('Nenhuma opção cadastrada.'),
+            )
+          else
+            Column(
+              children: _options.map((o) => _buildOptionNode(o)).toList(),
+            ),
+          if (_existingMediaName != null && !_removeExistingMedia)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: () => setState(() => _removeExistingMedia = true),
+                icon: const Icon(Icons.delete_outline),
+                label: Text('Remover anexo atual ($_existingMediaName)'),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOptionNode(_QueueOptionNode node) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              CircleAvatar(radius: 12, child: Text('${node.option}')),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  node.title,
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+              IconButton(
+                onPressed: () =>
+                    _openOptionDialog(parentId: node.parentId, editing: node),
+                icon: const Icon(Icons.edit_outlined),
+              ),
+              IconButton(
+                onPressed: () => _deleteOption(node),
+                icon: const Icon(Icons.delete_outline),
+              ),
+            ],
+          ),
+          if (node.message.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(left: 32, right: 8, bottom: 6),
+              child: Text(node.message),
+            ),
+          Padding(
+            padding: const EdgeInsets.only(left: 32, bottom: 6),
+            child: OutlinedButton.icon(
+              onPressed: () => _openOptionDialog(parentId: node.id),
+              icon: const Icon(Icons.add),
+              label: const Text('Adicionar'),
+            ),
+          ),
+          if (node.children.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(left: 32),
+              child: Column(
+                children: node.children.map(_buildOptionNode).toList(),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSchedulesTab() {
+    return Column(
+      children: [
+        Expanded(
+          child: ListView.separated(
+            itemCount: _schedules.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 8),
+            itemBuilder: (_, i) {
+              final s = _schedules[i];
+              return Row(
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      readOnly: true,
+                      initialValue: s.weekday,
+                      decoration:
+                          const InputDecoration(labelText: 'Dia da Semana'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: TextFormField(
+                      initialValue: s.startTime,
+                      decoration:
+                          const InputDecoration(labelText: 'Hora de Inicial'),
+                      onChanged: (v) => s.startTime = v,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: TextFormField(
+                      initialValue: s.endTime,
+                      decoration:
+                          const InputDecoration(labelText: 'Hora de Final'),
+                      onChanged: (v) => s.endTime = v,
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 8),
+        FilledButton(
+          onPressed: () => _tabController.animateTo(0),
+          child: const Text('Adicionar'),
+        ),
+      ],
+    );
+  }
+}
+
+class _QueueSchedule {
+  String weekday;
+  String weekdayEn;
+  String startTime;
+  String endTime;
+
+  _QueueSchedule({
+    required this.weekday,
+    required this.weekdayEn,
+    required this.startTime,
+    required this.endTime,
+  });
+
+  factory _QueueSchedule.fromMap(Map<String, dynamic> map) {
+    return _QueueSchedule(
+      weekday: (map['weekday'] ?? '').toString(),
+      weekdayEn: (map['weekdayEn'] ?? '').toString(),
+      startTime: (map['startTime'] ?? '08:00').toString(),
+      endTime: (map['endTime'] ?? '17:30').toString(),
+    );
+  }
+
+  Map<String, dynamic> toMap() => <String, dynamic>{
+        'weekday': weekday,
+        'weekdayEn': weekdayEn,
+        'startTime': startTime,
+        'endTime': endTime,
+      };
+
+  static List<_QueueSchedule> defaults() => <_QueueSchedule>[
+        _QueueSchedule(
+            weekday: 'Segunda-feira',
+            weekdayEn: 'monday',
+            startTime: '08:00',
+            endTime: '17:30'),
+        _QueueSchedule(
+            weekday: 'Terça-feira',
+            weekdayEn: 'tuesday',
+            startTime: '08:00',
+            endTime: '17:30'),
+        _QueueSchedule(
+            weekday: 'Quarta-feira',
+            weekdayEn: 'wednesday',
+            startTime: '08:00',
+            endTime: '17:30'),
+        _QueueSchedule(
+            weekday: 'Quinta-feira',
+            weekdayEn: 'thursday',
+            startTime: '08:00',
+            endTime: '17:30'),
+        _QueueSchedule(
+            weekday: 'Sexta-feira',
+            weekdayEn: 'friday',
+            startTime: '08:00',
+            endTime: '17:30'),
+        _QueueSchedule(
+            weekday: 'Sábado',
+            weekdayEn: 'saturday',
+            startTime: '00:00',
+            endTime: '00:00'),
+        _QueueSchedule(
+            weekday: 'Domingo',
+            weekdayEn: 'sunday',
+            startTime: '00:00',
+            endTime: '00:00'),
+      ];
+}
+
+class _QueueOptionNode {
+  final int id;
+  final String title;
+  final String message;
+  final int option;
+  final int? parentId;
+  final List<_QueueOptionNode> children;
+
+  const _QueueOptionNode({
+    required this.id,
+    required this.title,
+    required this.message,
+    required this.option,
+    required this.parentId,
+    required this.children,
+  });
+
+  factory _QueueOptionNode.fromMap(Map<String, dynamic> map) {
+    int? parseInt(dynamic v) {
+      if (v == null) return null;
+      if (v is num) return v.toInt();
+      return int.tryParse(v.toString().trim());
+    }
+
+    return _QueueOptionNode(
+      id: parseInt(map['id']) ?? 0,
+      title: (map['title'] ?? map['name'] ?? '').toString(),
+      message: (map['message'] ?? '').toString(),
+      option: parseInt(map['option'] ?? map['order'] ?? map['position']) ?? 0,
+      parentId: parseInt(map['parentId'] ?? map['parent_id'] ?? map['parentid']),
+      children: const [],
+    );
+  }
+
+  _QueueOptionNode copyWith({
+    List<_QueueOptionNode>? children,
+  }) {
+    return _QueueOptionNode(
+      id: id,
+      title: title,
+      message: message,
+      option: option,
+      parentId: parentId,
+      children: children ?? this.children,
     );
   }
 }

@@ -14,7 +14,36 @@ class ShellScaffold extends ConsumerWidget {
   }
 
   bool _useDesktopLayout(BuildContext context) {
-    return MediaQuery.sizeOf(context).width >= 1024;
+    final width = MediaQuery.sizeOf(context).width;
+    final platform = Theme.of(context).platform;
+    final isDesktop = platform == TargetPlatform.macOS ||
+        platform == TargetPlatform.windows ||
+        platform == TargetPlatform.linux;
+    if (isDesktop) return width >= 760;
+    return width >= 1024;
+  }
+
+  Future<void> _confirmLogout(BuildContext context, WidgetRef ref) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Sair'),
+        content: const Text('Deseja sair da sua conta?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Sair'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !context.mounted) return;
+    await ref.read(authControllerProvider.notifier).logout();
+    if (context.mounted) context.go('/login');
   }
 
   List<NavigationDestination> get _destinations => const [
@@ -230,28 +259,7 @@ class ShellScaffold extends ConsumerWidget {
                               icon: Icons.logout,
                               label: 'Sair',
                               selected: false,
-                              onTap: () async {
-                                final ok = await showDialog<bool>(
-                                  context: context,
-                                  builder: (ctx) => AlertDialog(
-                                    title: const Text('Sair'),
-                                    content: const Text('Deseja sair da sua conta?'),
-                                    actions: [
-                                      TextButton(
-                                        onPressed: () => Navigator.pop(ctx, false),
-                                        child: const Text('Cancelar'),
-                                      ),
-                                      FilledButton(
-                                        onPressed: () => Navigator.pop(ctx, true),
-                                        child: const Text('Sair'),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                                if (ok != true || !context.mounted) return;
-                                await ref.read(authControllerProvider.notifier).logout();
-                                if (context.mounted) context.go('/login');
-                              },
+                              onTap: () => _confirmLogout(context, ref),
                             ),
                           ],
                         ),
@@ -274,7 +282,28 @@ class ShellScaffold extends ConsumerWidget {
                       ),
                       color: Theme.of(context).colorScheme.surface,
                     ),
-                    child: navigationShell,
+                    child: Stack(
+                      children: [
+                        Positioned.fill(child: navigationShell),
+                        if (currentPath.startsWith('/workspace/'))
+                          Positioned(
+                            right: 16,
+                            top: 12,
+                            child: FilledButton.icon(
+                              onPressed: () => _confirmLogout(context, ref),
+                              icon: const Icon(Icons.logout, size: 18),
+                              label: const Text('Sair'),
+                              style: FilledButton.styleFrom(
+                                visualDensity: VisualDensity.compact,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 8,
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
                 ),
               ],

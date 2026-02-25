@@ -483,86 +483,112 @@ class _DesktopFinanceScreenState extends ConsumerState<DesktopFinanceScreen> {
                       const SizedBox(height: 14),
                       _SectionCard(
                         title: 'Filtros',
-                        child: Wrap(
-                          spacing: 10,
-                          runSpacing: 10,
-                          children: [
-                            SizedBox(
-                              width: 420,
-                              child: TextField(
-                                controller: _searchCtrl,
-                                onChanged: (_) => setState(() {}),
-                                decoration: const InputDecoration(
-                                  labelText: 'Buscar por ID ou detalhes',
-                                  prefixIcon: Icon(Icons.search),
-                                ),
-                              ),
-                            ),
-                            SizedBox(
-                              width: 220,
-                              child: DropdownButtonFormField<String>(
-                                value: _statusFilter,
-                                decoration:
-                                    const InputDecoration(labelText: 'Status'),
-                                items: const [
-                                  DropdownMenuItem(
-                                      value: 'all', child: Text('Todos')),
-                                  DropdownMenuItem(
-                                      value: 'paid', child: Text('Pago')),
-                                  DropdownMenuItem(
-                                      value: 'open', child: Text('Em Aberto')),
-                                  DropdownMenuItem(
-                                      value: 'overdue', child: Text('Vencido')),
-                                ],
-                                onChanged: (v) =>
-                                    setState(() => _statusFilter = v ?? 'all'),
-                              ),
-                            ),
-                            SizedBox(
-                              width: 220,
-                              child: DropdownButtonFormField<String>(
-                                value: _monthFilter,
-                                decoration:
-                                    const InputDecoration(labelText: 'Mês'),
-                                items: monthOptions
-                                    .map(
-                                      (m) => DropdownMenuItem(
-                                        value: m,
-                                        child: Text(m == 'all' ? 'Todos' : m),
-                                      ),
-                                    )
-                                    .toList(),
-                                onChanged: (v) =>
-                                    setState(() => _monthFilter = v ?? 'all'),
-                              ),
-                            ),
-                            if (_isSuper)
-                              SizedBox(
-                                width: 280,
-                                child: DropdownButtonFormField<String>(
-                                  value: _companyFilter,
-                                  decoration: const InputDecoration(
-                                      labelText: 'Cliente'),
-                                  items: [
-                                    const DropdownMenuItem(
-                                        value: 'all', child: Text('Todos')),
-                                    ...companyOptions.map(
-                                      (c) => DropdownMenuItem(
-                                        value: c['id'].toString(),
-                                        child: Text(c['name'].toString()),
-                                      ),
+                        child: LayoutBuilder(
+                          builder: (context, constraints) {
+                            final w = constraints.maxWidth;
+                            final searchW =
+                                (w >= 1200 ? 420.0 : w >= 900 ? 340.0 : (w - 12))
+                                    .clamp(220.0, 460.0);
+                            final compactW =
+                                (w >= 1200 ? 220.0 : w >= 900 ? 190.0 : (w - 12))
+                                    .clamp(170.0, 260.0);
+                            final companyW =
+                                (w >= 1200 ? 280.0 : w >= 900 ? 240.0 : (w - 12))
+                                    .clamp(190.0, 340.0);
+
+                            return Wrap(
+                              spacing: 10,
+                              runSpacing: 10,
+                              children: [
+                                SizedBox(
+                                  width: searchW,
+                                  child: TextField(
+                                    controller: _searchCtrl,
+                                    onChanged: (_) => setState(() {}),
+                                    decoration: const InputDecoration(
+                                      labelText: 'Buscar por ID ou detalhes',
+                                      prefixIcon: Icon(Icons.search),
                                     ),
-                                  ],
-                                  onChanged: (v) => setState(
-                                      () => _companyFilter = v ?? 'all'),
+                                  ),
                                 ),
-                              ),
-                            FilledButton.icon(
-                              onPressed: _fetch,
-                              icon: const Icon(Icons.refresh),
-                              label: const Text('Atualizar'),
-                            ),
-                          ],
+                                SizedBox(
+                                  width: compactW,
+                                  child: DropdownButtonFormField<String>(
+                                    isExpanded: true,
+                                    value: _statusFilter,
+                                    decoration: const InputDecoration(
+                                        labelText: 'Status'),
+                                    items: const [
+                                      DropdownMenuItem(
+                                          value: 'all', child: Text('Todos')),
+                                      DropdownMenuItem(
+                                          value: 'paid', child: Text('Pago')),
+                                      DropdownMenuItem(
+                                          value: 'open',
+                                          child: Text('Em Aberto')),
+                                      DropdownMenuItem(
+                                          value: 'overdue',
+                                          child: Text('Vencido')),
+                                    ],
+                                    onChanged: (v) => setState(
+                                        () => _statusFilter = v ?? 'all'),
+                                  ),
+                                ),
+                                SizedBox(
+                                  width: compactW,
+                                  child: DropdownButtonFormField<String>(
+                                    isExpanded: true,
+                                    value: _monthFilter,
+                                    decoration:
+                                        const InputDecoration(labelText: 'Mês'),
+                                    items: monthOptions
+                                        .map(
+                                          (m) => DropdownMenuItem(
+                                            value: m,
+                                            child:
+                                                Text(m == 'all' ? 'Todos' : m),
+                                          ),
+                                        )
+                                        .toList(),
+                                    onChanged: (v) => setState(
+                                        () => _monthFilter = v ?? 'all'),
+                                  ),
+                                ),
+                                if (_isSuper)
+                                  SizedBox(
+                                    width: companyW,
+                                    child: DropdownButtonFormField<String>(
+                                      isExpanded: true,
+                                      value: _companyFilter,
+                                      decoration: const InputDecoration(
+                                          labelText: 'Cliente'),
+                                      items: [
+                                        const DropdownMenuItem(
+                                            value: 'all',
+                                            child: Text('Todos')),
+                                        ...companyOptions.map(
+                                          (c) => DropdownMenuItem(
+                                            value: c['id'].toString(),
+                                            child: Text(
+                                              c['name'].toString(),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                      onChanged: (v) => setState(
+                                          () => _companyFilter = v ?? 'all'),
+                                    ),
+                                  ),
+                                FilledButton.icon(
+                                  onPressed: _fetch,
+                                  icon: const Icon(Icons.refresh),
+                                  label: const Text('Atualizar'),
+                                ),
+                              ],
+                            );
+                          },
                         ),
                       ),
                       const SizedBox(height: 14),
