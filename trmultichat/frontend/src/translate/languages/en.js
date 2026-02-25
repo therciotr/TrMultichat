@@ -156,7 +156,7 @@ const messages = {
 			queueModal: {
 				title: {
 					add: "Add queue",
-					edit: "Edit queue",
+					edit: "Edite Filas",
 				},
 				form: {
 					name: "Name",
