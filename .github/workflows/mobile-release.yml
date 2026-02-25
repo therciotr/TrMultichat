@@ -214,6 +214,10 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Prepare macOS build files
+        run: |
+          flutter build macos --release
+
       - name: Archive macOS app
         run: |
           xcodebuild \
