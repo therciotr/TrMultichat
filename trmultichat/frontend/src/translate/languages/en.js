@@ -41,7 +41,7 @@ const messages = {
 				},
 			},
 			connections: {
-				title: "Connections",
+				title: "Conexões",
 				toasts: {
 					deleted: "WhatsApp connection deleted sucessfully!",
 				},
@@ -266,7 +266,7 @@ const messages = {
 				noTickets: "No notifications.",
 			},
 			queues: {
-				title: "Queues",
+				title: "Filas",
 				table: {
 					name: "Name",
 					color: "Color",
@@ -286,7 +286,7 @@ const messages = {
 				inputLabel: "Queues",
 			},
 			users: {
-				title: "Users",
+				title: "Usuários",
 				table: {
 					name: "Name",
 					email: "Email",
@@ -307,7 +307,7 @@ const messages = {
 			},
 			settings: {
 				success: "Settings saved successfully.",
-				title: "Settings",
+				title: "Configurações",
 				settings: {
 					userCreation: {
 						name: "User creation",
