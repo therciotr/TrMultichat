@@ -1790,8 +1790,9 @@ class _DesktopHelpCenterScreenState
   }
 
   Future<String> _fallbackDownloadPath(String fileName) async {
-    final downloadsDir = await getDownloadsDirectory();
-    final baseDir = downloadsDir?.path ?? (await getTemporaryDirectory()).path;
+    final baseDir = Platform.isMacOS
+        ? (await getApplicationDocumentsDirectory()).path
+        : (await getDownloadsDirectory())?.path ?? (await getTemporaryDirectory()).path;
     final safeName = fileName.trim().isEmpty ? 'anexo' : fileName.trim();
     final extIndex = safeName.lastIndexOf('.');
     final hasExt = extIndex > 0 && extIndex < safeName.length - 1;
@@ -1838,9 +1839,11 @@ class _DesktopHelpCenterScreenState
         savePath = await _fallbackDownloadPath(suggestedName);
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
+          SnackBar(
             content: Text(
-              'Nao foi possivel abrir "Salvar como". Baixando na pasta Downloads.',
+              Platform.isMacOS
+                  ? 'Nao foi possivel abrir "Salvar como". Baixando na pasta Documentos do app.'
+                  : 'Nao foi possivel abrir "Salvar como". Baixando na pasta Downloads.',
             ),
           ),
         );
