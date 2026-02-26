@@ -134,10 +134,19 @@ class _AgendaScreenState extends ConsumerState<AgendaScreen> {
     return deleted;
   }
 
+  bool _isDesktopLayout(BuildContext context) {
+    final platform = Theme.of(context).platform;
+    return platform == TargetPlatform.macOS ||
+        platform == TargetPlatform.windows ||
+        platform == TargetPlatform.linux;
+  }
+
   @override
   Widget build(BuildContext context) {
     final st = ref.watch(agendaControllerProvider);
     final ctrl = ref.read(agendaControllerProvider.notifier);
+    final cs = Theme.of(context).colorScheme;
+    final isDesktop = _isDesktopLayout(context);
     final hasSelectedFilterUser = _selectedUserId != null &&
         _users.any((u) => (u['id'] as num?)?.toInt() == _selectedUserId);
 
@@ -152,39 +161,259 @@ class _AgendaScreenState extends ConsumerState<AgendaScreen> {
         .toList()
       ..sort((a, b) => a.startAt.compareTo(b.startAt));
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Agenda'),
-        actions: [
-          IconButton(
-            tooltip: 'Sair',
-            icon: const Icon(Icons.logout),
-            onPressed: () async {
-              final ok = await showDialog<bool>(
-                context: context,
-                builder: (ctx) => AlertDialog(
-                  title: const Text('Sair'),
-                  content: const Text('Deseja sair da sua conta?'),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(ctx, false),
-                      child: const Text('Cancelar'),
-                    ),
-                    FilledButton(
-                      onPressed: () => Navigator.pop(ctx, true),
-                      child: const Text('Sair'),
-                    ),
-                  ],
-                ),
-              );
-              if (ok != true) return;
-              await ref.read(authControllerProvider.notifier).logout();
-              if (!mounted) return;
-              context.go('/login');
-            },
+    Widget eventTile(dynamic ev) {
+      final start = ev.startAt;
+      final end = ev.endAt;
+      final timeLabel =
+          ev.allDay ? 'Dia inteiro' : '${_fmtTime(start)} - ${_fmtTime(end)}';
+      return Dismissible(
+        key: ValueKey('agenda-event-${ev.id}-${ev.seriesId}'),
+        direction: DismissDirection.endToStart,
+        confirmDismiss: (_) async =>
+            _confirmAndDeleteEvent(context, ctrl, ev.seriesId),
+        background: Container(
+          margin: const EdgeInsets.only(bottom: 10),
+          decoration: BoxDecoration(
+            color: cs.errorContainer,
+            borderRadius: BorderRadius.circular(16),
           ),
-        ],
-      ),
+          alignment: Alignment.centerRight,
+          padding: const EdgeInsets.only(right: 16),
+          child: Icon(Icons.delete_outline, color: cs.onErrorContainer),
+        ),
+        child: InkWell(
+          onTap: () async {
+            final deleted = await context.push('/agenda/event', extra: ev);
+            if (deleted == true && mounted) {
+              await ctrl.refresh();
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Evento excluído com sucesso.')),
+              );
+            }
+          },
+          borderRadius: BorderRadius.circular(16),
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Ink(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: cs.outlineVariant.withOpacity(0.55)),
+                color: cs.surface,
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 10,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: cs.primary,
+                      borderRadius: BorderRadius.circular(99),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(ev.title.toString(),
+                            style:
+                                const TextStyle(fontWeight: FontWeight.w900)),
+                        const SizedBox(height: 2),
+                        Text(timeLabel,
+                            style: TextStyle(color: cs.onSurfaceVariant)),
+                        if ((ev.location?.toString() ?? '').trim().isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Text(
+                              ev.location.toString(),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(color: cs.onSurfaceVariant),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  Icon(Icons.chevron_right, color: cs.onSurfaceVariant),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    Widget sectionCard(Widget child) {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(18),
+          color: cs.surface,
+          border: Border.all(color: cs.outlineVariant.withOpacity(0.5)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 18,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: child,
+      );
+    }
+
+    Widget buildDesktopCalendarCard() {
+      return sectionCard(
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.calendar_month_outlined, color: cs.primary),
+                const SizedBox(width: 8),
+                Text(
+                  'Calendário',
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleMedium
+                      ?.copyWith(fontWeight: FontWeight.w900),
+                ),
+                const Spacer(),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: cs.primary.withOpacity(0.10),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    _fmtDayLabel(_selectedDay),
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      color: cs.primary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(14),
+                color: cs.surfaceContainerHighest.withOpacity(0.35),
+                border: Border.all(color: cs.outlineVariant.withOpacity(0.45)),
+              ),
+              child: CalendarDatePicker(
+                initialDate: _selectedDay,
+                firstDate: DateTime(2020),
+                lastDate: DateTime(2035),
+                onDateChanged: (d) => setState(() => _selectedDay = d),
+                currentDate: DateTime.now(),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    Widget buildDesktopEventsCard() {
+      return sectionCard(
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.event_note_outlined, color: cs.primary),
+                const SizedBox(width: 8),
+                Text(
+                  'Eventos em ${_fmtDayLabel(_selectedDay)}',
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleMedium
+                      ?.copyWith(fontWeight: FontWeight.w900),
+                ),
+                const Spacer(),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(999),
+                    color: cs.primary.withOpacity(0.12),
+                  ),
+                  child: Text(
+                    '${selectedEvents.length}',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w900,
+                      color: cs.primary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            if (!st.loading && st.items.isEmpty)
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 22),
+                  child: Text(
+                    'Nenhum evento na agenda.',
+                    style: TextStyle(color: cs.onSurfaceVariant),
+                  ),
+                ),
+              ),
+            if (!st.loading && st.items.isNotEmpty && selectedEvents.isEmpty)
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 22),
+                  child: Text(
+                    'Sem eventos para esta data.',
+                    style: TextStyle(color: cs.onSurfaceVariant),
+                  ),
+                ),
+              ),
+            ...selectedEvents.map(eventTile),
+          ],
+        ),
+      );
+    }
+
+    return Scaffold(
+      appBar: isDesktop
+          ? null
+          : AppBar(
+              title: const Text('Agenda'),
+              actions: [
+                IconButton(
+                  tooltip: 'Sair',
+                  icon: const Icon(Icons.logout),
+                  onPressed: () async {
+                    final ok = await showDialog<bool>(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        title: const Text('Sair'),
+                        content: const Text('Deseja sair da sua conta?'),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx, false),
+                            child: const Text('Cancelar'),
+                          ),
+                          FilledButton(
+                            onPressed: () => Navigator.pop(ctx, true),
+                            child: const Text('Sair'),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (ok != true) return;
+                    await ref.read(authControllerProvider.notifier).logout();
+                    if (!mounted) return;
+                    context.go('/login');
+                  },
+                ),
+              ],
+            ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _openCreateDialog,
         icon: const Icon(Icons.add),
@@ -202,216 +431,174 @@ class _AgendaScreenState extends ConsumerState<AgendaScreen> {
             child: RefreshIndicator(
               onRefresh: () => ctrl.refresh(),
               child: ListView(
-                padding: const EdgeInsets.all(14),
+                padding: EdgeInsets.fromLTRB(
+                  isDesktop ? 18 : 14,
+                  isDesktop ? 18 : 14,
+                  isDesktop ? 18 : 14,
+                  90,
+                ),
                 children: [
-                  if (_canPickUser) ...[
-                    if (_loadingUsers)
-                      const LinearProgressIndicator(minHeight: 2),
-                    DropdownButtonFormField<int>(
-                      value: hasSelectedFilterUser ? _selectedUserId : null,
-                      items: _users
-                          .map(
-                            (u) => DropdownMenuItem<int>(
-                              value: (u['id'] as num?)?.toInt() ?? 0,
-                              child: Text(
-                                (u['name']?.toString().trim().isNotEmpty ==
-                                        true)
-                                    ? u['name'].toString()
-                                    : (u['email']?.toString() ?? 'Usuário'),
-                              ),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (v) {
-                        setState(() => _selectedUserId = v);
-                        ref
-                            .read(agendaControllerProvider.notifier)
-                            .setUserFilter(v);
-                      },
-                      decoration: const InputDecoration(
-                        labelText: 'Usuário',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                  ],
-                  Card(
-                    elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                      side: BorderSide(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .outlineVariant
-                              .withOpacity(0.45)),
-                    ),
-                    child: CalendarDatePicker(
-                      initialDate: _selectedDay,
-                      firstDate: DateTime(2020),
-                      lastDate: DateTime(2035),
-                      onDateChanged: (d) => setState(() => _selectedDay = d),
-                      currentDate: DateTime.now(),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Text(
-                        'Eventos em ${_fmtDayLabel(_selectedDay)}',
-                        style: Theme.of(context)
-                            .textTheme
-                            .titleMedium
-                            ?.copyWith(fontWeight: FontWeight.w900),
-                      ),
-                      const Spacer(),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 6),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(999),
-                          color: Theme.of(context)
-                              .colorScheme
-                              .primary
-                              .withOpacity(0.12),
-                        ),
-                        child: Text(
-                          '${selectedEvents.length}',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w900,
-                            color: Theme.of(context).colorScheme.primary,
-                          ),
-                        ),
-                      )
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  if (!st.loading && st.items.isEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 30),
-                      child: Text(
-                        'Nenhum evento na agenda.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                            color:
-                                Theme.of(context).colorScheme.onSurfaceVariant),
-                      ),
-                    ),
-                  if (!st.loading &&
-                      st.items.isNotEmpty &&
-                      selectedEvents.isEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 12),
-                      child: Text(
-                        'Sem eventos para esta data.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                            color:
-                                Theme.of(context).colorScheme.onSurfaceVariant),
-                      ),
-                    ),
-                  ...selectedEvents.map((ev) {
-                    final start = ev.startAt;
-                    final end = ev.endAt;
-                    final timeLabel = ev.allDay
-                        ? 'Dia inteiro'
-                        : '${_fmtTime(start)} - ${_fmtTime(end)}';
-                    return Dismissible(
-                        key: ValueKey('agenda-event-${ev.id}-${ev.seriesId}'),
-                        direction: DismissDirection.endToStart,
-                        confirmDismiss: (_) async => _confirmAndDeleteEvent(
-                            context, ctrl, ev.seriesId),
-                        background: Container(
-                          margin: const EdgeInsets.only(bottom: 10),
-                          decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.errorContainer,
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          alignment: Alignment.centerRight,
-                          padding: const EdgeInsets.only(right: 16),
-                          child: Icon(Icons.delete_outline,
-                              color: Theme.of(context).colorScheme.onErrorContainer),
-                        ),
-                        child: InkWell(
-                        onTap: () async {
-                          final deleted =
-                              await context.push('/agenda/event', extra: ev);
-                          if (deleted == true && mounted) {
-                            await ctrl.refresh();
-                            if (!mounted) return;
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                  content: Text('Evento excluído com sucesso.')),
-                            );
-                          }
-                        },
-                        borderRadius: BorderRadius.circular(16),
-                        child: Padding(
-                          padding: const EdgeInsets.only(bottom: 10),
-                          child: Ink(
-                            padding: const EdgeInsets.all(12),
+                  if (isDesktop)
+                    sectionCard(
+                      Row(
+                        children: [
+                          Container(
+                            width: 42,
+                            height: 42,
                             decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .outlineVariant
-                                      .withOpacity(0.55)),
-                              color: Theme.of(context).colorScheme.surface,
+                              color: cs.primary.withOpacity(0.14),
+                              borderRadius: BorderRadius.circular(12),
                             ),
-                            child: Row(
+                            child: Icon(Icons.calendar_month, color: cs.primary),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Container(
-                                  width: 10,
-                                  height: 44,
-                                  decoration: BoxDecoration(
-                                    color:
-                                        Theme.of(context).colorScheme.primary,
-                                    borderRadius: BorderRadius.circular(99),
-                                  ),
+                                Text(
+                                  'Agenda',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .titleLarge
+                                      ?.copyWith(fontWeight: FontWeight.w900),
                                 ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(ev.title.toString(),
-                                          style: const TextStyle(
-                                              fontWeight: FontWeight.w900)),
-                                      const SizedBox(height: 2),
-                                      Text(timeLabel,
-                                          style: TextStyle(
-                                              color: Theme.of(context)
-                                                  .colorScheme
-                                                  .onSurfaceVariant)),
-                                      if ((ev.location?.toString() ?? '')
-                                          .trim()
-                                          .isNotEmpty)
-                                        Padding(
-                                          padding:
-                                              const EdgeInsets.only(top: 4),
-                                          child: Text(
-                                            ev.location.toString(),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: TextStyle(
-                                                color: Theme.of(context)
-                                                    .colorScheme
-                                                    .onSurfaceVariant),
-                                          ),
-                                        ),
-                                    ],
-                                  ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Visual moderno para planejamento diário.',
+                                  style:
+                                      TextStyle(color: cs.onSurfaceVariant),
                                 ),
-                                Icon(Icons.chevron_right,
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .onSurfaceVariant),
                               ],
                             ),
                           ),
-                        )));
-                  }),
+                        ],
+                      ),
+                    ),
+                  if (isDesktop) const SizedBox(height: 14),
+                  if (_canPickUser) ...[
+                    if (_loadingUsers) const LinearProgressIndicator(minHeight: 2),
+                    sectionCard(
+                      Row(
+                        children: [
+                          Icon(Icons.person_outline, color: cs.primary),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: DropdownButtonFormField<int>(
+                              value: hasSelectedFilterUser ? _selectedUserId : null,
+                              items: _users
+                                  .map(
+                                    (u) => DropdownMenuItem<int>(
+                                      value: (u['id'] as num?)?.toInt() ?? 0,
+                                      child: Text(
+                                        (u['name']?.toString().trim().isNotEmpty == true)
+                                            ? u['name'].toString()
+                                            : (u['email']?.toString() ?? 'Usuário'),
+                                      ),
+                                    ),
+                                  )
+                                  .toList(),
+                              onChanged: (v) {
+                                setState(() => _selectedUserId = v);
+                                ref.read(agendaControllerProvider.notifier).setUserFilter(v);
+                              },
+                              decoration: const InputDecoration(
+                                labelText: 'Usuário',
+                                border: OutlineInputBorder(),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                  ],
+                  if (isDesktop)
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final twoCols = constraints.maxWidth >= 1180;
+                        if (!twoCols) {
+                          return Column(
+                            children: [
+                              buildDesktopCalendarCard(),
+                              const SizedBox(height: 14),
+                              buildDesktopEventsCard(),
+                            ],
+                          );
+                        }
+                        return Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(flex: 5, child: buildDesktopCalendarCard()),
+                            const SizedBox(width: 14),
+                            Expanded(flex: 6, child: buildDesktopEventsCard()),
+                          ],
+                        );
+                      },
+                    )
+                  else ...[
+                    Card(
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                        side: BorderSide(color: cs.outlineVariant.withOpacity(0.45)),
+                      ),
+                      child: CalendarDatePicker(
+                        initialDate: _selectedDay,
+                        firstDate: DateTime(2020),
+                        lastDate: DateTime(2035),
+                        onDateChanged: (d) => setState(() => _selectedDay = d),
+                        currentDate: DateTime.now(),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Text(
+                          'Eventos em ${_fmtDayLabel(_selectedDay)}',
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleMedium
+                              ?.copyWith(fontWeight: FontWeight.w900),
+                        ),
+                        const Spacer(),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(999),
+                            color: cs.primary.withOpacity(0.12),
+                          ),
+                          child: Text(
+                            '${selectedEvents.length}',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w900,
+                              color: cs.primary,
+                            ),
+                          ),
+                        )
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    if (!st.loading && st.items.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 30),
+                        child: Text(
+                          'Nenhum evento na agenda.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: cs.onSurfaceVariant),
+                        ),
+                      ),
+                    if (!st.loading && st.items.isNotEmpty && selectedEvents.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 12),
+                        child: Text(
+                          'Sem eventos para esta data.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: cs.onSurfaceVariant),
+                        ),
+                      ),
+                    ...selectedEvents.map(eventTile),
+                  ],
                 ],
               ),
             ),

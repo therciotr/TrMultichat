@@ -388,6 +388,75 @@ function resolveAssetUrl(urlRaw) {
   return base + (url.startsWith("/") ? url : "/" + url);
 }
 
+function buildAttachmentDownloadUrl(urlRaw) {
+  const asset = resolveAssetUrl(urlRaw);
+  if (!asset) return "";
+  const api = resolveApiBaseUrl();
+  return `${api}/helps/attachment/download?url=${encodeURIComponent(asset)}`;
+}
+
+function fileNameFromUrl(urlRaw, fallback = "anexo") {
+  const url = normalizeText(urlRaw);
+  if (!url) return fallback;
+  try {
+    const parsed = new URL(url);
+    const last = (parsed.pathname || "").split("/").filter(Boolean).pop();
+    return normalizeText(last) || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function fileNameFromContentDisposition(headerRaw, fallback = "anexo") {
+  const header = normalizeText(headerRaw);
+  if (!header) return fallback;
+  const utfMatch = header.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utfMatch?.[1]) {
+    try {
+      return decodeURIComponent(utfMatch[1]);
+    } catch {
+      return utfMatch[1];
+    }
+  }
+  const quoted = header.match(/filename="([^"]+)"/i);
+  if (quoted?.[1]) return quoted[1];
+  const plain = header.match(/filename=([^;]+)/i);
+  if (plain?.[1]) return plain[1].trim();
+  return fallback;
+}
+
+async function forceDownloadAttachment(urlRaw) {
+  const downloadUrl = buildAttachmentDownloadUrl(urlRaw);
+  if (!downloadUrl) throw new Error("download-url-empty");
+
+  const response = await fetch(downloadUrl, { method: "GET" });
+  if (!response.ok) throw new Error(`download-failed-${response.status}`);
+
+  const blob = await response.blob();
+  if (!blob || blob.size <= 0) throw new Error("empty-file");
+  if ((blob.type || "").toLowerCase().includes("text/html")) {
+    throw new Error("received-html-instead-of-file");
+  }
+
+  const suggestedName = fileNameFromUrl(resolveAssetUrl(urlRaw), "anexo");
+  const headerName = fileNameFromContentDisposition(
+    response.headers.get("content-disposition"),
+    suggestedName
+  );
+
+  const objectUrl = URL.createObjectURL(blob);
+  try {
+    const anchor = document.createElement("a");
+    anchor.href = objectUrl;
+    anchor.download = headerName || suggestedName;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
 function parseAttachmentLinks(raw) {
   if (Array.isArray(raw)) {
     return raw.map((item) => normalizeText(item)).filter(Boolean);
@@ -581,6 +650,15 @@ export default function HelpsAdmin() {
     () => parseAttachmentLinks(viewItem?.link),
     [viewItem]
   );
+
+  const handleDownloadAttachment = useCallback(async (raw) => {
+    try {
+      await forceDownloadAttachment(raw);
+    } catch (_) {
+      const fallback = buildAttachmentDownloadUrl(raw) || resolveAssetUrl(raw);
+      if (fallback) window.open(fallback, "_blank", "noopener,noreferrer");
+    }
+  }, []);
 
   const setFile = (file) => {
     try {
@@ -1257,9 +1335,14 @@ export default function HelpsAdmin() {
           {viewAttachments.length ? (
             <div style={{ marginTop: 14, display: "grid", gap: 8 }}>
               {viewAttachments.map((raw, index) => (
-                <a key={`${raw}-${index}`} href={resolveAssetUrl(raw)} target="_blank" rel="noopener noreferrer">
+                <Button
+                  key={`${raw}-${index}`}
+                  variant="outlined"
+                  color="default"
+                  onClick={() => handleDownloadAttachment(raw)}
+                >
                   {viewAttachments.length > 1 ? `Abrir/Baixar anexo ${index + 1}` : "Abrir/Baixar anexo"}
-                </a>
+                </Button>
               ))}
             </div>
           ) : null}

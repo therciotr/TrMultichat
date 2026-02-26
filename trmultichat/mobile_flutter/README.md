@@ -37,6 +37,33 @@ Arquivo:
 
 Em device físico (dev), troque `localhost` pelo IP local no `app_env.dart`.
 
+### Publicação (Google Play + App Store)
+
+Para não repetir passos manuais, use o script:
+
+```bash
+cd trmultichat/mobile_flutter
+./tools/release_mobile_stores.sh --build-only
+```
+
+Quando as credenciais estiverem em `secrets/android` e `secrets/ios`, rode:
+
+```bash
+./tools/release_mobile_stores.sh
+```
+
+Opções úteis:
+
+- `--android-only`
+- `--ios-only`
+- `--no-upload-play`
+- `--no-upload-apple`
+
+Arquivos esperados de credenciais:
+
+- Android: `secrets/android/PLAY_SERVICE_ACCOUNT_JSON.json`
+- iOS: `secrets/ios/APPSTORE_ISSUER_ID.txt`, `secrets/ios/APPSTORE_KEY_ID.txt`, `secrets/ios/APPSTORE_API_PRIVATE_KEY.p8`
+
 ### Estrutura (resumo)
 - **Código ativo do app**: `lib/src/**`
   - Router ativo: `lib/src/router/app_router.dart`

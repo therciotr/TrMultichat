@@ -1793,7 +1793,9 @@ class _DesktopHelpCenterScreenState
   String _embedUrlForVideo(String rawVideo) {
     final youtubeId = _youtubeId(rawVideo);
     if (youtubeId != null) {
-      return 'https://www.youtube.com/embed/$youtubeId?rel=0';
+      // On macOS WebView, direct /embed can fail with YouTube player config
+      // errors in some environments. Loading /watch keeps playback in-app.
+      return 'https://www.youtube.com/watch?v=$youtubeId&playsinline=1';
     }
 
     final normalized = _normalizeHttpUrl(rawVideo);
@@ -1829,7 +1831,19 @@ class _DesktopHelpCenterScreenState
 
     final controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..loadRequest(uri);
+      ..setUserAgent(
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) '
+        'AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15',
+      )
+      ..loadRequest(
+        uri,
+        headers: _youtubeId(rawVideo) != null
+            ? const {
+                'Referer': 'https://www.youtube.com/',
+                'Origin': 'https://www.youtube.com',
+              }
+            : const {},
+      );
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),
@@ -1975,7 +1989,24 @@ class _DesktopHelpCenterScreenState
 
     try {
       await File(targetPath).parent.create(recursive: true);
-      await dio.download(downloadUrl, targetPath);
+      final response = await dio.get<List<int>>(
+        downloadUrl,
+        options: Options(
+          responseType: ResponseType.bytes,
+          followRedirects: true,
+          validateStatus: (status) => status != null && status >= 200 && status < 400,
+        ),
+      );
+      final bytes = response.data ?? const <int>[];
+      final contentType =
+          (response.headers.value(Headers.contentTypeHeader) ?? '').toLowerCase();
+      if (bytes.isEmpty) {
+        throw Exception('Resposta vazia ao baixar anexo.');
+      }
+      if (contentType.contains('text/html')) {
+        throw Exception('Resposta invalida (HTML) ao baixar anexo.');
+      }
+      await File(targetPath).writeAsBytes(bytes, flush: true);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
