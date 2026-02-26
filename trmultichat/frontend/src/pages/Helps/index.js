@@ -4,6 +4,7 @@ import {
   Typography,
   Modal,
   IconButton,
+  Button,
   Grid,
   Card,
   CardActionArea,
@@ -14,6 +15,8 @@ import CloseIcon from "@material-ui/icons/Close";
 import YouTubeIcon from "@material-ui/icons/YouTube";
 import PlayCircleOutlineIcon from "@material-ui/icons/PlayCircleOutline";
 import HelpOutlineIcon from "@material-ui/icons/HelpOutline";
+import OpenInNewIcon from "@material-ui/icons/OpenInNew";
+import GetAppIcon from "@material-ui/icons/GetApp";
 import MainContainer from "../../components/MainContainer";
 import MainHeader from "../../components/MainHeader";
 import MainHeaderButtonsWrapper from "../../components/MainHeaderButtonsWrapper";
@@ -288,6 +291,41 @@ const useStyles = makeStyles((theme) => {
     flexWrap: "wrap",
     gap: theme.spacing(1),
   },
+  actionBtn: {
+    borderRadius: 999,
+    textTransform: "none",
+    fontWeight: 800,
+    minHeight: 36,
+    padding: "6px 14px",
+  },
+  fallbackMedia: {
+    width: "100%",
+    padding: theme.spacing(4, 3),
+    borderBottom: `1px solid ${theme.palette.divider}`,
+    background: isDark
+      ? "linear-gradient(180deg, rgba(15,23,42,0.86) 0%, rgba(2,6,23,0.82) 100%)"
+      : "linear-gradient(180deg, #F6FAFF 0%, #EFF7FF 100%)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  fallbackCard: {
+    width: "100%",
+    maxWidth: 560,
+    borderRadius: 14,
+    border,
+    padding: theme.spacing(2),
+    background: isDark ? "rgba(15,23,42,0.58)" : "rgba(255,255,255,0.86)",
+    textAlign: "center",
+  },
+  fallbackTitle: {
+    fontWeight: 900,
+    marginBottom: theme.spacing(0.5),
+  },
+  fallbackText: {
+    color: theme.palette.text.secondary,
+    fontSize: 13,
+  },
   emptyWrap: {
     marginTop: theme.spacing(2),
     padding: theme.spacing(4),
@@ -402,23 +440,46 @@ const Helps = () => {
             {(modalVideo.url || modalAttachment) ? (
               <div className={classes.actionLinks}>
                 {modalVideo.url ? (
-                  <a href={modalVideo.url} target="_blank" rel="noreferrer">
+                  <Button
+                    className={classes.actionBtn}
+                    color="primary"
+                    variant="contained"
+                    startIcon={<OpenInNewIcon />}
+                    component="a"
+                    href={modalVideo.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
                     Abrir vídeo
-                  </a>
+                  </Button>
                 ) : null}
                 {modalAttachment ? (
-                  <a href={modalAttachmentDownload || modalAttachment} rel="noopener noreferrer">
+                  <Button
+                    className={classes.actionBtn}
+                    color="default"
+                    variant="outlined"
+                    startIcon={<GetAppIcon />}
+                    component="a"
+                    href={modalAttachmentDownload || modalAttachment}
+                    rel="noopener noreferrer"
+                  >
                     Baixar anexo
-                  </a>
+                  </Button>
                 ) : null}
               </div>
             ) : null}
           </div>
-          {!modalEmbedUrl ? (
-            <div className={classes.modalBody}>
-              <Typography variant="body2" color="textSecondary">
-                Este link não pode ser exibido no visualizador. Use "Abrir vídeo".
-              </Typography>
+          {!modalEmbedUrl && modalVideo.url ? (
+            <div className={classes.fallbackMedia}>
+              <div className={classes.fallbackCard}>
+                <Typography variant="subtitle1" className={classes.fallbackTitle}>
+                  Visualização externa do vídeo
+                </Typography>
+                <Typography className={classes.fallbackText}>
+                  Este provedor não permite exibição embutida aqui. Use o botão "Abrir vídeo"
+                  para assistir com melhor qualidade.
+                </Typography>
+              </div>
             </div>
           ) : null}
         </div>
