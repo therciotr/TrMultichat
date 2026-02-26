@@ -8,9 +8,6 @@ import { getLegacyModel } from "../../utils/legacyModel";
 
 const router = Router();
 
-// Protege todas as rotas de ajuda (o frontend já envia Bearer token)
-router.use(authMiddleware);
-
 type HelpRow = {
   id: number;
   title?: string;
@@ -26,6 +23,18 @@ function normalizeText(v: any): string {
   return String(v ?? "").trim();
 }
 
+function toUploadPath(raw: string): string {
+  const value = normalizeText(raw);
+  if (!value) return "";
+  try {
+    const parsed = new URL(value);
+    return decodeURIComponent(parsed.pathname || "");
+  } catch {
+    const onlyPath = value.split("?")[0].split("#")[0];
+    return decodeURIComponent(onlyPath);
+  }
+}
+
 // Upload (public/uploads/helps)
 const PUBLIC_DIR = path.join(process.cwd(), "public");
 const UPLOADS_DIR = path.join(PUBLIC_DIR, "uploads");
@@ -38,6 +47,33 @@ function ensureUploadDirs() {
 }
 
 ensureUploadDirs();
+
+// Public endpoint used by web app to trigger direct file download.
+router.get("/attachment/download", async (req, res) => {
+  try {
+    const pathFromUrl = toUploadPath(String(req.query.url || ""));
+    if (!pathFromUrl || !pathFromUrl.startsWith("/uploads/helps/")) {
+      return res.status(400).json({ error: true, message: "invalid attachment url" });
+    }
+
+    const targetFile = path.resolve(PUBLIC_DIR, "." + pathFromUrl);
+    const allowedBase = path.resolve(HELPS_UPLOADS_DIR);
+    if (!targetFile.startsWith(allowedBase + path.sep) && targetFile !== allowedBase) {
+      return res.status(400).json({ error: true, message: "invalid attachment path" });
+    }
+    if (!fs.existsSync(targetFile)) {
+      return res.status(404).json({ error: true, message: "file not found" });
+    }
+
+    const fileName = path.basename(targetFile);
+    return res.download(targetFile, fileName);
+  } catch (e: any) {
+    return res.status(400).json({ error: true, message: e?.message || "download error" });
+  }
+});
+
+// Protege todas as demais rotas de ajuda (o frontend já envia Bearer token)
+router.use(authMiddleware);
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, HELPS_UPLOADS_DIR),
   filename: (_req, file, cb) => {

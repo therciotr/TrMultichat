@@ -111,20 +111,9 @@ function getVideoEmbedUrl(videoInfo) {
     return `https://www.youtube-nocookie.com/embed/${videoInfo.id}?rel=0&modestbranding=1`;
   }
   if (videoInfo.type === "instagram" && videoInfo.url) {
-    try {
-      const parsed = new URL(videoInfo.url);
-      const host = parsed.hostname.replace(/^www\./, "");
-      if (!host.endsWith("instagram.com")) return "";
-      const path = parsed.pathname || "/";
-      const match = path.match(/\/(reel|p|tv)\/([^/]+)/i);
-      if (match?.[1] && match?.[2]) {
-        return `https://www.instagram.com/${match[1]}/${match[2]}/embed/captioned/`;
-      }
-      const normalizedPath = path.endsWith("/") ? path : `${path}/`;
-      return `https://www.instagram.com${normalizedPath}embed/captioned/`;
-    } catch {
-      return "";
-    }
+    // Instagram can block iframe rendering for many posts/reels.
+    // Keep external open action to avoid a broken visualizer.
+    return "";
   }
   if (videoInfo.url) return videoInfo.url;
   return "";
@@ -146,6 +135,19 @@ function resolveAssetUrl(urlRaw) {
   if (url.startsWith("http://") || url.startsWith("https://")) return url;
   const base = resolveApiBaseUrl();
   return base + (url.startsWith("/") ? url : "/" + url);
+}
+
+function isImageUrl(urlRaw) {
+  const url = normalizeText(urlRaw).toLowerCase();
+  if (!url) return false;
+  return [".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"].some((ext) => url.includes(ext));
+}
+
+function buildAttachmentDownloadUrl(urlRaw) {
+  const asset = resolveAssetUrl(urlRaw);
+  if (!asset) return "";
+  const api = resolveApiBaseUrl();
+  return `${api}/helps/attachment/download?url=${encodeURIComponent(asset)}`;
 }
 
 const useStyles = makeStyles((theme) => {
@@ -349,6 +351,10 @@ const Helps = () => {
     () => resolveAssetUrl(selectedHelp?.link),
     [selectedHelp]
   );
+  const modalAttachmentDownload = useMemo(
+    () => buildAttachmentDownloadUrl(selectedHelp?.link),
+    [selectedHelp]
+  );
 
   const renderVideoModal = () => {
     return (
@@ -401,7 +407,7 @@ const Helps = () => {
                   </a>
                 ) : null}
                 {modalAttachment ? (
-                  <a href={modalAttachment} target="_blank" rel="noreferrer" download>
+                  <a href={modalAttachmentDownload || modalAttachment} rel="noopener noreferrer">
                     Baixar anexo
                   </a>
                 ) : null}
@@ -411,7 +417,7 @@ const Helps = () => {
           {!modalEmbedUrl ? (
             <div className={classes.modalBody}>
               <Typography variant="body2" color="textSecondary">
-                Não foi possível incorporar este link no visualizador. Use "Abrir vídeo".
+                Este link não pode ser exibido no visualizador. Use "Abrir vídeo".
               </Typography>
             </div>
           ) : null}
@@ -461,6 +467,12 @@ const Helps = () => {
           const hasVideo = videoInfo.type !== "none";
           const attachmentUrl = resolveAssetUrl(record?.link);
           const hasAttachment = Boolean(attachmentUrl);
+          const thumbImageUrl =
+            videoInfo.type === "youtube" && videoInfo.id
+              ? `https://img.youtube.com/vi/${videoInfo.id}/mqdefault.jpg`
+              : isImageUrl(attachmentUrl)
+                ? attachmentUrl
+                : "";
           const title = record?.title || i18n.t("helps.title");
           const description = record?.description || "";
           return (
@@ -472,9 +484,9 @@ const Helps = () => {
                   aria-label={`Abrir ajuda: ${title}`}
                 >
                   <div className={classes.thumb}>
-                    {videoInfo.type === "youtube" ? (
+                    {thumbImageUrl ? (
                       <img
-                        src={`https://img.youtube.com/vi/${videoInfo.id}/mqdefault.jpg`}
+                        src={thumbImageUrl}
                         alt="Thumbnail"
                         className={classes.thumbImg}
                       />
