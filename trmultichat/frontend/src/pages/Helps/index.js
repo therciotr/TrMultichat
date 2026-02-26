@@ -27,6 +27,49 @@ function normalizeText(v) {
 
 const YT_ID_RE = /^[a-zA-Z0-9_-]{11}$/;
 
+function extractYouTubeId(inputRaw) {
+  const input = normalizeText(inputRaw);
+  if (!input) return "";
+  if (YT_ID_RE.test(input)) return input;
+
+  const normalized = input.startsWith("http://") || input.startsWith("https://")
+    ? input
+    : `https://${input.replace(/^\/+/, "")}`;
+
+  try {
+    const url = new URL(normalized);
+    const host = url.hostname.replace(/^www\./, "");
+
+    if (host === "youtu.be") {
+      const id = normalizeText((url.pathname || "").split("/").filter(Boolean)[0] || "");
+      return YT_ID_RE.test(id) ? id : "";
+    }
+
+    if (host === "youtube.com" || host === "m.youtube.com") {
+      const v = normalizeText(url.searchParams.get("v"));
+      if (YT_ID_RE.test(v)) return v;
+
+      const path = url.pathname || "";
+      const patterns = [
+        /\/embed\/([a-zA-Z0-9_-]{11})/i,
+        /\/shorts\/([a-zA-Z0-9_-]{11})/i,
+        /\/live\/([a-zA-Z0-9_-]{11})/i,
+        /\/v\/([a-zA-Z0-9_-]{11})/i,
+      ];
+      for (const re of patterns) {
+        const m = path.match(re);
+        if (m?.[1] && YT_ID_RE.test(m[1])) return m[1];
+      }
+    }
+
+    const generic = normalized.match(/(?:[?&]v=|\/(?:embed|shorts|live|v)\/|youtu\.be\/)([a-zA-Z0-9_-]{11})/i);
+    return generic?.[1] && YT_ID_RE.test(generic[1]) ? generic[1] : "";
+  } catch {
+    const fallback = input.match(/(?:[?&]v=|\/(?:embed|shorts|live|v)\/|youtu\.be\/)([a-zA-Z0-9_-]{11})/i);
+    return fallback?.[1] && YT_ID_RE.test(fallback[1]) ? fallback[1] : "";
+  }
+}
+
 function parseVideo(inputRaw) {
   const input = normalizeText(inputRaw);
   if (!input) return { type: "none", id: "", url: "" };
@@ -42,45 +85,19 @@ function parseVideo(inputRaw) {
     const normalized = input.startsWith("http://") || input.startsWith("https://")
       ? input
       : `https://${input.replace(/^\/+/, "")}`;
-    try {
-      const url = new URL(normalized);
-      const host = url.hostname.replace(/^www\./, "");
-      if (host === "youtu.be") {
-        const id = normalizeText(url.pathname.replace("/", ""));
-        if (YT_ID_RE.test(id)) return { type: "youtube", id, url: normalized };
-      }
-      if (host === "youtube.com" || host === "m.youtube.com") {
-        const v = url.searchParams.get("v");
-        if (v && YT_ID_RE.test(v)) return { type: "youtube", id: v, url: normalized };
-        const embed = url.pathname.match(/\/embed\/([a-zA-Z0-9_-]{11})/);
-        if (embed?.[1]) return { type: "youtube", id: embed[1], url: normalized };
-        const shorts = url.pathname.match(/\/shorts\/([a-zA-Z0-9_-]{11})/);
-        if (shorts?.[1]) return { type: "youtube", id: shorts[1], url: normalized };
-      }
-      return { type: "external", id: "", url: normalized };
-    } catch {
-      return { type: "external", id: "", url: normalized };
-    }
+    const id = extractYouTubeId(normalized);
+    if (id) return { type: "youtube", id, url: normalized };
+    return { type: "external", id: "", url: normalized };
   }
 
   if (!input.includes("http") && YT_ID_RE.test(input)) {
     return { type: "youtube", id: input, url: `https://www.youtube.com/watch?v=${input}` };
   }
   try {
+    const id = extractYouTubeId(input);
+    if (id) return { type: "youtube", id, url: input };
     const url = new URL(input);
     const host = url.hostname.replace(/^www\./, "");
-    if (host === "youtu.be") {
-      const id = normalizeText(url.pathname.replace("/", ""));
-      if (YT_ID_RE.test(id)) return { type: "youtube", id, url: input };
-    }
-    if (host === "youtube.com" || host === "m.youtube.com") {
-      const v = url.searchParams.get("v");
-      if (v && YT_ID_RE.test(v)) return { type: "youtube", id: v, url: input };
-      const embed = url.pathname.match(/\/embed\/([a-zA-Z0-9_-]{11})/);
-      if (embed?.[1]) return { type: "youtube", id: embed[1], url: input };
-      const shorts = url.pathname.match(/\/shorts\/([a-zA-Z0-9_-]{11})/);
-      if (shorts?.[1]) return { type: "youtube", id: shorts[1], url: input };
-    }
     if (host.endsWith("instagram.com")) return { type: "instagram", id: "", url: input };
     return { type: "external", id: "", url: input };
   } catch {
@@ -91,7 +108,7 @@ function parseVideo(inputRaw) {
 function getVideoEmbedUrl(videoInfo) {
   if (!videoInfo || videoInfo.type === "none") return "";
   if (videoInfo.type === "youtube" && videoInfo.id) {
-    return `https://www.youtube.com/embed/${videoInfo.id}`;
+    return `https://www.youtube-nocookie.com/embed/${videoInfo.id}?rel=0&modestbranding=1`;
   }
   if (videoInfo.type === "instagram" && videoInfo.url) {
     try {

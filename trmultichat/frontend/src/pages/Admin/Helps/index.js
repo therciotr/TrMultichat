@@ -232,6 +232,49 @@ function normalizeText(v) {
 
 const YT_ID_RE = /^[a-zA-Z0-9_-]{11}$/;
 
+function extractYouTubeId(inputRaw) {
+  const input = normalizeText(inputRaw);
+  if (!input) return "";
+  if (YT_ID_RE.test(input)) return input;
+
+  const normalized = input.startsWith("http://") || input.startsWith("https://")
+    ? input
+    : `https://${input.replace(/^\/+/, "")}`;
+
+  try {
+    const url = new URL(normalized);
+    const host = url.hostname.replace(/^www\./, "");
+
+    if (host === "youtu.be") {
+      const id = normalizeText((url.pathname || "").split("/").filter(Boolean)[0] || "");
+      return YT_ID_RE.test(id) ? id : "";
+    }
+
+    if (host === "youtube.com" || host === "m.youtube.com") {
+      const v = normalizeText(url.searchParams.get("v"));
+      if (YT_ID_RE.test(v)) return v;
+
+      const path = url.pathname || "";
+      const patterns = [
+        /\/embed\/([a-zA-Z0-9_-]{11})/i,
+        /\/shorts\/([a-zA-Z0-9_-]{11})/i,
+        /\/live\/([a-zA-Z0-9_-]{11})/i,
+        /\/v\/([a-zA-Z0-9_-]{11})/i,
+      ];
+      for (const re of patterns) {
+        const m = path.match(re);
+        if (m?.[1] && YT_ID_RE.test(m[1])) return m[1];
+      }
+    }
+
+    const generic = normalized.match(/(?:[?&]v=|\/(?:embed|shorts|live|v)\/|youtu\.be\/)([a-zA-Z0-9_-]{11})/i);
+    return generic?.[1] && YT_ID_RE.test(generic[1]) ? generic[1] : "";
+  } catch {
+    const fallback = input.match(/(?:[?&]v=|\/(?:embed|shorts|live|v)\/|youtu\.be\/)([a-zA-Z0-9_-]{11})/i);
+    return fallback?.[1] && YT_ID_RE.test(fallback[1]) ? fallback[1] : "";
+  }
+}
+
 function parseYouTube(inputRaw) {
   const input = normalizeText(inputRaw);
   if (!input) return { id: "", error: "", externalUrl: "", type: "none", embedUrl: "" };
@@ -275,57 +318,21 @@ function parseYouTube(inputRaw) {
     };
   }
 
-  // Try parsing URL variants (watch, youtu.be, embed, shorts)
+  // Try parsing URL variants (watch, youtu.be, embed, shorts, live, v)
   try {
+    const extracted = extractYouTubeId(input);
+    if (extracted) {
+      return {
+        id: extracted,
+        error: "",
+        externalUrl: "",
+        type: "youtube",
+        embedUrl: `https://www.youtube-nocookie.com/embed/${extracted}?rel=0&modestbranding=1`,
+      };
+    }
+
     const url = new URL(input);
     const host = url.hostname.replace(/^www\./, "");
-    if (host === "youtu.be") {
-      const id = normalizeText(url.pathname.replace("/", ""));
-      if (YT_ID_RE.test(id)) {
-        return {
-          id,
-          error: "",
-          externalUrl: "",
-          type: "youtube",
-          embedUrl: `https://www.youtube.com/embed/${id}`,
-        };
-      }
-      return { id: "", error: "Link do YouTube inválido.", externalUrl: "", type: "invalid", embedUrl: "" };
-    }
-    if (host === "youtube.com" || host === "m.youtube.com") {
-      const v = url.searchParams.get("v");
-      if (v && YT_ID_RE.test(v)) {
-        return {
-          id: v,
-          error: "",
-          externalUrl: "",
-          type: "youtube",
-          embedUrl: `https://www.youtube.com/embed/${v}`,
-        };
-      }
-      // /embed/{id}
-      const embed = url.pathname.match(/\/embed\/([a-zA-Z0-9_-]{11})/);
-      if (embed && embed[1]) {
-        return {
-          id: embed[1],
-          error: "",
-          externalUrl: "",
-          type: "youtube",
-          embedUrl: `https://www.youtube.com/embed/${embed[1]}`,
-        };
-      }
-      // /shorts/{id}
-      const shorts = url.pathname.match(/\/shorts\/([a-zA-Z0-9_-]{11})/);
-      if (shorts && shorts[1]) {
-        return {
-          id: shorts[1],
-          error: "",
-          externalUrl: "",
-          type: "youtube",
-          embedUrl: `https://www.youtube.com/embed/${shorts[1]}`,
-        };
-      }
-    }
     if (host.endsWith("instagram.com")) {
       const path = url.pathname || "/";
       const match = path.match(/\/(reel|p|tv)\/([^/]+)/i);
@@ -347,7 +354,7 @@ function parseYouTube(inputRaw) {
       error: "",
       externalUrl: "",
       type: "youtube",
-      embedUrl: `https://www.youtube.com/embed/${match[1]}`,
+      embedUrl: `https://www.youtube-nocookie.com/embed/${match[1]}?rel=0&modestbranding=1`,
     };
   }
 
