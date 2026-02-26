@@ -154,14 +154,25 @@ final appRouterProvider = Provider<
                   builder: (ctx, st) => const DesktopPlansScreen(),
                 ),
                 GoRoute(
-                  path: '/workspace/helps',
+                  path: '/workspace/help-center',
+                  builder: (ctx, st) => const DesktopHelpCenterScreen(),
+                ),
+                GoRoute(
+                  path: '/workspace/helps-admin',
                   builder: (ctx, st) => const DesktopHelpsScreen(),
+                ),
+                GoRoute(
+                  path: '/workspace/helps',
+                  redirect: (ctx, st) => '/workspace/helps-admin',
                 ),
                 GoRoute(
                   path: '/workspace/module/:name',
                   builder: (ctx, st) {
-                    final raw = (st.pathParameters['name'] ?? 'modulo').replaceAll('-', ' ');
-                    final title = raw.isEmpty ? 'Módulo' : '${raw[0].toUpperCase()}${raw.substring(1)}';
+                    final raw = (st.pathParameters['name'] ?? 'modulo')
+                        .replaceAll('-', ' ');
+                    final title = raw.isEmpty
+                        ? 'Módulo'
+                        : '${raw[0].toUpperCase()}${raw.substring(1)}';
                     return DesktopModulePlaceholderScreen(title: title);
                   },
                 ),

@@ -48,13 +48,30 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage });
 
-function maybeUploadSingle(fieldName: string) {
-  const handler = upload.single(fieldName);
+function maybeUploadAttachment() {
+  const handler = upload.fields([
+    { name: "image", maxCount: 1 },
+    { name: "attachment", maxCount: 1 },
+    { name: "file", maxCount: 1 }
+  ]);
   return (req: any, res: any, next: any) => {
     // Only run multer for multipart requests; otherwise keep JSON body behavior.
     if (req?.is?.("multipart/form-data")) return handler(req, res, next);
     return next();
   };
+}
+
+function getUploadedUrl(req: any): string {
+  if (req?.file?.filename) return `/uploads/helps/${req.file.filename}`;
+  const byField = req?.files || {};
+  const candidates = ["attachment", "image", "file"];
+  for (const key of candidates) {
+    const current = byField?.[key];
+    if (Array.isArray(current) && current[0]?.filename) {
+      return `/uploads/helps/${current[0].filename}`;
+    }
+  }
+  return "";
 }
 
 function quoteIdent(name: string): string {
@@ -222,13 +239,13 @@ router.get("/list", async (_req, res) => {
 });
 
 // POST /helps - cria help
-router.post("/", maybeUploadSingle("image"), async (req, res) => {
+router.post("/", maybeUploadAttachment(), async (req, res) => {
   try {
     const ok = await isAdminOrSuperFromAuth(req);
     if (!ok) return res.status(403).json({ error: true, message: "forbidden" });
 
     const body = req.body || {};
-    const uploadedUrl = req.file ? `/uploads/helps/${req.file.filename}` : "";
+    const uploadedUrl = getUploadedUrl(req);
     const payload = {
       title: normalizeText(body.title),
       description: normalizeText(body.description),
@@ -280,7 +297,7 @@ router.post("/", maybeUploadSingle("image"), async (req, res) => {
 });
 
 // PUT /helps/:id - atualiza help
-router.put("/:id", maybeUploadSingle("image"), async (req, res) => {
+router.put("/:id", maybeUploadAttachment(), async (req, res) => {
   try {
     const ok = await isAdminOrSuperFromAuth(req);
     if (!ok) return res.status(403).json({ error: true, message: "forbidden" });
@@ -291,7 +308,7 @@ router.put("/:id", maybeUploadSingle("image"), async (req, res) => {
     }
 
     const body = req.body || {};
-    const uploadedUrl = req.file ? `/uploads/helps/${req.file.filename}` : "";
+    const uploadedUrl = getUploadedUrl(req);
     const t = await resolveHelpsTable();
     const hasCategory = await resolveHasCategory(t);
     const colsSet = await resolveHelpsColumns(t);

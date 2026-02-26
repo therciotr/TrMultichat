@@ -21,6 +21,116 @@ import Title from "../../components/Title";
 import { i18n } from "../../translate/i18n";
 import useHelps from "../../hooks/useHelps";
 
+function normalizeText(v) {
+  return String(v || "").trim();
+}
+
+const YT_ID_RE = /^[a-zA-Z0-9_-]{11}$/;
+
+function parseVideo(inputRaw) {
+  const input = normalizeText(inputRaw);
+  if (!input) return { type: "none", id: "", url: "" };
+  const lower = input.toLowerCase();
+  if (lower.includes("instagram.com")) {
+    const normalized = input.startsWith("http://") || input.startsWith("https://")
+      ? input
+      : `https://${input.replace(/^\/+/, "")}`;
+    return { type: "instagram", id: "", url: normalized };
+  }
+
+  if (lower.includes("youtube.com") || lower.includes("youtu.be")) {
+    const normalized = input.startsWith("http://") || input.startsWith("https://")
+      ? input
+      : `https://${input.replace(/^\/+/, "")}`;
+    try {
+      const url = new URL(normalized);
+      const host = url.hostname.replace(/^www\./, "");
+      if (host === "youtu.be") {
+        const id = normalizeText(url.pathname.replace("/", ""));
+        if (YT_ID_RE.test(id)) return { type: "youtube", id, url: normalized };
+      }
+      if (host === "youtube.com" || host === "m.youtube.com") {
+        const v = url.searchParams.get("v");
+        if (v && YT_ID_RE.test(v)) return { type: "youtube", id: v, url: normalized };
+        const embed = url.pathname.match(/\/embed\/([a-zA-Z0-9_-]{11})/);
+        if (embed?.[1]) return { type: "youtube", id: embed[1], url: normalized };
+        const shorts = url.pathname.match(/\/shorts\/([a-zA-Z0-9_-]{11})/);
+        if (shorts?.[1]) return { type: "youtube", id: shorts[1], url: normalized };
+      }
+      return { type: "external", id: "", url: normalized };
+    } catch {
+      return { type: "external", id: "", url: normalized };
+    }
+  }
+
+  if (!input.includes("http") && YT_ID_RE.test(input)) {
+    return { type: "youtube", id: input, url: `https://www.youtube.com/watch?v=${input}` };
+  }
+  try {
+    const url = new URL(input);
+    const host = url.hostname.replace(/^www\./, "");
+    if (host === "youtu.be") {
+      const id = normalizeText(url.pathname.replace("/", ""));
+      if (YT_ID_RE.test(id)) return { type: "youtube", id, url: input };
+    }
+    if (host === "youtube.com" || host === "m.youtube.com") {
+      const v = url.searchParams.get("v");
+      if (v && YT_ID_RE.test(v)) return { type: "youtube", id: v, url: input };
+      const embed = url.pathname.match(/\/embed\/([a-zA-Z0-9_-]{11})/);
+      if (embed?.[1]) return { type: "youtube", id: embed[1], url: input };
+      const shorts = url.pathname.match(/\/shorts\/([a-zA-Z0-9_-]{11})/);
+      if (shorts?.[1]) return { type: "youtube", id: shorts[1], url: input };
+    }
+    if (host.endsWith("instagram.com")) return { type: "instagram", id: "", url: input };
+    return { type: "external", id: "", url: input };
+  } catch {
+    return { type: "external", id: "", url: input };
+  }
+}
+
+function getVideoEmbedUrl(videoInfo) {
+  if (!videoInfo || videoInfo.type === "none") return "";
+  if (videoInfo.type === "youtube" && videoInfo.id) {
+    return `https://www.youtube.com/embed/${videoInfo.id}`;
+  }
+  if (videoInfo.type === "instagram" && videoInfo.url) {
+    try {
+      const parsed = new URL(videoInfo.url);
+      const host = parsed.hostname.replace(/^www\./, "");
+      if (!host.endsWith("instagram.com")) return "";
+      const path = parsed.pathname || "/";
+      const match = path.match(/\/(reel|p|tv)\/([^/]+)/i);
+      if (match?.[1] && match?.[2]) {
+        return `https://www.instagram.com/${match[1]}/${match[2]}/embed/captioned/`;
+      }
+      const normalizedPath = path.endsWith("/") ? path : `${path}/`;
+      return `https://www.instagram.com${normalizedPath}embed/captioned/`;
+    } catch {
+      return "";
+    }
+  }
+  if (videoInfo.url) return videoInfo.url;
+  return "";
+}
+
+function resolveApiBaseUrl() {
+  const resolvedEnvBase =
+    process.env.REACT_APP_BACKEND_URL || process.env.REACT_APP_API_BASE_URL;
+  if (resolvedEnvBase) return String(resolvedEnvBase).replace(/\/$/, "");
+  if (typeof window !== "undefined" && /app\.trmultichat\.com\.br$/i.test(window.location.host)) {
+    return "https://api.trmultichat.com.br";
+  }
+  return "http://localhost:4004";
+}
+
+function resolveAssetUrl(urlRaw) {
+  const url = normalizeText(urlRaw);
+  if (!url) return "";
+  if (url.startsWith("http://") || url.startsWith("https://")) return url;
+  const base = resolveApiBaseUrl();
+  return base + (url.startsWith("/") ? url : "/" + url);
+}
+
 const useStyles = makeStyles((theme) => {
   const isDark = theme.palette.type === "dark";
   const border = `1px solid ${theme.palette.divider}`;
@@ -153,6 +263,12 @@ const useStyles = makeStyles((theme) => {
   modalBody: {
     padding: theme.spacing(2.5),
   },
+  actionLinks: {
+    marginTop: theme.spacing(1.5),
+    display: "flex",
+    flexWrap: "wrap",
+    gap: theme.spacing(1),
+  },
   emptyWrap: {
     marginTop: theme.spacing(2),
     padding: theme.spacing(4),
@@ -210,10 +326,12 @@ const Helps = () => {
     };
   }, [handleModalClose]);
 
-  const modalVideoId = useMemo(() => {
-    const v = selectedHelp?.video ? String(selectedHelp.video).trim() : "";
-    return v || "";
-  }, [selectedHelp]);
+  const modalVideo = useMemo(() => parseVideo(selectedHelp?.video), [selectedHelp]);
+  const modalEmbedUrl = useMemo(() => getVideoEmbedUrl(modalVideo), [modalVideo]);
+  const modalAttachment = useMemo(
+    () => resolveAssetUrl(selectedHelp?.link),
+    [selectedHelp]
+  );
 
   const renderVideoModal = () => {
     return (
@@ -232,33 +350,54 @@ const Helps = () => {
             <CloseIcon />
           </IconButton>
 
-          {modalVideoId ? (
+          {modalEmbedUrl ? (
             <div className={classes.modalRatio}>
               <iframe
                 className={classes.iframe}
-                src={`https://www.youtube.com/embed/${modalVideoId}`}
-                title="YouTube video player"
+                src={modalEmbedUrl}
+                title="Visualizador de vídeo"
                 frameBorder="0"
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                 allowFullScreen
               />
             </div>
-          ) : (
-            <div className={classes.modalBody}>
-              <Typography variant="h6" gutterBottom>
-                {selectedHelp?.title || i18n.t("helps.title")}
+          ) : null}
+
+          <div className={classes.modalBody}>
+            <Typography variant="h6" gutterBottom>
+              {selectedHelp?.title || i18n.t("helps.title")}
+            </Typography>
+            {selectedHelp?.description ? (
+              <Typography variant="body2" style={{ whiteSpace: "pre-wrap" }}>
+                {selectedHelp.description}
               </Typography>
-              {selectedHelp?.description ? (
-                <Typography variant="body2" style={{ whiteSpace: "pre-wrap" }}>
-                  {selectedHelp.description}
-                </Typography>
-              ) : (
-                <Typography variant="body2" color="textSecondary">
-                  Sem descrição.
-                </Typography>
-              )}
+            ) : (
+              <Typography variant="body2" color="textSecondary">
+                Sem descrição.
+              </Typography>
+            )}
+            {(modalVideo.url || modalAttachment) ? (
+              <div className={classes.actionLinks}>
+                {modalVideo.url ? (
+                  <a href={modalVideo.url} target="_blank" rel="noreferrer">
+                    Abrir vídeo
+                  </a>
+                ) : null}
+                {modalAttachment ? (
+                  <a href={modalAttachment} target="_blank" rel="noreferrer" download>
+                    Baixar anexo
+                  </a>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+          {!modalEmbedUrl ? (
+            <div className={classes.modalBody}>
+              <Typography variant="body2" color="textSecondary">
+                Não foi possível incorporar este link no visualizador. Use "Abrir vídeo".
+              </Typography>
             </div>
-          )}
+          ) : null}
         </div>
       </Modal>
     );
@@ -301,8 +440,10 @@ const Helps = () => {
     return (
       <Grid container spacing={2} className={classes.gridWrap}>
         {records.map((record, idx) => {
-          const videoId = record?.video ? String(record.video).trim() : "";
-          const hasVideo = Boolean(videoId);
+          const videoInfo = parseVideo(record?.video);
+          const hasVideo = videoInfo.type !== "none";
+          const attachmentUrl = resolveAssetUrl(record?.link);
+          const hasAttachment = Boolean(attachmentUrl);
           const title = record?.title || i18n.t("helps.title");
           const description = record?.description || "";
           return (
@@ -314,9 +455,9 @@ const Helps = () => {
                   aria-label={`Abrir ajuda: ${title}`}
                 >
                   <div className={classes.thumb}>
-                    {hasVideo ? (
+                    {videoInfo.type === "youtube" ? (
                       <img
-                        src={`https://img.youtube.com/vi/${videoId}/mqdefault.jpg`}
+                        src={`https://img.youtube.com/vi/${videoInfo.id}/mqdefault.jpg`}
                         alt="Thumbnail"
                         className={classes.thumbImg}
                       />
@@ -352,6 +493,14 @@ const Helps = () => {
                         label={hasVideo ? "Vídeo" : "Conteúdo"}
                         variant="outlined"
                       />
+                      {hasAttachment ? (
+                        <Chip
+                          className={classes.chip}
+                          size="small"
+                          label="Anexo"
+                          variant="outlined"
+                        />
+                      ) : null}
                     </div>
                   </CardContent>
                 </CardActionArea>

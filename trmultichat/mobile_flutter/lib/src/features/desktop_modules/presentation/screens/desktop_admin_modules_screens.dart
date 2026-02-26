@@ -1,7 +1,12 @@
+import 'dart:io';
+
 import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 
 import '../../../../core/di/core_providers.dart';
 import '../../../../features/auth/presentation/providers/auth_providers.dart';
@@ -120,7 +125,8 @@ class _DesktopUsersScreenState extends _BaseCrudScreen<DesktopUsersScreen> {
       _companies = companies;
       _companyNameById = {
         for (final c in companies)
-          if (_asInt(c['id']) != null) _asInt(c['id'])!: (c['name'] ?? 'Empresa').toString(),
+          if (_asInt(c['id']) != null)
+            _asInt(c['id'])!: (c['name'] ?? 'Empresa').toString(),
       };
 
       if (isSuperLike && companies.isNotEmpty) {
@@ -129,8 +135,8 @@ class _DesktopUsersScreenState extends _BaseCrudScreen<DesktopUsersScreen> {
         for (final c in companies) {
           final cid = _asInt(c['id']);
           if (cid == null || cid <= 0) continue;
-          final perCompany =
-              await _safeGetList('/users/list', queryParameters: {'companyId': cid});
+          final perCompany = await _safeGetList('/users/list',
+              queryParameters: {'companyId': cid});
           for (final u in perCompany) {
             final uid = _asInt(u['id']);
             if (uid != null && seen.add(uid)) all.add(u);
@@ -138,7 +144,8 @@ class _DesktopUsersScreenState extends _BaseCrudScreen<DesktopUsersScreen> {
         }
         rows = all;
       } else {
-        final res = await dio.get('/users/list', queryParameters: {'pageNumber': 1});
+        final res =
+            await dio.get('/users/list', queryParameters: {'pageNumber': 1});
         rows = _asMapList(res.data);
       }
     });
@@ -239,12 +246,12 @@ class _DesktopUsersScreenState extends _BaseCrudScreen<DesktopUsersScreen> {
                     readOnly: true,
                     controller: TextEditingController(
                       text: _companies
-                                  .firstWhere(
-                                    (c) => _asInt(c['id']) == companyId,
-                                    orElse: () => const <String, dynamic>{},
-                                  )['name']
-                                  ?.toString() ??
-                              (companyId == null ? '-' : 'Empresa #$companyId'),
+                              .firstWhere(
+                                (c) => _asInt(c['id']) == companyId,
+                                orElse: () => const <String, dynamic>{},
+                              )['name']
+                              ?.toString() ??
+                          (companyId == null ? '-' : 'Empresa #$companyId'),
                     ),
                     decoration: const InputDecoration(labelText: 'Empresa'),
                   ),
@@ -341,7 +348,9 @@ class _DesktopUsersScreenState extends _BaseCrudScreen<DesktopUsersScreen> {
               onPressed: () async {
                 if (id == null && password.text.trim().isEmpty) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Informe uma senha para o novo usuário.')),
+                    const SnackBar(
+                        content:
+                            Text('Informe uma senha para o novo usuário.')),
                   );
                   return;
                 }
@@ -457,7 +466,8 @@ class _DesktopUsersScreenState extends _BaseCrudScreen<DesktopUsersScreen> {
               children: [
                 Text(
                   companyName,
-                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w800, fontSize: 14),
                 ),
                 const SizedBox(height: 8),
                 ...users.map(_buildUserTile),
@@ -1251,6 +1261,61 @@ class DesktopHelpsScreen extends ConsumerStatefulWidget {
 
 class _DesktopHelpsScreenState extends _BaseCrudScreen<DesktopHelpsScreen> {
   List<Map<String, dynamic>> rows = const [];
+
+  String _txt(dynamic value) => (value ?? '').toString().trim();
+
+  String _resolveUrl(String raw) {
+    final v = _txt(raw);
+    if (v.isEmpty) return '';
+    if (v.startsWith('http://') || v.startsWith('https://')) return v;
+    final base = dio.options.baseUrl.trim();
+    final uri = Uri.tryParse(base);
+    if (uri == null || !uri.hasScheme || uri.host.isEmpty) return v;
+    final root =
+        '${uri.scheme}://${uri.host}${uri.hasPort ? ':${uri.port}' : ''}';
+    return v.startsWith('/') ? '$root$v' : '$root/$v';
+  }
+
+  String? _youtubeId(String value) {
+    final v = _txt(value);
+    if (v.isEmpty) return null;
+    final asId = RegExp(r'^[a-zA-Z0-9_-]{11}$');
+    if (asId.hasMatch(v)) return v;
+    Uri? uri;
+    try {
+      uri = Uri.parse(v);
+    } catch (_) {
+      uri = null;
+    }
+    if (uri == null) return null;
+    final host = uri.host.toLowerCase().replaceFirst('www.', '');
+    if (host == 'youtu.be') {
+      final id = uri.pathSegments.isNotEmpty ? uri.pathSegments.first : '';
+      return asId.hasMatch(id) ? id : null;
+    }
+    if (host == 'youtube.com' || host == 'm.youtube.com') {
+      final id = uri.queryParameters['v'] ?? '';
+      if (asId.hasMatch(id)) return id;
+      if (uri.pathSegments.length >= 2 && uri.pathSegments.first == 'shorts') {
+        final sid = uri.pathSegments[1];
+        return asId.hasMatch(sid) ? sid : null;
+      }
+      if (uri.pathSegments.length >= 2 && uri.pathSegments.first == 'embed') {
+        final eid = uri.pathSegments[1];
+        return asId.hasMatch(eid) ? eid : null;
+      }
+    }
+    return null;
+  }
+
+  bool _isInstagramUrl(String value) {
+    final v = _txt(value);
+    if (v.isEmpty) return false;
+    final uri = Uri.tryParse(v);
+    if (uri == null) return false;
+    final host = uri.host.toLowerCase();
+    return host.contains('instagram.com');
+  }
   @override
   void initState() {
     super.initState();
@@ -1278,63 +1343,194 @@ class _DesktopHelpsScreenState extends _BaseCrudScreen<DesktopHelpsScreen> {
         TextEditingController(text: (initial?['link'] ?? '').toString());
     final category =
         TextEditingController(text: (initial?['category'] ?? '').toString());
+    PlatformFile? pickedAttachment;
     await showDialog<void>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(id == null ? 'Novo help' : 'Editar help'),
-        content: SizedBox(
-          width: 620,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                  controller: title,
-                  decoration: const InputDecoration(labelText: 'Título')),
-              const SizedBox(height: 8),
-              TextField(
-                  controller: description,
-                  decoration: const InputDecoration(labelText: 'Descrição'),
-                  maxLines: 3),
-              const SizedBox(height: 8),
-              TextField(
-                  controller: video,
-                  decoration: const InputDecoration(labelText: 'Vídeo')),
-              const SizedBox(height: 8),
-              TextField(
-                  controller: link,
-                  decoration: const InputDecoration(labelText: 'Link')),
-              const SizedBox(height: 8),
-              TextField(
-                  controller: category,
-                  decoration: const InputDecoration(labelText: 'Categoria')),
-            ],
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModalState) => AlertDialog(
+          title: Text(
+              id == null ? 'Novo help (cadastro)' : 'Editar help (cadastro)'),
+          content: SizedBox(
+            width: 640,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: title,
+                    decoration: const InputDecoration(labelText: 'Título'),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: description,
+                    decoration: const InputDecoration(labelText: 'Descrição'),
+                    maxLines: 3,
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: video,
+                    decoration: const InputDecoration(
+                      labelText: 'Vídeo (YouTube/Instagram/link)',
+                    ),
+                    onChanged: (_) => setModalState(() {}),
+                  ),
+                  const SizedBox(height: 10),
+                  Builder(
+                    builder: (_) {
+                      final rawVideo = _txt(video.text);
+                      final ytId = _youtubeId(rawVideo);
+                      if (rawVideo.isEmpty) return const SizedBox.shrink();
+                      if (ytId != null) {
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Align(
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                'Pré-visualização do vídeo',
+                                style: TextStyle(fontWeight: FontWeight.w700),
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: Image.network(
+                                'https://img.youtube.com/vi/$ytId/mqdefault.jpg',
+                                height: 170,
+                                width: double.infinity,
+                                fit: BoxFit.cover,
+                              ),
+                            ),
+                          ],
+                        );
+                      }
+                      return Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: Theme.of(context).colorScheme.outlineVariant,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              _isInstagramUrl(rawVideo)
+                                  ? Icons.video_collection_outlined
+                                  : Icons.link_outlined,
+                              size: 20,
+                            ),
+                            const SizedBox(width: 8),
+                            const Expanded(
+                              child: Text(
+                                'Link de vídeo detectado (pré-visualização por miniatura disponível para YouTube).',
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: link,
+                    decoration: const InputDecoration(
+                      labelText: 'Link do anexo (opcional)',
+                    ),
+                    onChanged: (_) => setModalState(() {}),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: category,
+                    decoration: const InputDecoration(labelText: 'Categoria'),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      OutlinedButton.icon(
+                        onPressed: () async {
+                          final picked = await FilePicker.platform.pickFiles(
+                            allowMultiple: false,
+                            withData: false,
+                            lockParentWindow: true,
+                          );
+                          if (picked == null || picked.files.isEmpty) return;
+                          setModalState(
+                              () => pickedAttachment = picked.files.first);
+                        },
+                        icon: const Icon(Icons.attach_file),
+                        label: const Text('Anexar arquivo'),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          pickedAttachment?.name ??
+                              (link.text.trim().isNotEmpty
+                                  ? 'Anexo atual por link'
+                                  : 'Nenhum anexo selecionado'),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (pickedAttachment != null)
+                        IconButton(
+                          tooltip: 'Remover anexo selecionado',
+                          onPressed: () =>
+                              setModalState(() => pickedAttachment = null),
+                          icon: const Icon(Icons.close),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
           ),
-        ),
-        actions: [
-          TextButton(
+          actions: [
+            TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancelar')),
-          FilledButton(
-            onPressed: () async {
-              final payload = {
-                'title': title.text.trim(),
-                'description': description.text.trim(),
-                'video': video.text.trim(),
-                'link': link.text.trim(),
-                'category': category.text.trim(),
-              };
-              if (id == null) {
-                await dio.post('/helps', data: payload);
-              } else {
-                await dio.put('/helps/$id', data: payload);
-              }
-              if (!mounted) return;
-              Navigator.pop(ctx);
-              await fetch();
-            },
-            child: const Text('Salvar'),
-          ),
-        ],
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                final payload = {
+                  'title': title.text.trim(),
+                  'description': description.text.trim(),
+                  'video': video.text.trim(),
+                  'link': link.text.trim(),
+                  'category': category.text.trim(),
+                };
+                if (pickedAttachment?.path != null &&
+                    pickedAttachment!.path!.trim().isNotEmpty) {
+                  final form = FormData.fromMap({
+                    ...payload,
+                    'attachment': await MultipartFile.fromFile(
+                      pickedAttachment!.path!,
+                      filename: pickedAttachment!.name,
+                    ),
+                  });
+                  if (id == null) {
+                    await dio.post('/helps', data: form);
+                  } else {
+                    await dio.put('/helps/$id', data: form);
+                  }
+                } else {
+                  if (id == null) {
+                    await dio.post('/helps', data: payload);
+                  } else {
+                    await dio.put('/helps/$id', data: payload);
+                  }
+                }
+                if (!mounted) return;
+                Navigator.pop(ctx);
+                await fetch();
+              },
+              child: const Text('Salvar'),
+            ),
+          ],
+        ),
       ),
     );
     title.dispose();
@@ -1347,7 +1543,7 @@ class _DesktopHelpsScreenState extends _BaseCrudScreen<DesktopHelpsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Ajuda')),
+      appBar: AppBar(title: const Text('Ajuda (cadastro)')),
       body: Column(
         children: [
           if (loading) const LinearProgressIndicator(minHeight: 2),
@@ -1365,8 +1561,27 @@ class _DesktopHelpsScreenState extends _BaseCrudScreen<DesktopHelpsScreen> {
                         const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
                     title: Text((r['title'] ?? '').toString(),
                         style: const TextStyle(fontWeight: FontWeight.w800)),
-                    subtitle: Text((r['description'] ?? '').toString(),
-                        maxLines: 2, overflow: TextOverflow.ellipsis),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          (r['description'] ?? '').toString(),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 4),
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: [
+                            if ((r['video'] ?? '').toString().trim().isNotEmpty)
+                              const Chip(label: Text('Vídeo')),
+                            if ((r['link'] ?? '').toString().trim().isNotEmpty)
+                              const Chip(label: Text('Anexo')),
+                          ],
+                        ),
+                      ],
+                    ),
                     trailing: _CrudActionButtons(
                       onEdit: () => openForm(r),
                       onDelete: id <= 0
@@ -1387,8 +1602,524 @@ class _DesktopHelpsScreenState extends _BaseCrudScreen<DesktopHelpsScreen> {
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => openForm(),
-        label: const Text('Novo help'),
+        label: const Text('Novo cadastro'),
         icon: const Icon(Icons.add),
+      ),
+    );
+  }
+}
+
+class DesktopHelpCenterScreen extends ConsumerStatefulWidget {
+  const DesktopHelpCenterScreen({super.key});
+
+  @override
+  ConsumerState<DesktopHelpCenterScreen> createState() =>
+      _DesktopHelpCenterScreenState();
+}
+
+class _DesktopHelpCenterScreenState
+    extends _BaseCrudScreen<DesktopHelpCenterScreen> {
+  List<Map<String, dynamic>> rows = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    fetch();
+  }
+
+  String _txt(dynamic value) => (value ?? '').toString().trim();
+
+  String _resolveUrl(String raw) {
+    final v = _txt(raw);
+    if (v.isEmpty) return '';
+    if (v.startsWith('http://') || v.startsWith('https://')) return v;
+    final base = dio.options.baseUrl.trim();
+    final uri = Uri.tryParse(base);
+    if (uri == null || !uri.hasScheme || uri.host.isEmpty) return v;
+    final root =
+        '${uri.scheme}://${uri.host}${uri.hasPort ? ':${uri.port}' : ''}';
+    return v.startsWith('/') ? '$root$v' : '$root/$v';
+  }
+
+  String? _youtubeId(String value) {
+    final v = _txt(value);
+    if (v.isEmpty) return null;
+    final asId = RegExp(r'^[a-zA-Z0-9_-]{11}$');
+    if (asId.hasMatch(v)) return v;
+    Uri? uri;
+    try {
+      uri = Uri.parse(v);
+    } catch (_) {
+      uri = null;
+    }
+    if (uri == null) return null;
+    final host = uri.host.toLowerCase().replaceFirst('www.', '');
+    if (host == 'youtu.be') {
+      final id = uri.pathSegments.isNotEmpty ? uri.pathSegments.first : '';
+      return asId.hasMatch(id) ? id : null;
+    }
+    if (host == 'youtube.com' || host == 'm.youtube.com') {
+      final id = uri.queryParameters['v'] ?? '';
+      if (asId.hasMatch(id)) return id;
+      if (uri.pathSegments.length >= 2 && uri.pathSegments.first == 'shorts') {
+        final sid = uri.pathSegments[1];
+        return asId.hasMatch(sid) ? sid : null;
+      }
+      if (uri.pathSegments.length >= 2 && uri.pathSegments.first == 'embed') {
+        final eid = uri.pathSegments[1];
+        return asId.hasMatch(eid) ? eid : null;
+      }
+    }
+    return null;
+  }
+
+  String _normalizeHttpUrl(String raw) {
+    final value = _txt(raw);
+    if (value.isEmpty) return '';
+    if (value.startsWith('http://') || value.startsWith('https://')) {
+      return value;
+    }
+    return 'https://$value';
+  }
+
+  bool _isInstagramUrl(String value) {
+    final normalized = _normalizeHttpUrl(value);
+    final uri = Uri.tryParse(normalized);
+    if (uri == null) return false;
+    final host = uri.host.toLowerCase().replaceFirst('www.', '');
+    return host == 'instagram.com' || host.endsWith('.instagram.com');
+  }
+
+  String _embedUrlForVideo(String rawVideo) {
+    final youtubeId = _youtubeId(rawVideo);
+    if (youtubeId != null) {
+      return 'https://www.youtube.com/embed/$youtubeId?rel=0';
+    }
+
+    final normalized = _normalizeHttpUrl(rawVideo);
+    final uri = Uri.tryParse(normalized);
+    if (uri == null) return '';
+
+    if (_isInstagramUrl(rawVideo)) {
+      final seg = uri.pathSegments;
+      for (var i = 0; i < seg.length - 1; i++) {
+        final section = seg[i].toLowerCase();
+        if (section == 'reel' || section == 'p' || section == 'tv') {
+          final id = seg[i + 1].trim();
+          if (id.isNotEmpty) {
+            return 'https://www.instagram.com/$section/$id/embed/captioned/';
+          }
+        }
+      }
+      return normalized;
+    }
+
+    return normalized;
+  }
+
+  Widget _inAppVideoPlayer(String rawVideo) {
+    final videoUrl = _embedUrlForVideo(rawVideo);
+    final uri = Uri.tryParse(videoUrl);
+    if (videoUrl.isEmpty || uri == null) {
+      return Text(
+        'Nao foi possivel carregar este video no app.',
+        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+      );
+    }
+
+    final controller = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..loadRequest(uri);
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: SizedBox(
+        height: 260,
+        width: double.infinity,
+        child: WebViewWidget(controller: controller),
+      ),
+    );
+  }
+
+  bool _isImageUrl(String url) {
+    final u = url.toLowerCase();
+    return u.endsWith('.png') ||
+        u.endsWith('.jpg') ||
+        u.endsWith('.jpeg') ||
+        u.endsWith('.gif') ||
+        u.endsWith('.webp') ||
+        u.endsWith('.bmp') ||
+        u.contains('/uploads/helps/');
+  }
+
+  String _videoThumbnailFor(Map<String, dynamic> row) {
+    final ytId = _youtubeId(_txt(row['video']));
+    if (ytId != null) return 'https://img.youtube.com/vi/$ytId/mqdefault.jpg';
+    return '';
+  }
+
+  String _attachmentThumbnailFor(Map<String, dynamic> row) {
+    final attachment = _resolveUrl(_txt(row['link']));
+    if (attachment.isNotEmpty && _isImageUrl(attachment)) return attachment;
+    return '';
+  }
+
+  Future<void> fetch() async {
+    await safeRun(() async {
+      final res = await dio.get('/helps');
+      final list = (res.data as List? ?? const <dynamic>[]);
+      rows =
+          list.whereType<Map>().map((e) => e.cast<String, dynamic>()).toList();
+    });
+  }
+
+  Future<void> _openExternal(String rawUrl) async {
+    final url = _resolveUrl(rawUrl);
+    if (url.isEmpty) return;
+    final uri = Uri.tryParse(url);
+    if (uri == null) return;
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+
+  String _fileNameFromUrl(String rawUrl) {
+    final uri = Uri.tryParse(rawUrl);
+    if (uri == null) return 'anexo';
+    final path = uri.pathSegments.isEmpty ? '' : uri.pathSegments.last;
+    if (path.trim().isEmpty) return 'anexo';
+    return path;
+  }
+
+  Future<String> _fallbackDownloadPath(String fileName) async {
+    final downloadsDir = await getDownloadsDirectory();
+    final baseDir = downloadsDir?.path ?? (await getTemporaryDirectory()).path;
+    final safeName = fileName.trim().isEmpty ? 'anexo' : fileName.trim();
+    final extIndex = safeName.lastIndexOf('.');
+    final hasExt = extIndex > 0 && extIndex < safeName.length - 1;
+    final nameOnly = hasExt ? safeName.substring(0, extIndex) : safeName;
+    final ext = hasExt ? safeName.substring(extIndex) : '';
+    var candidate = '$baseDir/$safeName';
+    var index = 1;
+    while (File(candidate).existsSync()) {
+      candidate = '$baseDir/${nameOnly}_$index$ext';
+      index++;
+    }
+    return candidate;
+  }
+
+  String _normalizeSavePath(String rawPath) {
+    final value = rawPath.trim();
+    if (value.isEmpty) return value;
+    if (value.startsWith('file://')) {
+      final uri = Uri.tryParse(value);
+      if (uri != null) {
+        return uri.toFilePath(windows: Platform.isWindows);
+      }
+    }
+    return value;
+  }
+
+  Future<void> _downloadAttachment(String rawUrl) async {
+    final resolvedUrl = _resolveUrl(rawUrl);
+    if (resolvedUrl.isEmpty) return;
+    final suggestedName = _fileNameFromUrl(resolvedUrl);
+
+    String? savePath;
+    try {
+      savePath = await FilePicker.platform.saveFile(
+        dialogTitle: 'Salvar anexo',
+        fileName: suggestedName,
+      );
+    } catch (_) {
+      savePath = null;
+    }
+
+    if (savePath == null || savePath.trim().isEmpty) {
+      try {
+        savePath = await _fallbackDownloadPath(suggestedName);
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Nao foi possivel abrir "Salvar como". Baixando na pasta Downloads.',
+            ),
+          ),
+        );
+      } catch (_) {
+        savePath = null;
+      }
+    }
+
+    if (savePath == null || savePath.trim().isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Nao foi possivel iniciar o download do anexo.'),
+        ),
+      );
+      return;
+    }
+
+    final targetPath = _normalizeSavePath(savePath);
+    if (targetPath.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Caminho de destino invalido.')),
+      );
+      return;
+    }
+
+    try {
+      await File(targetPath).parent.create(recursive: true);
+      await dio.download(resolvedUrl, targetPath);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Download concluido: ${targetPath.split('/').last}'),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Falha ao baixar anexo no app: $e')),
+      );
+    }
+  }
+
+  Future<void> _openHelp(Map<String, dynamic> row) async {
+    final title = _txt(row['title']).isEmpty ? 'Ajuda' : _txt(row['title']);
+    final description = _txt(row['description']);
+    final rawVideo = _txt(row['video']);
+    final attachment = _resolveUrl(_txt(row['link']));
+    final hasVideo = rawVideo.isNotEmpty;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: SizedBox(
+          width: 640,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (description.isNotEmpty) Text(description),
+                if (description.isNotEmpty) const SizedBox(height: 12),
+                if (hasVideo) ...[
+                  _inAppVideoPlayer(rawVideo),
+                  const SizedBox(height: 8),
+                  Text(
+                    'O vídeo está sendo reproduzido dentro do app.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+                if (attachment.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  if (!hasVideo && _isImageUrl(attachment))
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Image.network(
+                        attachment,
+                        height: 180,
+                        width: double.infinity,
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    onPressed: () => _downloadAttachment(attachment),
+                    icon: const Icon(Icons.download_outlined),
+                    label: const Text('Baixar anexo'),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Fechar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text('Central de Ajuda (${rows.length})')),
+      body: Column(
+        children: [
+          if (loading) const LinearProgressIndicator(minHeight: 2),
+          Expanded(
+            child: rows.isEmpty
+                ? const Center(
+                    child: Text('Nenhum conteúdo de ajuda disponível.'))
+                : ListView.separated(
+                    padding: const EdgeInsets.all(14),
+                    itemCount: rows.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 10),
+                    itemBuilder: (_, i) {
+                      final r = rows[i];
+                      final title = _txt(r['title']);
+                      final desc = _txt(r['description']);
+                      final hasVideo = _txt(r['video']).isNotEmpty;
+                      final hasAttachment = _txt(r['link']).isNotEmpty;
+                      final videoThumb = _videoThumbnailFor(r);
+                      final attachmentThumb =
+                          hasVideo ? '' : _attachmentThumbnailFor(r);
+
+                      return Center(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 860),
+                          child: Card(
+                            elevation: 0,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                              side: BorderSide(
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .outlineVariant
+                                    .withValues(alpha: 0.7),
+                              ),
+                            ),
+                            clipBehavior: Clip.antiAlias,
+                            child: InkWell(
+                              onTap: () => _openHelp(r),
+                              child: Padding(
+                                padding: const EdgeInsets.all(10),
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    ClipRRect(
+                                      borderRadius: BorderRadius.circular(12),
+                                      child: SizedBox(
+                                        width: 170,
+                                        height: 96,
+                                        child: videoThumb.isNotEmpty
+                                            ? Image.network(
+                                                videoThumb,
+                                                fit: BoxFit.cover,
+                                              )
+                                            : attachmentThumb.isNotEmpty
+                                                ? Image.network(
+                                                    attachmentThumb,
+                                                    fit: BoxFit.cover,
+                                                  )
+                                                : Container(
+                                                    color: Theme.of(context)
+                                                        .colorScheme
+                                                        .surfaceContainerHighest,
+                                                    child: Column(
+                                                      mainAxisAlignment:
+                                                          MainAxisAlignment.center,
+                                                      children: [
+                                                        Icon(
+                                                          hasVideo
+                                                              ? Icons
+                                                                  .play_circle_filled_rounded
+                                                              : Icons
+                                                                  .help_outline_rounded,
+                                                          size: 34,
+                                                          color:
+                                                              Theme.of(context)
+                                                                  .colorScheme
+                                                                  .onSurfaceVariant,
+                                                        ),
+                                                        const SizedBox(height: 4),
+                                                        Text(
+                                                          hasVideo
+                                                              ? 'Vídeo'
+                                                              : 'Ajuda',
+                                                          style: TextStyle(
+                                                            fontSize: 11,
+                                                            fontWeight:
+                                                                FontWeight.w700,
+                                                            color: Theme.of(
+                                                                    context)
+                                                                .colorScheme
+                                                                .onSurfaceVariant,
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Row(
+                                            children: [
+                                              Expanded(
+                                                child: Text(
+                                                  title.isEmpty
+                                                      ? 'Ajuda'
+                                                      : title,
+                                                  style: const TextStyle(
+                                                    fontWeight: FontWeight.w800,
+                                                    fontSize: 15,
+                                                  ),
+                                                ),
+                                              ),
+                                              const Icon(Icons.chevron_right),
+                                            ],
+                                          ),
+                                          if (desc.isNotEmpty) ...[
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              desc,
+                                              maxLines: 2,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: TextStyle(
+                                                color: Theme.of(context)
+                                                    .colorScheme
+                                                    .onSurfaceVariant,
+                                              ),
+                                            ),
+                                          ],
+                                          const SizedBox(height: 8),
+                                          Wrap(
+                                            spacing: 6,
+                                            runSpacing: 6,
+                                            children: [
+                                              if (hasVideo)
+                                                const Chip(
+                                                  label: Text('Vídeo'),
+                                                  materialTapTargetSize:
+                                                      MaterialTapTargetSize
+                                                          .shrinkWrap,
+                                                ),
+                                              if (hasAttachment)
+                                                const Chip(
+                                                  label: Text('Anexo'),
+                                                  materialTapTargetSize:
+                                                      MaterialTapTargetSize
+                                                          .shrinkWrap,
+                                                ),
+                                            ],
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
       ),
     );
   }
@@ -2267,7 +2998,8 @@ class _QueueOptionNode {
       title: (map['title'] ?? map['name'] ?? '').toString(),
       message: (map['message'] ?? '').toString(),
       option: parseInt(map['option'] ?? map['order'] ?? map['position']) ?? 0,
-      parentId: parseInt(map['parentId'] ?? map['parent_id'] ?? map['parentid']),
+      parentId:
+          parseInt(map['parentId'] ?? map['parent_id'] ?? map['parentid']),
       children: const [],
     );
   }

@@ -234,13 +234,45 @@ const YT_ID_RE = /^[a-zA-Z0-9_-]{11}$/;
 
 function parseYouTube(inputRaw) {
   const input = normalizeText(inputRaw);
-  if (!input) return { id: "", error: "" };
+  if (!input) return { id: "", error: "", externalUrl: "", type: "none", embedUrl: "" };
+  const lower = input.toLowerCase();
+
+  if (lower.includes("instagram.com")) {
+    try {
+      const normalized = input.startsWith("http://") || input.startsWith("https://")
+        ? input
+        : `https://${input.replace(/^\/+/, "")}`;
+      const url = new URL(normalized);
+      const path = url.pathname || "/";
+      const match = path.match(/\/(reel|p|tv)\/([^/]+)/i);
+      const embedUrl = match?.[1] && match?.[2]
+        ? `https://www.instagram.com/${match[1]}/${match[2]}/embed/captioned/`
+        : `https://www.instagram.com${path.endsWith("/") ? path : `${path}/`}embed/captioned/`;
+      return { id: "", error: "", externalUrl: normalized, type: "instagram", embedUrl };
+    } catch {
+      return { id: "", error: "URL do Instagram inválida.", externalUrl: "", type: "invalid", embedUrl: "" };
+    }
+  }
 
   // ID direto
   if (!input.includes("http") && !input.includes("/") && !input.includes("?")) {
     const idOnly = input;
-    if (YT_ID_RE.test(idOnly)) return { id: idOnly, error: "" };
-    return { id: "", error: "Informe uma URL do YouTube ou um ID válido (11 caracteres)." };
+    if (YT_ID_RE.test(idOnly)) {
+      return {
+        id: idOnly,
+        error: "",
+        externalUrl: "",
+        type: "youtube",
+        embedUrl: `https://www.youtube.com/embed/${idOnly}`,
+      };
+    }
+    return {
+      id: "",
+      error: "Informe uma URL válida do YouTube/Instagram ou um ID do YouTube (11 caracteres).",
+      externalUrl: "",
+      type: "invalid",
+      embedUrl: "",
+    };
   }
 
   // Try parsing URL variants (watch, youtu.be, embed, shorts)
@@ -249,28 +281,77 @@ function parseYouTube(inputRaw) {
     const host = url.hostname.replace(/^www\./, "");
     if (host === "youtu.be") {
       const id = normalizeText(url.pathname.replace("/", ""));
-      if (YT_ID_RE.test(id)) return { id, error: "" };
-      return { id: "", error: "Link do YouTube inválido." };
+      if (YT_ID_RE.test(id)) {
+        return {
+          id,
+          error: "",
+          externalUrl: "",
+          type: "youtube",
+          embedUrl: `https://www.youtube.com/embed/${id}`,
+        };
+      }
+      return { id: "", error: "Link do YouTube inválido.", externalUrl: "", type: "invalid", embedUrl: "" };
     }
     if (host === "youtube.com" || host === "m.youtube.com") {
       const v = url.searchParams.get("v");
-      if (v && YT_ID_RE.test(v)) return { id: v, error: "" };
+      if (v && YT_ID_RE.test(v)) {
+        return {
+          id: v,
+          error: "",
+          externalUrl: "",
+          type: "youtube",
+          embedUrl: `https://www.youtube.com/embed/${v}`,
+        };
+      }
       // /embed/{id}
       const embed = url.pathname.match(/\/embed\/([a-zA-Z0-9_-]{11})/);
-      if (embed && embed[1]) return { id: embed[1], error: "" };
+      if (embed && embed[1]) {
+        return {
+          id: embed[1],
+          error: "",
+          externalUrl: "",
+          type: "youtube",
+          embedUrl: `https://www.youtube.com/embed/${embed[1]}`,
+        };
+      }
       // /shorts/{id}
       const shorts = url.pathname.match(/\/shorts\/([a-zA-Z0-9_-]{11})/);
-      if (shorts && shorts[1]) return { id: shorts[1], error: "" };
+      if (shorts && shorts[1]) {
+        return {
+          id: shorts[1],
+          error: "",
+          externalUrl: "",
+          type: "youtube",
+          embedUrl: `https://www.youtube.com/embed/${shorts[1]}`,
+        };
+      }
     }
+    if (host.endsWith("instagram.com")) {
+      const path = url.pathname || "/";
+      const match = path.match(/\/(reel|p|tv)\/([^/]+)/i);
+      const embedUrl = match?.[1] && match?.[2]
+        ? `https://www.instagram.com/${match[1]}/${match[2]}/embed/captioned/`
+        : `https://www.instagram.com${path.endsWith("/") ? path : `${path}/`}embed/captioned/`;
+      return { id: "", error: "", externalUrl: input, type: "instagram", embedUrl };
+    }
+    return { id: "", error: "", externalUrl: input, type: "external", embedUrl: input };
   } catch {
     // ignore
   }
 
   // Last resort: find v=... substring
   const match = input.match(/[?&]v=([a-zA-Z0-9_-]{11})/);
-  if (match?.[1]) return { id: match[1], error: "" };
+  if (match?.[1]) {
+    return {
+      id: match[1],
+      error: "",
+      externalUrl: "",
+      type: "youtube",
+      embedUrl: `https://www.youtube.com/embed/${match[1]}`,
+    };
+  }
 
-  return { id: "", error: "URL/ID do YouTube inválido." };
+  return { id: "", error: "URL/ID inválido. Use YouTube ou Instagram.", externalUrl: "", type: "invalid", embedUrl: "" };
 }
 
 function resolveApiBaseUrl() {
@@ -306,10 +387,10 @@ const schema = Yup.object().shape({
   description: Yup.string().trim().required("Descrição é obrigatória").max(1000, "Máximo de 1000 caracteres"),
   videoUrl: Yup.string()
     .nullable()
-    .test("youtube", "URL/ID do YouTube inválido.", (value) => {
+    .test("youtube", "URL/ID inválido. Use YouTube ou Instagram.", (value) => {
       const v = normalizeText(value);
       if (!v) return true;
-      return Boolean(parseYouTube(v).id);
+      return !parseYouTube(v).error;
     }),
   category: Yup.string().nullable(),
   imageLink: Yup.string()
@@ -382,10 +463,11 @@ export default function HelpsAdmin() {
       try {
         const parsed = parseYouTube(values.videoUrl);
         const videoId = parsed.id;
+        const videoValue = videoId || normalizeText(values.videoUrl);
         const basePayload = {
           title: normalizeText(values.title),
           description: normalizeText(values.description),
-          video: videoId || "",
+          video: videoValue || "",
           // Campo opcional: só persiste se o backend suportar (se não, ele será ignorado).
           category: normalizeText(values.category) || undefined,
           link: normalizeText(values.imageLink) || undefined,
@@ -456,6 +538,8 @@ export default function HelpsAdmin() {
 
   const videoParsed = useMemo(() => parseYouTube(formik.values.videoUrl), [formik.values.videoUrl]);
   const videoId = videoParsed.id;
+  const videoExternalUrl = videoParsed.externalUrl || "";
+  const videoEmbedUrl = videoParsed.embedUrl || "";
   const imageLink = normalizeText(formik.values.imageLink);
 
   const setFile = (file) => {
@@ -615,7 +699,7 @@ export default function HelpsAdmin() {
 
       <div className={classes.scrollArea}>
         <Typography variant="body2" className={classes.headerSub}>
-          Crie e mantenha conteúdos de ajuda (título, descrição e vídeo do YouTube).
+          Crie e mantenha conteúdos de ajuda (título, descrição, vídeo e anexos).
         </Typography>
 
         <Grid container spacing={2} className={classes.grid} style={{ marginTop: 8 }}>
@@ -668,7 +752,7 @@ export default function HelpsAdmin() {
                     fullWidth
                     variant="outlined"
                     margin="dense"
-                    label="Vídeo (YouTube) – URL ou ID"
+                    label="Vídeo (YouTube/Instagram) – URL ou ID"
                     name="videoUrl"
                     value={formik.values.videoUrl}
                     onChange={formik.handleChange}
@@ -679,9 +763,9 @@ export default function HelpsAdmin() {
                         ? formik.errors.videoUrl
                         : videoId
                           ? "Preview disponível abaixo."
-                          : "Cole a URL do YouTube ou apenas o ID do vídeo."
+                          : "Cole URL do YouTube/Instagram ou ID do YouTube."
                     }
-                    placeholder="https://www.youtube.com/watch?v=XXXXXXXXXXX ou XXXXXXXX"
+                    placeholder="https://youtube.com/... ou https://instagram.com/... ou ID"
                     InputProps={{
                       startAdornment: (
                         <InputAdornment position="start">
@@ -719,7 +803,6 @@ export default function HelpsAdmin() {
                   <input
                     ref={fileInputRef}
                     type="file"
-                    accept="image/*"
                     style={{ display: "none" }}
                     onChange={(e) => {
                       const f = e?.target?.files?.[0] || null;
@@ -733,7 +816,7 @@ export default function HelpsAdmin() {
                       loading={saving}
                     >
                       <CloudUploadOutlinedIcon style={{ marginRight: 8 }} />
-                      Enviar imagem
+                      Anexar arquivo
                     </ButtonWithSpinner>
                     {imageFile ? (
                       <>
@@ -760,16 +843,25 @@ export default function HelpsAdmin() {
                     )}
                   </div>
 
-                  {videoId || imagePreviewUrl || imageLink ? (
+                  {videoId || videoExternalUrl || imagePreviewUrl || imageLink ? (
                     <div className={classes.previewWrap} aria-label="Preview do conteúdo">
-                      {videoId ? (
+                      {videoEmbedUrl ? (
                         <iframe
                           className={classes.iframe}
-                          title="Preview do vídeo do YouTube"
-                          src={`https://www.youtube.com/embed/${videoId}`}
+                          title="Preview do vídeo"
+                          src={videoEmbedUrl}
                           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                           allowFullScreen
                         />
+                      ) : videoExternalUrl ? (
+                        <div style={{ padding: 14 }}>
+                          <Typography variant="body2" style={{ marginBottom: 10 }}>
+                            Link de vídeo detectado:
+                          </Typography>
+                          <a href={videoExternalUrl} target="_blank" rel="noreferrer">
+                            {videoExternalUrl}
+                          </a>
+                        </div>
                       ) : (
                         <img
                           alt="Preview da imagem"
@@ -944,9 +1036,11 @@ export default function HelpsAdmin() {
                 <>
                   <Grid container spacing={2} className={classes.cardsGrid}>
                     {pageItems.map((row) => {
-                      const hasVideo = Boolean(normalizeText(row.video));
-                      const videoThumbId = hasVideo ? parseYouTube(row.video).id || normalizeText(row.video) : "";
-                      const thumbUrl = hasVideo && videoThumbId
+                      const rawVideo = normalizeText(row.video);
+                      const parsedVideo = parseYouTube(rawVideo);
+                      const hasVideo = Boolean(rawVideo);
+                      const videoThumbId = parsedVideo.id;
+                      const thumbUrl = videoThumbId
                         ? `https://img.youtube.com/vi/${videoThumbId}/mqdefault.jpg`
                         : normalizeText(row.link)
                           ? resolveAssetUrl(row.link)
@@ -984,7 +1078,7 @@ export default function HelpsAdmin() {
                                 <Chip
                                   size="small"
                                   className={hasVideo ? classes.badgeYes : classes.badgeNo}
-                                  label={hasVideo ? "Vídeo" : "Imagem/Texto"}
+                                  label={hasVideo ? (videoThumbId ? "Vídeo" : "Link vídeo") : "Imagem/Texto"}
                                 />
                               </div>
 
@@ -1095,15 +1189,28 @@ export default function HelpsAdmin() {
           <Typography variant="body2" style={{ whiteSpace: "pre-wrap" }}>
             {viewItem?.description || "-"}
           </Typography>
-          {parseYouTube(viewItem?.video).id ? (
+          {parseYouTube(viewItem?.video).embedUrl ? (
             <div className={classes.previewWrap} style={{ marginTop: 16 }}>
               <iframe
                 className={classes.iframe}
                 title="Preview do vídeo"
-                src={`https://www.youtube.com/embed/${parseYouTube(viewItem?.video).id}`}
+                src={parseYouTube(viewItem?.video).embedUrl}
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                 allowFullScreen
               />
+            </div>
+          ) : parseYouTube(viewItem?.video).externalUrl ? (
+            <div style={{ marginTop: 14 }}>
+              <a href={parseYouTube(viewItem?.video).externalUrl} target="_blank" rel="noreferrer">
+                Abrir vídeo
+              </a>
+            </div>
+          ) : null}
+          {normalizeText(viewItem?.link) ? (
+            <div style={{ marginTop: 14 }}>
+              <a href={resolveAssetUrl(viewItem?.link)} target="_blank" rel="noreferrer">
+                Abrir/Baixar anexo
+              </a>
             </div>
           ) : null}
         </DialogContent>

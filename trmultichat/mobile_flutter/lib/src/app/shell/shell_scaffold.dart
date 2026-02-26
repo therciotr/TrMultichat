@@ -80,33 +80,97 @@ class ShellScaffold extends ConsumerWidget {
       final auth = ref.watch(authControllerProvider);
       final user = auth.user;
       final profile = (user?.profile ?? '').toLowerCase();
-      final isAdminLike = user?.admin == true || user?.isSuper == true || profile == 'admin' || profile == 'super';
+      final isSuperLike = user?.isSuper == true || profile == 'super';
+      final isAdminLike = user?.admin == true ||
+          user?.isSuper == true ||
+          profile == 'admin' ||
+          profile == 'super';
       final cs = Theme.of(context).colorScheme;
       final wide = MediaQuery.sizeOf(context).width >= 1320;
       final currentPath = GoRouterState.of(context).uri.path;
-      final modules = isAdminLike
-          ? const <({String label, IconData icon, String route})>[
-              (label: 'Dashboard', icon: Icons.dashboard_outlined, route: '/workspace/dashboard'),
-              (label: 'Financeiro', icon: Icons.payments_outlined, route: '/workspace/finance'),
-              (label: 'Tarefa', icon: Icons.checklist_rtl_outlined, route: '/workspace/todo'),
-              (label: 'Respostas', icon: Icons.quickreply_outlined, route: '/workspace/quick-messages'),
-              (label: 'Usuários', icon: Icons.group_outlined, route: '/workspace/users'),
-              (label: 'Filas', icon: Icons.account_tree_outlined, route: '/workspace/queues'),
-              (label: 'Conexões', icon: Icons.wifi_tethering_outlined, route: '/workspace/connections'),
-              (label: 'Tags', icon: Icons.sell_outlined, route: '/workspace/tags'),
-              (label: 'Arquivos', icon: Icons.folder_outlined, route: '/workspace/files'),
-              (label: 'Campanhas', icon: Icons.campaign_outlined, route: '/workspace/campaigns'),
-              (label: 'Planos', icon: Icons.workspace_premium_outlined, route: '/workspace/plans'),
-              (label: 'Ajuda', icon: Icons.help_outline, route: '/workspace/helps'),
-              (label: 'Configurações', icon: Icons.settings_outlined, route: '/workspace/settings'),
-            ]
-          : const <({String label, IconData icon, String route})>[
-              (label: 'Dashboard', icon: Icons.dashboard_outlined, route: '/workspace/dashboard'),
-              (label: 'Financeiro', icon: Icons.payments_outlined, route: '/workspace/finance'),
-              (label: 'Tarefa', icon: Icons.checklist_rtl_outlined, route: '/workspace/todo'),
-              (label: 'Respostas', icon: Icons.quickreply_outlined, route: '/workspace/quick-messages'),
-              (label: 'Ajuda', icon: Icons.help_outline, route: '/workspace/helps'),
-            ];
+      final atendimento = const <({String label, IconData icon, String route})>[
+        (
+          label: 'Respostas Rápidas',
+          icon: Icons.quickreply_outlined,
+          route: '/workspace/quick-messages'
+        ),
+        (
+          label: 'Tarefas',
+          icon: Icons.checklist_rtl_outlined,
+          route: '/workspace/todo'
+        ),
+        (label: 'Tags', icon: Icons.sell_outlined, route: '/workspace/tags'),
+        (
+          label: 'Ajuda',
+          icon: Icons.help_outline,
+          route: '/workspace/help-center'
+        ),
+      ];
+      final gerencia = const <({String label, IconData icon, String route})>[
+        (
+          label: 'Dashboard',
+          icon: Icons.dashboard_outlined,
+          route: '/workspace/dashboard'
+        ),
+      ];
+      final administracao = <({String label, IconData icon, String route})>[
+        if (isAdminLike) ...[
+          (
+            label: 'Conexões',
+            icon: Icons.wifi_tethering_outlined,
+            route: '/workspace/connections'
+          ),
+          (
+            label: 'Lista de arquivos',
+            icon: Icons.folder_outlined,
+            route: '/workspace/files'
+          ),
+          (
+            label: 'Filas',
+            icon: Icons.account_tree_outlined,
+            route: '/workspace/queues'
+          ),
+          (
+            label: 'Usuários',
+            icon: Icons.group_outlined,
+            route: '/workspace/users'
+          ),
+          if (isSuperLike)
+            (
+              label: 'Licenças',
+              icon: Icons.workspace_premium_outlined,
+              route: '/workspace/module/licencas'
+            ),
+          if (isSuperLike)
+            (
+              label: 'Empresas',
+              icon: Icons.apartment_outlined,
+              route: '/workspace/module/empresas'
+            ),
+          if (isSuperLike)
+            (
+              label: 'Planos',
+              icon: Icons.price_change_outlined,
+              route: '/workspace/plans'
+            ),
+          (
+            label: 'Ajuda',
+            icon: Icons.help_outline,
+            route: '/workspace/helps-admin'
+          ),
+          (
+            label: 'Financeiro',
+            icon: Icons.payments_outlined,
+            route: '/workspace/finance'
+          ),
+          (
+            label: 'Configurações',
+            icon: Icons.settings_outlined,
+            route: '/workspace/settings'
+          ),
+        ],
+      ];
+      final hasAdministracao = administracao.isNotEmpty;
 
       return Scaffold(
         body: Container(
@@ -149,13 +213,16 @@ class ShellScaffold extends ConsumerWidget {
                   child: Column(
                     children: [
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 8),
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(14),
                           color: cs.primary.withOpacity(0.07),
                         ),
                         child: Row(
-                          mainAxisAlignment: wide ? MainAxisAlignment.start : MainAxisAlignment.center,
+                          mainAxisAlignment: wide
+                              ? MainAxisAlignment.start
+                              : MainAxisAlignment.center,
                           children: [
                             ClipRRect(
                               borderRadius: BorderRadius.circular(10),
@@ -167,7 +234,8 @@ class ShellScaffold extends ConsumerWidget {
                                 errorBuilder: (_, __, ___) => CircleAvatar(
                                   radius: 16,
                                   backgroundColor: cs.primary.withOpacity(0.12),
-                                  child: Icon(Icons.all_inbox_rounded, color: cs.primary),
+                                  child: Icon(Icons.all_inbox_rounded,
+                                      color: cs.primary),
                                 ),
                               ),
                             ),
@@ -181,7 +249,8 @@ class ShellScaffold extends ConsumerWidget {
                                       'TR Multichat',
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(fontWeight: FontWeight.w900),
+                                      style: TextStyle(
+                                          fontWeight: FontWeight.w900),
                                     ),
                                     Text(
                                       isAdminLike ? 'Administrador' : 'Usuário',
@@ -203,56 +272,167 @@ class ShellScaffold extends ConsumerWidget {
                         child: ListView(
                           padding: EdgeInsets.zero,
                           children: [
-                            _SidebarItem(
-                              compact: !wide,
-                              icon: Icons.confirmation_number_outlined,
-                              label: 'Tickets',
-                              selected: navigationShell.currentIndex == 0,
-                              onTap: () => _goBranch(0),
-                            ),
-                            _SidebarItem(
-                              compact: !wide,
-                              icon: Icons.people_outline,
-                              label: 'Contatos',
-                              selected: navigationShell.currentIndex == 1,
-                              onTap: () => _goBranch(1),
-                            ),
-                            _SidebarItem(
-                              compact: !wide,
-                              icon: Icons.forum_outlined,
-                              label: 'Chat Interno',
-                              selected: navigationShell.currentIndex == 2,
-                              onTap: () => _goBranch(2),
-                            ),
-                            _SidebarItem(
-                              compact: !wide,
-                              icon: Icons.calendar_month_outlined,
-                              label: 'Agenda',
-                              selected: navigationShell.currentIndex == 3,
-                              onTap: () => _goBranch(3),
-                            ),
-                            const SizedBox(height: 14),
-                            if (wide)
-                              Padding(
-                                padding: const EdgeInsets.only(left: 8, bottom: 6),
-                                child: Text(
-                                  isAdminLike ? 'Módulos administrativos' : 'Módulos',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w800,
-                                    color: cs.onSurfaceVariant,
-                                  ),
+                            if (isAdminLike) ...[
+                              if (wide)
+                                _SidebarSectionLabel(
+                                  label: 'Atendimento',
+                                  color: cs.onSurfaceVariant,
+                                ),
+                              _SidebarItem(
+                                compact: !wide,
+                                icon: Icons.confirmation_number_outlined,
+                                label: 'Tickets',
+                                selected: navigationShell.currentIndex == 0,
+                                onTap: () => _goBranch(0),
+                              ),
+                              ...atendimento.map(
+                                (m) => _SidebarItem(
+                                  compact: !wide,
+                                  icon: m.icon,
+                                  label: m.label,
+                                  selected: currentPath == m.route ||
+                                      currentPath.startsWith('${m.route}/'),
+                                  onTap: () => context.go(m.route),
                                 ),
                               ),
-                            ...modules.map(
-                              (m) => _SidebarItem(
+                              _SidebarItem(
                                 compact: !wide,
-                                icon: m.icon,
-                                label: m.label,
-                                selected: currentPath == m.route || currentPath.startsWith('${m.route}/'),
-                                onTap: () => context.go(m.route),
+                                icon: Icons.calendar_month_outlined,
+                                label: 'Agenda',
+                                selected: navigationShell.currentIndex == 3,
+                                onTap: () => _goBranch(3),
                               ),
-                            ),
+                              _SidebarItem(
+                                compact: !wide,
+                                icon: Icons.people_outline,
+                                label: 'Contatos',
+                                selected: navigationShell.currentIndex == 1,
+                                onTap: () => _goBranch(1),
+                              ),
+                              _SidebarItem(
+                                compact: !wide,
+                                icon: Icons.forum_outlined,
+                                label: 'Chat Interno',
+                                selected: navigationShell.currentIndex == 2,
+                                onTap: () => _goBranch(2),
+                              ),
+                              const SizedBox(height: 12),
+                              if (wide)
+                                _SidebarSectionLabel(
+                                  label: 'Gerência',
+                                  color: cs.onSurfaceVariant,
+                                ),
+                              ...gerencia.map(
+                                (m) => _SidebarItem(
+                                  compact: !wide,
+                                  icon: m.icon,
+                                  label: m.label,
+                                  selected: currentPath == m.route ||
+                                      currentPath.startsWith('${m.route}/'),
+                                  onTap: () => context.go(m.route),
+                                ),
+                              ),
+                              if (hasAdministracao) ...[
+                                const SizedBox(height: 12),
+                                if (wide)
+                                  _SidebarSectionLabel(
+                                    label: 'Administração',
+                                    color: cs.onSurfaceVariant,
+                                  ),
+                                ...administracao.map(
+                                  (m) => _SidebarItem(
+                                    compact: !wide,
+                                    icon: m.icon,
+                                    label: m.label,
+                                    selected: currentPath == m.route ||
+                                        currentPath.startsWith('${m.route}/'),
+                                    onTap: () => context.go(m.route),
+                                  ),
+                                ),
+                              ],
+                            ] else ...[
+                              if (wide)
+                                _SidebarSectionLabel(
+                                  label: 'Atendimento',
+                                  color: cs.onSurfaceVariant,
+                                ),
+                              _SidebarItem(
+                                compact: !wide,
+                                icon: Icons.dashboard_outlined,
+                                label: 'Dashboard',
+                                selected: currentPath ==
+                                        '/workspace/dashboard' ||
+                                    currentPath
+                                        .startsWith('/workspace/dashboard/'),
+                                onTap: () => context.go('/workspace/dashboard'),
+                              ),
+                              _SidebarItem(
+                                compact: !wide,
+                                icon: Icons.confirmation_number_outlined,
+                                label: 'Tickets',
+                                selected: navigationShell.currentIndex == 0,
+                                onTap: () => _goBranch(0),
+                              ),
+                              _SidebarItem(
+                                compact: !wide,
+                                icon: Icons.quickreply_outlined,
+                                label: 'Respostas Rápidas',
+                                selected: currentPath ==
+                                        '/workspace/quick-messages' ||
+                                    currentPath.startsWith(
+                                        '/workspace/quick-messages/'),
+                                onTap: () =>
+                                    context.go('/workspace/quick-messages'),
+                              ),
+                              _SidebarItem(
+                                compact: !wide,
+                                icon: Icons.checklist_rtl_outlined,
+                                label: 'Tarefas',
+                                selected: currentPath == '/workspace/todo' ||
+                                    currentPath.startsWith('/workspace/todo/'),
+                                onTap: () => context.go('/workspace/todo'),
+                              ),
+                              _SidebarItem(
+                                compact: !wide,
+                                icon: Icons.calendar_month_outlined,
+                                label: 'Agenda',
+                                selected: navigationShell.currentIndex == 3,
+                                onTap: () => _goBranch(3),
+                              ),
+                              _SidebarItem(
+                                compact: !wide,
+                                icon: Icons.people_outline,
+                                label: 'Contatos',
+                                selected: navigationShell.currentIndex == 1,
+                                onTap: () => _goBranch(1),
+                              ),
+                              _SidebarItem(
+                                compact: !wide,
+                                icon: Icons.sell_outlined,
+                                label: 'Tags',
+                                selected: currentPath == '/workspace/tags' ||
+                                    currentPath.startsWith('/workspace/tags/'),
+                                onTap: () => context.go('/workspace/tags'),
+                              ),
+                              _SidebarItem(
+                                compact: !wide,
+                                icon: Icons.help_outline,
+                                label: 'Ajuda',
+                                selected: currentPath ==
+                                        '/workspace/help-center' ||
+                                    currentPath
+                                        .startsWith('/workspace/help-center/'),
+                                onTap: () =>
+                                    context.go('/workspace/help-center'),
+                              ),
+                              _SidebarItem(
+                                compact: !wide,
+                                icon: Icons.forum_outlined,
+                                label: 'Chat Interno',
+                                selected: navigationShell.currentIndex == 2,
+                                onTap: () => _goBranch(2),
+                              ),
+                            ],
                             const SizedBox(height: 12),
                             _SidebarItem(
                               compact: !wide,
@@ -356,7 +536,8 @@ class _SidebarItem extends StatelessWidget {
               vertical: compact ? 10 : 9,
             ),
             child: Row(
-              mainAxisAlignment: compact ? MainAxisAlignment.center : MainAxisAlignment.start,
+              mainAxisAlignment:
+                  compact ? MainAxisAlignment.center : MainAxisAlignment.start,
               children: [
                 Icon(
                   icon,
@@ -371,7 +552,8 @@ class _SidebarItem extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                        fontWeight:
+                            selected ? FontWeight.w800 : FontWeight.w600,
                         color: selected ? cs.primary : cs.onSurface,
                       ),
                     ),
@@ -379,6 +561,34 @@ class _SidebarItem extends StatelessWidget {
                 ],
               ],
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SidebarSectionLabel extends StatelessWidget {
+  final String label;
+  final Color color;
+
+  const _SidebarSectionLabel({
+    required this.label,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 8, bottom: 6),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w800,
+            color: color,
           ),
         ),
       ),
