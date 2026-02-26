@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
@@ -1276,6 +1277,30 @@ class _DesktopHelpsScreenState extends _BaseCrudScreen<DesktopHelpsScreen> {
     return v.startsWith('/') ? '$root$v' : '$root/$v';
   }
 
+  List<String> _attachmentLinks(dynamic raw) {
+    if (raw is List) {
+      return raw.map((e) => _txt(e)).where((e) => e.isNotEmpty).toList();
+    }
+    final value = _txt(raw);
+    if (value.isEmpty) return const [];
+    if (value.startsWith('[')) {
+      try {
+        final decoded = jsonDecode(value);
+        if (decoded is List) {
+          return decoded.map((e) => _txt(e)).where((e) => e.isNotEmpty).toList();
+        }
+      } catch (_) {
+        // ignore and fallback to legacy single-link format
+      }
+    }
+    return [value];
+  }
+
+  String _firstAttachment(dynamic raw) {
+    final links = _attachmentLinks(raw);
+    return links.isEmpty ? '' : _resolveUrl(links.first);
+  }
+
   String? _youtubeId(String value) {
     final v = _txt(value);
     if (v.isEmpty) return null;
@@ -1316,6 +1341,7 @@ class _DesktopHelpsScreenState extends _BaseCrudScreen<DesktopHelpsScreen> {
     final host = uri.host.toLowerCase();
     return host.contains('instagram.com');
   }
+
   @override
   void initState() {
     super.initState();
@@ -1339,8 +1365,8 @@ class _DesktopHelpsScreenState extends _BaseCrudScreen<DesktopHelpsScreen> {
         TextEditingController(text: (initial?['description'] ?? '').toString());
     final video =
         TextEditingController(text: (initial?['video'] ?? '').toString());
-    final link =
-        TextEditingController(text: (initial?['link'] ?? '').toString());
+    final existingAttachments = _attachmentLinks(initial?['link']);
+    final link = TextEditingController();
     final category =
         TextEditingController(text: (initial?['category'] ?? '').toString());
     PlatformFile? pickedAttachment;
@@ -1438,7 +1464,7 @@ class _DesktopHelpsScreenState extends _BaseCrudScreen<DesktopHelpsScreen> {
                   TextField(
                     controller: link,
                     decoration: const InputDecoration(
-                      labelText: 'Link do anexo (opcional)',
+                      labelText: 'Novo link do anexo (opcional)',
                     ),
                     onChanged: (_) => setModalState(() {}),
                   ),
@@ -1468,8 +1494,8 @@ class _DesktopHelpsScreenState extends _BaseCrudScreen<DesktopHelpsScreen> {
                       Expanded(
                         child: Text(
                           pickedAttachment?.name ??
-                              (link.text.trim().isNotEmpty
-                                  ? 'Anexo atual por link'
+                              (existingAttachments.isNotEmpty
+                                  ? 'Anexos atuais: ${existingAttachments.length}'
                                   : 'Nenhum anexo selecionado'),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
@@ -1484,6 +1510,26 @@ class _DesktopHelpsScreenState extends _BaseCrudScreen<DesktopHelpsScreen> {
                         ),
                     ],
                   ),
+                  if (existingAttachments.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: existingAttachments
+                            .asMap()
+                            .entries
+                            .map(
+                              (entry) => Chip(
+                                avatar: const Icon(Icons.attach_file, size: 14),
+                                label: Text('Anexo ${entry.key + 1}'),
+                              ),
+                            )
+                            .toList(growable: false),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -1576,8 +1622,14 @@ class _DesktopHelpsScreenState extends _BaseCrudScreen<DesktopHelpsScreen> {
                           children: [
                             if ((r['video'] ?? '').toString().trim().isNotEmpty)
                               const Chip(label: Text('Vídeo')),
-                            if ((r['link'] ?? '').toString().trim().isNotEmpty)
-                              const Chip(label: Text('Anexo')),
+                            if (_attachmentLinks(r['link']).isNotEmpty)
+                              Chip(
+                                label: Text(
+                                  _attachmentLinks(r['link']).length > 1
+                                      ? 'Anexos (${_attachmentLinks(r['link']).length})'
+                                      : 'Anexo',
+                                ),
+                              ),
                           ],
                         ),
                       ],
@@ -1639,6 +1691,30 @@ class _DesktopHelpCenterScreenState
     final root =
         '${uri.scheme}://${uri.host}${uri.hasPort ? ':${uri.port}' : ''}';
     return v.startsWith('/') ? '$root$v' : '$root/$v';
+  }
+
+  List<String> _attachmentLinks(dynamic raw) {
+    if (raw is List) {
+      return raw.map((e) => _txt(e)).where((e) => e.isNotEmpty).toList();
+    }
+    final value = _txt(raw);
+    if (value.isEmpty) return const [];
+    if (value.startsWith('[')) {
+      try {
+        final decoded = jsonDecode(value);
+        if (decoded is List) {
+          return decoded.map((e) => _txt(e)).where((e) => e.isNotEmpty).toList();
+        }
+      } catch (_) {
+        // ignore and fallback to legacy single-link format
+      }
+    }
+    return [value];
+  }
+
+  String _firstAttachment(dynamic raw) {
+    final links = _attachmentLinks(raw);
+    return links.isEmpty ? '' : _resolveUrl(links.first);
   }
 
   String? _youtubeId(String value) {
@@ -1759,7 +1835,7 @@ class _DesktopHelpCenterScreenState
   }
 
   String _attachmentThumbnailFor(Map<String, dynamic> row) {
-    final attachment = _resolveUrl(_txt(row['link']));
+    final attachment = _firstAttachment(row['link']);
     if (attachment.isNotEmpty && _isImageUrl(attachment)) return attachment;
     return '';
   }
@@ -1892,7 +1968,9 @@ class _DesktopHelpCenterScreenState
     final title = _txt(row['title']).isEmpty ? 'Ajuda' : _txt(row['title']);
     final description = _txt(row['description']);
     final rawVideo = _txt(row['video']);
-    final attachment = _resolveUrl(_txt(row['link']));
+    final attachments =
+        _attachmentLinks(row['link']).map(_resolveUrl).where((e) => e.isNotEmpty).toList();
+    final attachment = attachments.isEmpty ? '' : attachments.first;
     final hasVideo = rawVideo.isNotEmpty;
     await showDialog<void>(
       context: context,
@@ -1918,7 +1996,7 @@ class _DesktopHelpCenterScreenState
                     ),
                   ),
                 ],
-                if (attachment.isNotEmpty) ...[
+                if (attachments.isNotEmpty) ...[
                   const SizedBox(height: 10),
                   if (!hasVideo && _isImageUrl(attachment))
                     ClipRRect(
@@ -1931,10 +2009,19 @@ class _DesktopHelpCenterScreenState
                       ),
                     ),
                   const SizedBox(height: 8),
-                  OutlinedButton.icon(
-                    onPressed: () => _downloadAttachment(attachment),
-                    icon: const Icon(Icons.download_outlined),
-                    label: const Text('Baixar anexo'),
+                  ...attachments.asMap().entries.map(
+                    (entry) => Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: OutlinedButton.icon(
+                        onPressed: () => _downloadAttachment(entry.value),
+                        icon: const Icon(Icons.download_outlined),
+                        label: Text(
+                          attachments.length > 1
+                              ? 'Baixar anexo ${entry.key + 1}'
+                              : 'Baixar anexo',
+                        ),
+                      ),
+                    ),
                   ),
                 ],
               ],
@@ -1971,7 +2058,7 @@ class _DesktopHelpCenterScreenState
                       final title = _txt(r['title']);
                       final desc = _txt(r['description']);
                       final hasVideo = _txt(r['video']).isNotEmpty;
-                      final hasAttachment = _txt(r['link']).isNotEmpty;
+                      final hasAttachment = _attachmentLinks(r['link']).isNotEmpty;
                       final videoThumb = _videoThumbnailFor(r);
                       final attachmentThumb =
                           hasVideo ? '' : _attachmentThumbnailFor(r);

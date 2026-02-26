@@ -153,6 +153,23 @@ function buildAttachmentDownloadUrl(urlRaw) {
   return `${api}/helps/attachment/download?url=${encodeURIComponent(asset)}`;
 }
 
+function parseAttachmentLinks(raw) {
+  if (Array.isArray(raw)) {
+    return raw.map((item) => normalizeText(item)).filter(Boolean);
+  }
+  const value = normalizeText(raw);
+  if (!value) return [];
+  if (value.startsWith("[")) {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) {
+        return parsed.map((item) => normalizeText(item)).filter(Boolean);
+      }
+    } catch (_) {}
+  }
+  return [value];
+}
+
 const useStyles = makeStyles((theme) => {
   const isDark = theme.palette.type === "dark";
   const border = `1px solid ${theme.palette.divider}`;
@@ -385,14 +402,19 @@ const Helps = () => {
 
   const modalVideo = useMemo(() => parseVideo(selectedHelp?.video), [selectedHelp]);
   const modalEmbedUrl = useMemo(() => getVideoEmbedUrl(modalVideo), [modalVideo]);
-  const modalAttachment = useMemo(
-    () => resolveAssetUrl(selectedHelp?.link),
-    [selectedHelp]
-  );
-  const modalAttachmentDownload = useMemo(
-    () => buildAttachmentDownloadUrl(selectedHelp?.link),
-    [selectedHelp]
-  );
+  const modalAttachments = useMemo(() => {
+    const links = parseAttachmentLinks(selectedHelp?.link);
+    return links
+      .map((raw) => {
+        const assetUrl = resolveAssetUrl(raw);
+        return {
+          raw,
+          assetUrl,
+          downloadUrl: buildAttachmentDownloadUrl(raw),
+        };
+      })
+      .filter((entry) => Boolean(entry.assetUrl));
+  }, [selectedHelp]);
 
   const renderVideoModal = () => {
     return (
@@ -437,7 +459,7 @@ const Helps = () => {
                 Sem descrição.
               </Typography>
             )}
-            {(modalVideo.url || modalAttachment) ? (
+            {(modalVideo.url || modalAttachments.length) ? (
               <div className={classes.actionLinks}>
                 {modalVideo.url ? (
                   <Button
@@ -453,19 +475,20 @@ const Helps = () => {
                     Abrir vídeo
                   </Button>
                 ) : null}
-                {modalAttachment ? (
+                {modalAttachments.map((attachment, index) => (
                   <Button
+                    key={`${attachment.assetUrl}-${index}`}
                     className={classes.actionBtn}
                     color="default"
                     variant="outlined"
                     startIcon={<GetAppIcon />}
                     component="a"
-                    href={modalAttachmentDownload || modalAttachment}
+                    href={attachment.downloadUrl || attachment.assetUrl}
                     rel="noopener noreferrer"
                   >
-                    Baixar anexo
+                    {modalAttachments.length > 1 ? `Baixar anexo ${index + 1}` : "Baixar anexo"}
                   </Button>
-                ) : null}
+                ))}
               </div>
             ) : null}
           </div>
@@ -526,7 +549,8 @@ const Helps = () => {
         {records.map((record, idx) => {
           const videoInfo = parseVideo(record?.video);
           const hasVideo = videoInfo.type !== "none";
-          const attachmentUrl = resolveAssetUrl(record?.link);
+          const firstAttachmentRaw = parseAttachmentLinks(record?.link)[0] || "";
+          const attachmentUrl = resolveAssetUrl(firstAttachmentRaw);
           const hasAttachment = Boolean(attachmentUrl);
           const thumbImageUrl =
             videoInfo.type === "youtube" && videoInfo.id

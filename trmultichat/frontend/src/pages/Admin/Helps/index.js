@@ -379,6 +379,23 @@ function resolveAssetUrl(urlRaw) {
   return base + (url.startsWith("/") ? url : "/" + url);
 }
 
+function parseAttachmentLinks(raw) {
+  if (Array.isArray(raw)) {
+    return raw.map((item) => normalizeText(item)).filter(Boolean);
+  }
+  const value = normalizeText(raw);
+  if (!value) return [];
+  if (value.startsWith("[")) {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) {
+        return parsed.map((item) => normalizeText(item)).filter(Boolean);
+      }
+    } catch (_) {}
+  }
+  return [value];
+}
+
 function HelpListSkeleton() {
   return (
     <div style={{ padding: 16 }}>
@@ -445,7 +462,10 @@ export default function HelpsAdmin() {
   const [imagePreviewUrl, setImagePreviewUrl] = useState("");
 
   const isEditing = Boolean(editingItem?.id);
-  const editingImageLink = normalizeText(editingItem?.link);
+  const editingAttachments = useMemo(
+    () => parseAttachmentLinks(editingItem?.link),
+    [editingItem]
+  );
 
   // Guard simples: rota /admin/helps deve ser só para admin/super (padrão do painel)
   useEffect(() => {
@@ -462,7 +482,7 @@ export default function HelpsAdmin() {
       description: editingItem?.description || "",
       videoUrl: editingItem?.video ? String(editingItem.video) : "",
       category: editingItem?.category || editingItem?.categoria || editingItem?.tag || "",
-      imageLink: editingImageLink || "",
+      imageLink: "",
     },
     validationSchema: schema,
     onSubmit: async (values, helpers) => {
@@ -548,6 +568,10 @@ export default function HelpsAdmin() {
   const videoExternalUrl = videoParsed.externalUrl || "";
   const videoEmbedUrl = videoParsed.embedUrl || "";
   const imageLink = normalizeText(formik.values.imageLink);
+  const viewAttachments = useMemo(
+    () => parseAttachmentLinks(viewItem?.link),
+    [viewItem]
+  );
 
   const setFile = (file) => {
     try {
@@ -614,7 +638,7 @@ export default function HelpsAdmin() {
         !q ||
         String(r.title || "").toLowerCase().includes(q) ||
         String(r.description || "").toLowerCase().includes(q) ||
-        String(r.link || "").toLowerCase().includes(q);
+        parseAttachmentLinks(r.link).join(" ").toLowerCase().includes(q);
       const okCategory =
         !categoryKey ||
         categoryFilter === "all" ||
@@ -849,6 +873,13 @@ export default function HelpsAdmin() {
                       </Typography>
                     )}
                   </div>
+                  {isEditing && editingAttachments.length ? (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
+                      {editingAttachments.map((_, index) => (
+                        <Chip key={`edit-attachment-${index}`} size="small" label={`Anexo atual ${index + 1}`} />
+                      ))}
+                    </div>
+                  ) : null}
 
                   {videoId || videoExternalUrl || imagePreviewUrl || imageLink ? (
                     <div className={classes.previewWrap} aria-label="Preview do conteúdo">
@@ -1047,10 +1078,11 @@ export default function HelpsAdmin() {
                       const parsedVideo = parseYouTube(rawVideo);
                       const hasVideo = Boolean(rawVideo);
                       const videoThumbId = parsedVideo.id;
+                      const firstAttachment = parseAttachmentLinks(row.link)[0] || "";
                       const thumbUrl = videoThumbId
                         ? `https://img.youtube.com/vi/${videoThumbId}/mqdefault.jpg`
-                        : normalizeText(row.link)
-                          ? resolveAssetUrl(row.link)
+                        : normalizeText(firstAttachment)
+                          ? resolveAssetUrl(firstAttachment)
                           : "";
                       const categoryValue = normalizeText(row?.[categoryKey]) || "";
                       const dateStr = row?.updatedAt || row?.createdAt || "";
@@ -1213,11 +1245,13 @@ export default function HelpsAdmin() {
               </a>
             </div>
           ) : null}
-          {normalizeText(viewItem?.link) ? (
-            <div style={{ marginTop: 14 }}>
-              <a href={resolveAssetUrl(viewItem?.link)} target="_blank" rel="noreferrer">
-                Abrir/Baixar anexo
-              </a>
+          {viewAttachments.length ? (
+            <div style={{ marginTop: 14, display: "grid", gap: 8 }}>
+              {viewAttachments.map((raw, index) => (
+                <a key={`${raw}-${index}`} href={resolveAssetUrl(raw)} target="_blank" rel="noopener noreferrer">
+                  {viewAttachments.length > 1 ? `Abrir/Baixar anexo ${index + 1}` : "Abrir/Baixar anexo"}
+                </a>
+              ))}
             </div>
           ) : null}
         </DialogContent>

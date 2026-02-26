@@ -23,6 +23,52 @@ function normalizeText(v: any): string {
   return String(v ?? "").trim();
 }
 
+function parseAttachmentLinks(raw: any): string[] {
+  if (Array.isArray(raw)) {
+    return raw
+      .map((item) => normalizeText(item))
+      .filter(Boolean);
+  }
+  const value = normalizeText(raw);
+  if (!value) return [];
+  if (value.startsWith("[")) {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) {
+        return parsed
+          .map((item) => normalizeText(item))
+          .filter(Boolean);
+      }
+    } catch {
+      // ignore and fallback to single value
+    }
+  }
+  return [value];
+}
+
+function mergeAttachmentLinks(...lists: Array<string[] | string>): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const list of lists) {
+    const entries = Array.isArray(list) ? list : [list];
+    for (const raw of entries) {
+      const value = normalizeText(raw);
+      if (!value) continue;
+      if (seen.has(value)) continue;
+      seen.add(value);
+      out.push(value);
+    }
+  }
+  return out;
+}
+
+function serializeAttachmentLinks(links: string[]): string {
+  const clean = links.map((item) => normalizeText(item)).filter(Boolean);
+  if (!clean.length) return "";
+  if (clean.length === 1) return clean[0];
+  return JSON.stringify(clean);
+}
+
 function toUploadPath(raw: string): string {
   const value = normalizeText(raw);
   if (!value) return "";
@@ -282,11 +328,12 @@ router.post("/", maybeUploadAttachment(), async (req, res) => {
 
     const body = req.body || {};
     const uploadedUrl = getUploadedUrl(req);
+    const attachmentLinks = mergeAttachmentLinks(parseAttachmentLinks(body.link), uploadedUrl);
     const payload = {
       title: normalizeText(body.title),
       description: normalizeText(body.description),
       video: normalizeText(body.video),
-      link: normalizeText(body.link) || uploadedUrl
+      link: serializeAttachmentLinks(attachmentLinks)
     };
 
     if (!payload.title) {
@@ -368,11 +415,16 @@ router.put("/:id", maybeUploadAttachment(), async (req, res) => {
       sets.push(`${quoteIdent("category")} = $${params.length + 1}`);
       params.push(normalizeText(body.category));
     }
-    if (colsSet.has("link")) {
-      // Priority: uploaded file > provided link (can also clear with empty string)
-      const linkValue =
-        uploadedUrl || (body.link !== undefined ? normalizeText(body.link) : undefined);
-      if (linkValue !== undefined) {
+    if (colsSet.has("link") && (uploadedUrl || body.link !== undefined)) {
+      const currentRows = await pgQuery<HelpRow>(`SELECT * FROM ${t} WHERE id = $1 LIMIT 1`, [id]);
+      const currentRow = Array.isArray(currentRows) ? currentRows[0] : null;
+      if (!currentRow) return res.status(404).json({ error: true, message: "not found" });
+
+      const currentLinks = parseAttachmentLinks(currentRow.link);
+      const incomingLinks = parseAttachmentLinks(body.link);
+      const mergedLinks = mergeAttachmentLinks(currentLinks, incomingLinks, uploadedUrl);
+      const linkValue = serializeAttachmentLinks(mergedLinks);
+      if (linkValue || body.link !== undefined || uploadedUrl) {
         sets.push(`${quoteIdent("link")} = $${params.length + 1}`);
         params.push(linkValue);
       }
