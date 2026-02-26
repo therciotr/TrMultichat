@@ -135,7 +135,16 @@ function resolveApiBaseUrl() {
 function resolveAssetUrl(urlRaw) {
   const url = normalizeText(urlRaw);
   if (!url) return "";
-  if (url.startsWith("http://") || url.startsWith("https://")) return url;
+  if (url.startsWith("http://") || url.startsWith("https://")) {
+    try {
+      const parsed = new URL(url);
+      if (parsed.pathname.includes("/uploads/helps/")) {
+        const base = resolveApiBaseUrl();
+        return `${base}${parsed.pathname}`;
+      }
+    } catch (_) {}
+    return url;
+  }
   const base = resolveApiBaseUrl();
   return base + (url.startsWith("/") ? url : "/" + url);
 }

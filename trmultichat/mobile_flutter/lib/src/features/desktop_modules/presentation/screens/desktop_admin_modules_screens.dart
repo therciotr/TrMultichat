@@ -1268,7 +1268,19 @@ class _DesktopHelpsScreenState extends _BaseCrudScreen<DesktopHelpsScreen> {
   String _resolveUrl(String raw) {
     final v = _txt(raw);
     if (v.isEmpty) return '';
-    if (v.startsWith('http://') || v.startsWith('https://')) return v;
+    if (v.startsWith('http://') || v.startsWith('https://')) {
+      final parsed = Uri.tryParse(v);
+      if (parsed != null && parsed.path.contains('/uploads/helps/')) {
+        final base = dio.options.baseUrl.trim();
+        final uri = Uri.tryParse(base);
+        if (uri != null && uri.hasScheme && uri.host.isNotEmpty) {
+          final root =
+              '${uri.scheme}://${uri.host}${uri.hasPort ? ':${uri.port}' : ''}';
+          return '$root${parsed.path}';
+        }
+      }
+      return v;
+    }
     final base = dio.options.baseUrl.trim();
     final uri = Uri.tryParse(base);
     if (uri == null || !uri.hasScheme || uri.host.isEmpty) return v;
@@ -1684,7 +1696,19 @@ class _DesktopHelpCenterScreenState
   String _resolveUrl(String raw) {
     final v = _txt(raw);
     if (v.isEmpty) return '';
-    if (v.startsWith('http://') || v.startsWith('https://')) return v;
+    if (v.startsWith('http://') || v.startsWith('https://')) {
+      final parsed = Uri.tryParse(v);
+      if (parsed != null && parsed.path.contains('/uploads/helps/')) {
+        final base = dio.options.baseUrl.trim();
+        final uri = Uri.tryParse(base);
+        if (uri != null && uri.hasScheme && uri.host.isNotEmpty) {
+          final root =
+              '${uri.scheme}://${uri.host}${uri.hasPort ? ':${uri.port}' : ''}';
+          return '$root${parsed.path}';
+        }
+      }
+      return v;
+    }
     final base = dio.options.baseUrl.trim();
     final uri = Uri.tryParse(base);
     if (uri == null || !uri.hasScheme || uri.host.isEmpty) return v;
@@ -1899,6 +1923,8 @@ class _DesktopHelpCenterScreenState
     final resolvedUrl = _resolveUrl(rawUrl);
     if (resolvedUrl.isEmpty) return;
     final suggestedName = _fileNameFromUrl(resolvedUrl);
+    final encoded = Uri.encodeComponent(resolvedUrl);
+    final downloadUrl = '${dio.options.baseUrl.replaceAll(RegExp(r'/$'), '')}/helps/attachment/download?url=$encoded';
 
     String? savePath;
     try {
@@ -1949,7 +1975,7 @@ class _DesktopHelpCenterScreenState
 
     try {
       await File(targetPath).parent.create(recursive: true);
-      await dio.download(resolvedUrl, targetPath);
+      await dio.download(downloadUrl, targetPath);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
