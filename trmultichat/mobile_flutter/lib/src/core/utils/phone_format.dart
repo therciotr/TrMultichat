@@ -14,6 +14,40 @@ const Set<String> _countryCallingCodes = {
   '968','970','971','972','973','974','975','976','977','992','993','994','995','996','998',
 };
 
+const Map<String, int> _countryNationalMax = {
+  '1': 10,
+  '33': 9,
+  '34': 9,
+  '39': 10,
+  '44': 10,
+  '49': 11,
+  '51': 9,
+  '52': 10,
+  '54': 10,
+  '55': 11,
+  '56': 9,
+  '57': 10,
+  '58': 10,
+  '351': 9,
+};
+
+const Map<String, List<int>> _countryGroups = {
+  '1': [3, 3, 4],
+  '33': [1, 2, 2, 2, 2],
+  '34': [3, 3, 3],
+  '39': [3, 3, 4],
+  '44': [4, 3, 3],
+  '49': [3, 3, 5],
+  '51': [3, 3, 3],
+  '52': [3, 3, 4],
+  '54': [3, 3, 4],
+  '55': [2, 5, 4],
+  '56': [1, 4, 4],
+  '57': [3, 3, 4],
+  '58': [3, 3, 4],
+  '351': [3, 3, 3],
+};
+
 String _detectCountryCode(String digits) {
   final value = digits;
   for (var len = 3; len >= 1; len--) {
@@ -26,22 +60,41 @@ String _detectCountryCode(String digits) {
   return value.substring(0, 2);
 }
 
-String _groupNationalNumber(String raw) {
+String _trimNationalByCountry(String cc, String national) {
+  final max = _countryNationalMax[cc];
+  if (max == null || max <= 0 || national.length <= max) return national;
+  return national.substring(0, max);
+}
+
+String _groupByPattern(String raw, List<int> groups) {
+  if (raw.isEmpty) return '';
+  final out = <String>[];
+  var idx = 0;
+  for (final size in groups) {
+    if (idx >= raw.length) break;
+    final end = (idx + size > raw.length) ? raw.length : (idx + size);
+    out.add(raw.substring(idx, end));
+    idx = end;
+  }
+  if (idx < raw.length) out.add(raw.substring(idx));
+  return out.join(' ');
+}
+
+String _groupNationalNumber(String raw, String cc) {
   final value = raw;
   if (value.isEmpty) return '';
+  final pattern = _countryGroups[cc];
+  if (pattern != null && pattern.isNotEmpty) {
+    return _groupByPattern(value, pattern);
+  }
   if (value.length <= 4) return value;
   if (value.length <= 7) {
     final split = value.length - 4;
     return '${value.substring(0, split)} ${value.substring(split)}';
   }
-  if (value.length == 8) return '${value.substring(0, 4)}-${value.substring(4)}';
-  if (value.length == 9) return '${value.substring(0, 5)}-${value.substring(5)}';
-  if (value.length == 10) {
-    return '${value.substring(0, 3)} ${value.substring(3, 6)}-${value.substring(6)}';
-  }
-  if (value.length == 11) {
-    return '${value.substring(0, 3)} ${value.substring(3, 7)}-${value.substring(7)}';
-  }
+  if (value.length <= 9) return _groupByPattern(value, const [3, 3, 3]);
+  if (value.length == 10) return _groupByPattern(value, const [3, 3, 4]);
+  if (value.length == 11) return _groupByPattern(value, const [3, 4, 4]);
 
   final chunks = <String>[];
   var rest = value;
@@ -54,16 +107,24 @@ String _groupNationalNumber(String raw) {
 }
 
 String formatPhoneBr(String? raw) {
-  final digits = (raw ?? '').replaceAll(RegExp(r'\D'), '');
+  final rawStr = (raw ?? '').trim();
+  final explicitIntl = rawStr.startsWith('+') || rawStr.startsWith('00');
+  final digits = rawStr.replaceAll(RegExp(r'\D'), '');
   if (digits.isEmpty) return '';
   var withCountry = digits;
   if (withCountry.startsWith('00')) withCountry = withCountry.substring(2);
-  if (!withCountry.startsWith('55') &&
+  if (!explicitIntl &&
+      !withCountry.startsWith('55') &&
       (withCountry.length == 10 || withCountry.length == 11)) {
     withCountry = '55$withCountry';
   }
   if (withCountry.startsWith('55') && withCountry.length > 13) {
     withCountry = '55${withCountry.substring(withCountry.length - 11)}';
+  }
+  final preCc = _detectCountryCode(withCountry);
+  if (preCc.isNotEmpty && preCc != '55') {
+    final national = withCountry.substring(preCc.length);
+    withCountry = '$preCc${_trimNationalByCountry(preCc, national)}';
   }
   if (withCountry.length < 4) return '+$withCountry';
 
@@ -81,7 +142,7 @@ String formatPhoneBr(String? raw) {
   }
 
   final cc = _detectCountryCode(withCountry);
-  final national = withCountry.substring(cc.length);
+  final national = _trimNationalByCountry(cc, withCountry.substring(cc.length));
   if (cc.isEmpty || national.isEmpty) return '+$withCountry';
-  return '+$cc ${_groupNationalNumber(national)}';
+  return '+$cc ${_groupNationalNumber(national, cc)}';
 }

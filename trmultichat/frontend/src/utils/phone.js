@@ -14,6 +14,40 @@ const COUNTRY_CALLING_CODES = new Set([
   "968","970","971","972","973","974","975","976","977","992","993","994","995","996","998",
 ]);
 
+const COUNTRY_NATIONAL_MAX = {
+  "1": 10,
+  "33": 9,
+  "34": 9,
+  "39": 10,
+  "44": 10,
+  "49": 11,
+  "51": 9,
+  "52": 10,
+  "54": 10,
+  "55": 11,
+  "56": 9,
+  "57": 10,
+  "58": 10,
+  "351": 9,
+};
+
+const COUNTRY_GROUPS = {
+  "1": [3, 3, 4],
+  "33": [1, 2, 2, 2, 2],
+  "34": [3, 3, 3],
+  "39": [3, 3, 4],
+  "44": [4, 3, 3],
+  "49": [3, 3, 5],
+  "51": [3, 3, 3],
+  "52": [3, 3, 4],
+  "54": [3, 3, 4],
+  "55": [2, 5, 4],
+  "56": [1, 4, 4],
+  "57": [3, 3, 4],
+  "58": [3, 3, 4],
+  "351": [3, 3, 3],
+};
+
 function detectCountryCode(digits) {
   const value = String(digits || "");
   for (let len = 3; len >= 1; len -= 1) {
@@ -23,15 +57,36 @@ function detectCountryCode(digits) {
   return value.slice(0, 2) || value.slice(0, 1) || "";
 }
 
-function groupNationalNumber(raw) {
+function trimNationalByCountry(cc, national) {
+  const max = Number(COUNTRY_NATIONAL_MAX[cc] || 0);
+  if (!max || national.length <= max) return national;
+  return national.slice(0, max);
+}
+
+function groupByPattern(raw, groups) {
+  const out = [];
+  let idx = 0;
+  for (const g of groups || []) {
+    if (idx >= raw.length) break;
+    out.push(raw.slice(idx, idx + g));
+    idx += g;
+  }
+  if (idx < raw.length) out.push(raw.slice(idx));
+  return out.join(" ");
+}
+
+function groupNationalNumber(raw, cc) {
   const value = String(raw || "");
   if (!value) return "";
+  const pattern = COUNTRY_GROUPS[cc];
+  if (Array.isArray(pattern) && pattern.length) {
+    return groupByPattern(value, pattern);
+  }
   if (value.length <= 4) return value;
   if (value.length <= 7) return `${value.slice(0, value.length - 4)} ${value.slice(-4)}`;
-  if (value.length === 8) return `${value.slice(0, 4)}-${value.slice(4)}`;
-  if (value.length === 9) return `${value.slice(0, 5)}-${value.slice(5)}`;
-  if (value.length === 10) return `${value.slice(0, 3)} ${value.slice(3, 6)}-${value.slice(6)}`;
-  if (value.length === 11) return `${value.slice(0, 3)} ${value.slice(3, 7)}-${value.slice(7)}`;
+  if (value.length <= 9) return groupByPattern(value, [3, 3, 3]);
+  if (value.length === 10) return groupByPattern(value, [3, 3, 4]);
+  if (value.length === 11) return groupByPattern(value, [3, 4, 4]);
 
   const chunks = [];
   let rest = value;
@@ -44,20 +99,30 @@ function groupNationalNumber(raw) {
 }
 
 export function normalizePhoneBr(raw) {
-  const digits = String(raw || "").replace(/\D/g, "");
+  const rawStr = String(raw || "").trim();
+  const explicitIntl = rawStr.startsWith("+") || rawStr.startsWith("00");
+  const digits = rawStr.replace(/\D/g, "");
   if (!digits) return "";
 
   let value = digits;
   if (value.startsWith("00")) value = value.slice(2);
 
   // Keep BR country code by default for 10/11-digit local numbers.
-  if (!value.startsWith("55") && (value.length === 10 || value.length === 11)) {
+  if (!explicitIntl && !value.startsWith("55") && (value.length === 10 || value.length === 11)) {
     value = `55${value}`;
   }
 
   // Keep canonical BR length when possible.
   if (value.startsWith("55") && value.length > 13) {
     value = `55${value.slice(-11)}`;
+  }
+
+  // For explicit non-BR country codes, trim to known national max if available.
+  const cc = detectCountryCode(value);
+  if (cc && cc !== "55") {
+    const national = value.slice(cc.length);
+    const trimmed = trimNationalByCountry(cc, national);
+    value = `${cc}${trimmed}`;
   }
 
   return value;
@@ -81,8 +146,8 @@ export function formatPhoneBr(raw) {
   }
 
   const cc = detectCountryCode(normalized);
-  const national = normalized.slice(cc.length);
+  const national = trimNationalByCountry(cc, normalized.slice(cc.length));
   if (!cc || !national) return `+${normalized}`;
-  return `+${cc} ${groupNationalNumber(national)}`;
+  return `+${cc} ${groupNationalNumber(national, cc)}`;
 }
 
