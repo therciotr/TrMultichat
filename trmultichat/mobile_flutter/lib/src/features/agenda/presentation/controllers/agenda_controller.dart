@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/socket/socket_client.dart';
@@ -38,6 +39,24 @@ class AgendaController extends StateNotifier<AgendaState> {
   void setUserFilter(int? userId) {
     _selectedUserId = (userId != null && userId > 0) ? userId : null;
     refresh();
+  }
+
+  String _createEventErrorMessage(Object error) {
+    if (error is DioException) {
+      final status = error.response?.statusCode;
+      final data = error.response?.data;
+      if (data is Map) {
+        final map = data.cast<dynamic, dynamic>();
+        final message = map['message']?.toString().trim();
+        if (message != null && message.isNotEmpty) return message;
+        final apiError = map['error']?.toString().trim();
+        if (apiError != null && apiError.isNotEmpty) return apiError;
+      }
+      if (status == 401) return 'Sessão expirada. Faça login novamente.';
+      if (status == 403) return 'Sem permissão para criar evento.';
+      if (status == 400) return 'Dados inválidos para criar o evento.';
+    }
+    return 'Falha ao criar evento';
   }
 
   Future<bool> createEvent({
@@ -83,13 +102,25 @@ class AgendaController extends StateNotifier<AgendaState> {
         userId: userId,
         notify: notify,
       );
-      final list = await _remote.list(userId: _selectedUserId);
-      if (_disposed) return false;
-      state = state.copyWith(loading: false, items: list, error: null);
+      // Event creation succeeded; list refresh is best-effort.
+      try {
+        final list = await _remote.list(userId: _selectedUserId);
+        if (_disposed) return false;
+        state = state.copyWith(loading: false, items: list, error: null);
+      } catch (_) {
+        if (_disposed) return false;
+        state = state.copyWith(
+          loading: false,
+          error: 'Evento criado, mas não foi possível atualizar a agenda.',
+        );
+      }
       return true;
     } catch (e) {
       if (_disposed) return false;
-      state = state.copyWith(loading: false, error: 'Falha ao criar evento');
+      state = state.copyWith(
+        loading: false,
+        error: _createEventErrorMessage(e),
+      );
       return false;
     }
   }

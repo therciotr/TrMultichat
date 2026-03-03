@@ -460,7 +460,9 @@ function nowIso() {
 function normalizeNumberFromJid(jid: string): { number: string; isGroup: boolean } {
   const raw = String(jid || "");
   const isGroup = raw.endsWith("@g.us");
-  const number = raw.split("@")[0] || raw;
+  const localPart = raw.split("@")[0] || raw;
+  const withoutDevice = localPart.split(":")[0] || localPart;
+  const number = isGroup ? withoutDevice : withoutDevice.replace(/\D+/g, "");
   return { number, isGroup };
 }
 
@@ -613,10 +615,27 @@ async function findOrCreateContact(opts: {
 }): Promise<ContactRow> {
   const { number, isGroup } = normalizeNumberFromJid(opts.jid);
   const incomingName = pickSafeContactName(String(opts.name || "").trim(), number);
+  const numberDigits = String(number || "").replace(/\D+/g, "");
 
   const existing = await pgQuery<ContactRow>(
-    'SELECT id, name, number, "profilePicUrl", "companyId", "whatsappId" FROM "Contacts" WHERE number = $1 AND "companyId" = $2 LIMIT 1',
-    [number, opts.companyId]
+    `
+      SELECT id, name, number, "profilePicUrl", "companyId", "whatsappId"
+      FROM "Contacts"
+      WHERE "companyId" = $1
+        AND (
+          number = $2
+          OR regexp_replace(COALESCE(number, ''), '\\D', '', 'g') = $3
+        )
+      ORDER BY
+        CASE
+          WHEN number = $2 THEN 0
+          WHEN regexp_replace(COALESCE(number, ''), '\\D', '', 'g') = $3 THEN 1
+          ELSE 2
+        END,
+        "updatedAt" DESC
+      LIMIT 1
+    `,
+    [opts.companyId, number, numberDigits]
   );
   if (existing[0]) {
     const cur = existing[0];
@@ -665,17 +684,26 @@ async function findOrCreateTicket(opts: {
   contactId: number;
   isGroup: boolean;
 }): Promise<{ ticket: TicketRow; created: boolean }> {
-  const existing = await pgQuery<TicketRow>(
+  const existingActive = await pgQuery<TicketRow>(
     `
       SELECT id, status, "lastMessage", "contactId", "userId", "whatsappId", "isGroup",
              "unreadMessages", "queueId", "queueOptionId", "companyId", "updatedAt", "createdAt", "fromMe"
       FROM "Tickets"
       WHERE "contactId" = $1 AND "companyId" = $2 AND "whatsappId" = $3
+        AND status IN ('open', 'pending')
+      ORDER BY
+        CASE
+          WHEN status = 'open' THEN 0
+          WHEN status = 'pending' THEN 1
+          ELSE 2
+        END,
+        "updatedAt" DESC,
+        id DESC
       LIMIT 1
     `,
     [opts.contactId, opts.companyId, opts.whatsappId]
   );
-  if (existing[0]) return { ticket: existing[0], created: false };
+  if (existingActive[0]) return { ticket: existingActive[0], created: false };
 
   // Try to infer a default queue for this WhatsApp connection (keeps tickets "in the queue").
   // We keep this best-effort and compatible across varying schemas.
@@ -793,7 +821,15 @@ export async function ingestBaileysMessage(opts: {
 
   // ignore empty or protocol/status messages
   const remoteJid = resolveCanonicalRemoteJid(msg);
-  if (!remoteJid || remoteJid === "status@broadcast") return;
+  const remoteJidLower = String(remoteJid || "").toLowerCase();
+  if (
+    !remoteJid ||
+    remoteJidLower === "status@broadcast" ||
+    remoteJidLower.endsWith("@broadcast") ||
+    remoteJidLower.endsWith("@newsletter")
+  ) {
+    return;
+  }
 
   const messageId =
     String(msg?.key?.id || "") ||

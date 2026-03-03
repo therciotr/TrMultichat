@@ -105,7 +105,7 @@ class _ContactDetailScreenState extends ConsumerState<ContactDetailScreen> {
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final st = ref.watch(contactDetailProvider(widget.id));
     final ctrl = ref.read(contactDetailProvider(widget.id).notifier);
     final c = st.contact;

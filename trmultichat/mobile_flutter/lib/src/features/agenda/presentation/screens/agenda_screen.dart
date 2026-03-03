@@ -152,10 +152,6 @@ class _AgendaScreenState extends ConsumerState<AgendaScreen> {
 
     final selectedEvents = st.items
         .where((e) {
-          // Backend may expand recurring occurrences as synthetic ids (baseId__occurrence).
-          // For all-day cards in day view, keep only the base event to avoid day+1 bleed.
-          final isSyntheticOccurrence = e.id.contains('__');
-          if (e.allDay && isSyntheticOccurrence) return false;
           return _isSameDay(e.startAt, _selectedDay);
         })
         .toList()

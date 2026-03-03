@@ -46,6 +46,7 @@ export async function list(req: Request, res: Response) {
   const q = rawSearch ? `%${rawSearch.toLowerCase()}%` : "";
   const digits = rawSearch ? rawSearch.replace(/\D+/g, "") : "";
   const digitsLike = digits ? `%${digits}%` : "";
+  const digitsPrefixLike = digits ? `${digits}%` : "";
   const limit = 50;
   const offset = (pageNumber - 1) * limit;
 
@@ -73,6 +74,34 @@ export async function list(req: Request, res: Response) {
     whereParts.push(`(${orParts.join(" OR ")})`);
   }
 
+  const orderParts: string[] = [];
+  if (rawSearch) {
+    // Improve contact discoverability while typing by ranking stronger matches first.
+    params.push(rawSearch.toLowerCase());
+    const rawLowerIdx = params.length;
+    if (digitsPrefixLike) {
+      params.push(digitsPrefixLike);
+      const digitsPrefixIdx = params.length;
+      orderParts.push(
+        `CASE
+          WHEN regexp_replace(COALESCE(number,''), '\\\\D', '', 'g') LIKE $${digitsPrefixIdx} THEN 0
+          WHEN LOWER(COALESCE(name,'')) LIKE $${rawLowerIdx} || '%' THEN 1
+          WHEN LOWER(COALESCE(name,'')) LIKE '%' || $${rawLowerIdx} || '%' THEN 2
+          ELSE 3
+        END`
+      );
+    } else {
+      orderParts.push(
+        `CASE
+          WHEN LOWER(COALESCE(name,'')) LIKE $${rawLowerIdx} || '%' THEN 0
+          WHEN LOWER(COALESCE(name,'')) LIKE '%' || $${rawLowerIdx} || '%' THEN 1
+          ELSE 2
+        END`
+      );
+    }
+  }
+  orderParts.push(`"updatedAt" DESC`);
+
   params.push(limit);
   const limitIdx = params.length;
   params.push(offset);
@@ -83,7 +112,7 @@ export async function list(req: Request, res: Response) {
       SELECT id, name, number, "profilePicUrl", "createdAt", "updatedAt", email, "isGroup", "companyId", "whatsappId"
       FROM "Contacts"
       WHERE ${whereParts.join(" AND ")}
-      ORDER BY "updatedAt" DESC
+      ORDER BY ${orderParts.join(", ")}
       LIMIT $${limitIdx} OFFSET $${offsetIdx}
     `,
     params

@@ -95,7 +95,8 @@ const NewTicketModal = ({ modalOpen, onClose, initialContact }) => {
   }, [modalOpen, companyId, whatsappId, user])
 
   useEffect(() => {
-    if (!modalOpen || searchParam.length < 3) {
+    const search = String(searchParam || "").trim();
+    if (!modalOpen || search.length < 2) {
       setLoading(false);
       return;
     }
@@ -104,7 +105,7 @@ const NewTicketModal = ({ modalOpen, onClose, initialContact }) => {
       const fetchContacts = async () => {
         try {
           const { data } = await api.get("contacts", {
-            params: { searchParam },
+            params: { searchParam: search },
           });
           setOptions(data.contacts);
           setLoading(false);
@@ -114,7 +115,7 @@ const NewTicketModal = ({ modalOpen, onClose, initialContact }) => {
         }
       };
       fetchContacts();
-    }, 500);
+    }, 350);
     return () => clearTimeout(delayDebounceFn);
   }, [searchParam, modalOpen]);
 
@@ -206,7 +207,7 @@ const NewTicketModal = ({ modalOpen, onClose, initialContact }) => {
 
   const createAddContactOption = (filterOptions, params) => {
     const filtered = filter(filterOptions, params);
-    if (params.inputValue !== "" && !loading && searchParam.length >= 3) {
+    if (params.inputValue !== "" && !loading && String(searchParam || "").trim().length >= 2) {
       filtered.push({
         name: `${params.inputValue}`,
       });

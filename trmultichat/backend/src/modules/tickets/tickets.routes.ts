@@ -305,6 +305,7 @@ router.get("/", authMiddleware, async (req, res) => {
   const offset = (pageNumber - 1) * limit;
   const status = String(req.query.status || "").trim();
   const searchParam = String(req.query.searchParam || "").trim();
+  const searchDigits = searchParam.replace(/\D+/g, "");
 
   const params: any[] = [companyId];
   let where = `t."companyId" = $1`;
@@ -316,7 +317,17 @@ router.get("/", authMiddleware, async (req, res) => {
   if (searchParam) {
     params.push(`%${searchParam.toLowerCase()}%`);
     const p = `$${params.length}`;
-    where += ` AND (lower(c.name) LIKE ${p} OR lower(c.number) LIKE ${p} OR lower(t."lastMessage") LIKE ${p})`;
+    const searchClauses: string[] = [
+      `lower(c.name) LIKE ${p}`,
+      `lower(c.number) LIKE ${p}`,
+      `lower(t."lastMessage") LIKE ${p}`,
+    ];
+    if (searchDigits) {
+      params.push(`%${searchDigits}%`);
+      const d = `$${params.length}`;
+      searchClauses.push(`regexp_replace(COALESCE(c.number,''), '\\\\D', '', 'g') LIKE ${d}`);
+    }
+    where += ` AND (${searchClauses.join(" OR ")})`;
   }
 
   params.push(limit);
