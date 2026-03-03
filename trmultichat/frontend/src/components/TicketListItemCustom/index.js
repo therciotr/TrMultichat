@@ -38,6 +38,7 @@ import ContactTag from "../ContactTag";
 import ConfirmationModal from "../ConfirmationModal";
 import { toast } from "react-toastify";
 import { fade } from "@material-ui/core/styles/colorManipulator";
+import { formatPhoneBr } from "../../utils/phone";
 
 const useStyles = makeStyles((theme) => ({
   ticket: {
@@ -267,22 +268,6 @@ const useStyles = makeStyles((theme) => ({
   },
 }));
 
-const formatPhoneBr = (raw) => {
-  const digits = String(raw || "").replace(/\D/g, "");
-  if (!digits) return "";
-  const withCountry = digits.startsWith("55") ? digits : `55${digits}`;
-  const ddd = withCountry.slice(2, 4);
-  const number = withCountry.slice(4);
-  if (number.length >= 9) {
-    const n = number.slice(-9);
-    return `+55 ${ddd} ${n.slice(0, 5)}-${n.slice(5)}`;
-  }
-  if (number.length >= 8) {
-    const n = number.slice(-8);
-    return `+55 ${ddd} ${n.slice(0, 4)}-${n.slice(4)}`;
-  }
-  return `+${withCountry}`;
-};
 /* PLW DESIGN INSERIDO o dentro do const handleChangeTab */
 const TicketListItemCustom = ({ ticket, selectionMode = false, selected = false, onToggleSelect }) => {
   const classes = useStyles();

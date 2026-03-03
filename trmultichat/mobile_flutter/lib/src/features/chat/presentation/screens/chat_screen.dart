@@ -17,6 +17,7 @@ import '../../../../core/di/core_providers.dart';
 import '../../../../core/share/share_providers.dart';
 import '../../../../core/ui/attachment_preview.dart';
 import '../../../../core/utils/mime_guess.dart';
+import '../../../../core/utils/phone_format.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../../tickets/domain/entities/ticket.dart';
 import '../../../tickets/presentation/providers/tickets_providers.dart';
@@ -173,7 +174,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           children: [
             Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
             if (ticket?.contact?.number.isNotEmpty == true)
-              Text(ticket!.contact!.number,
+              Text(formatPhoneBr(ticket!.contact!.number),
                   style: const TextStyle(fontSize: 12, color: Colors.white70)),
           ],
         ),

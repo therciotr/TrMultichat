@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/utils/phone_format.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../providers/contacts_providers.dart';
 
@@ -98,7 +99,7 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      c.number,
+                      formatPhoneBr(c.number),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(color: cs.onSurfaceVariant),

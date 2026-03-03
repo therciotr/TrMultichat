@@ -45,6 +45,7 @@ import { AuthContext } from "../../context/Auth/AuthContext";
 import { Can } from "../../components/Can";
 import NewTicketModal from "../../components/NewTicketModal";
 import { socketConnection } from "../../services/socket";
+import { formatPhoneBr } from "../../utils/phone";
 
 import {CSVLink} from "react-csv";
 
@@ -755,7 +756,7 @@ const Contacts = () => {
                             {contact.name}
                           </Typography>
                           <Typography className={classes.sub} noWrap>
-                            {contact.isGroup ? "Grupo" : (contact.number || "—")}
+                            {contact.isGroup ? "Grupo" : (formatPhoneBr(contact.number) || "—")}
                           </Typography>
                         </div>
                       </div>
@@ -810,7 +811,7 @@ const Contacts = () => {
                         className={classes.chip}
                         size="small"
                         icon={<PhoneIphoneOutlinedIcon style={{ fontSize: 16 }} />}
-                        label={contact.number || "—"}
+                        label={formatPhoneBr(contact.number) || "—"}
                         variant="outlined"
                       />
                       <Chip

@@ -462,7 +462,14 @@ function normalizeNumberFromJid(jid: string): { number: string; isGroup: boolean
   const isGroup = raw.endsWith("@g.us");
   const localPart = raw.split("@")[0] || raw;
   const withoutDevice = localPart.split(":")[0] || localPart;
-  const number = isGroup ? withoutDevice : withoutDevice.replace(/\D+/g, "");
+  let number = isGroup ? withoutDevice : withoutDevice.replace(/\D+/g, "");
+  if (!isGroup && number) {
+    if (number.startsWith("55") && number.length > 13) {
+      number = `55${number.slice(-11)}`;
+    } else if (!number.startsWith("55") && (number.length === 10 || number.length === 11)) {
+      number = `55${number}`;
+    }
+  }
   return { number, isGroup };
 }
 

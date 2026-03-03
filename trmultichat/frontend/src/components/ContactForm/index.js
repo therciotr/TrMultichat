@@ -15,6 +15,7 @@ import { i18n } from "../../translate/i18n";
 import api from "../../services/api";
 import toastError from "../../errors/toastError";
 import { Grid } from "@material-ui/core";
+import { formatPhoneBr, normalizePhoneBr } from "../../utils/phone";
 
 const useStyles = makeStyles(theme => ({
 	root: {
@@ -59,21 +60,32 @@ const ContactSchema = Yup.object().shape({
 	email: Yup.string().email("Invalid email"),
 });
 
+function contactWithFormattedNumber(contact) {
+  return {
+    ...(contact || {}),
+    number: formatPhoneBr(contact?.number),
+  };
+}
+
 export function ContactForm ({ initialContact, onSave, onCancel }) {
 	const classes = useStyles();
 
-	const [contact, setContact] = useState(initialContact);
+	const [contact, setContact] = useState(contactWithFormattedNumber(initialContact));
 
     useEffect(() => {
-        setContact(initialContact);
+        setContact(contactWithFormattedNumber(initialContact));
     }, [initialContact]);
 
 	const handleSaveContact = async values => {
+    const payload = {
+      ...values,
+      number: normalizePhoneBr(values?.number),
+    };
 		try {
 			if (contact.id) {
-				await api.put(`/contacts/${contact.id}`, values);
+				await api.put(`/contacts/${contact.id}`, payload);
 			} else {
-				const { data } = await api.post("/contacts", values);
+				const { data } = await api.post("/contacts", payload);
 				if (onSave) {
 					onSave(data);
 				}
@@ -96,7 +108,7 @@ export function ContactForm ({ initialContact, onSave, onCancel }) {
                 }, 400);
             }}
         >
-            {({ values, errors, touched, isSubmitting }) => (
+            {({ values, errors, touched, isSubmitting, setFieldValue }) => (
                 <Form>
                     <Grid container spacing={1}>
                         {/* <Grid item xs={12}>
@@ -119,13 +131,14 @@ export function ContactForm ({ initialContact, onSave, onCancel }) {
                             />
                         </Grid>
                         <Grid item xs={12}>
-                            <Field
-                                as={TextField}
+                            <TextField
                                 label={i18n.t("contactModal.form.number")}
                                 name="number"
+                                value={values.number || ""}
+                                onChange={(e) => setFieldValue("number", formatPhoneBr(e.target.value))}
                                 error={touched.number && Boolean(errors.number)}
                                 helperText={touched.number && errors.number}
-                                placeholder="5513912344321"
+                                placeholder="+55 (82)9 8193-1710"
                                 variant="outlined"
                                 margin="dense"
                                 fullWidth

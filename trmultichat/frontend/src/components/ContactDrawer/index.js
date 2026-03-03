@@ -13,6 +13,7 @@ import Paper from "@material-ui/core/Paper";
 import CreateIcon from '@material-ui/icons/Create';
 
 import { i18n } from "../../translate/i18n";
+import { formatPhoneBr, normalizePhoneBr } from "../../utils/phone";
 
 import ContactDrawerSkeleton from "../ContactDrawerSkeleton";
 import MarkdownWrapper from "../MarkdownWrapper";
@@ -142,7 +143,7 @@ const ContactDrawer = ({ open, handleDrawerClose, contact, ticket, loading }) =>
 								subheader={
 									<>
 										<Typography style={{fontSize: 12}}>
-											<Link href={`tel:${contact.number}`}>{contact.number}</Link>
+											<Link href={`tel:+${normalizePhoneBr(contact.number)}`}>{formatPhoneBr(contact.number) || contact.number}</Link>
 										</Typography>
 										<Typography style={{fontSize: 12}}>
 											<Link href={`mailto:${contact.email}`}>{contact.email}</Link>

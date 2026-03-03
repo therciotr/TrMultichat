@@ -23,6 +23,7 @@ import {  WhatsApp } from "@material-ui/icons";
 import { Grid, ListItemText, MenuItem, Select } from "@material-ui/core";
 import Typography from "@material-ui/core/Typography";
 import { toast } from "react-toastify";
+import { formatPhoneBr } from "../../utils/phone";
 //import ShowTicketOpen from "../ShowTicketOpenModal";
 
 const useStyles = makeStyles((theme) => ({
@@ -217,10 +218,11 @@ const NewTicketModal = ({ modalOpen, onClose, initialContact }) => {
 
   const renderOption = option => {
     if (option.number) {
+      const number = formatPhoneBr(option.number) || option.number;
       return <>
         {/* {IconChannel(option.channel)} */}
         <Typography component="span" style={{ fontSize: 14, marginLeft: "10px", display: "inline-flex", alignItems: "center", lineHeight: "2" }}>
-          {option.name} - {option.number}
+          {option.name} - {number}
         </Typography>
       </>
     } else {
@@ -230,7 +232,7 @@ const NewTicketModal = ({ modalOpen, onClose, initialContact }) => {
 
   const renderOptionLabel = option => {
     if (option.number) {
-      return `${option.name} - ${option.number}`;
+      return `${option.name} - ${formatPhoneBr(option.number) || option.number}`;
     } else {
       return `${option.name}`;
     }

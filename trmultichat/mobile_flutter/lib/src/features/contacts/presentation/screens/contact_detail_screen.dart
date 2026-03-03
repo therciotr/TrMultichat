@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:dio/dio.dart';
 
 import '../../../../core/di/core_providers.dart';
+import '../../../../core/utils/phone_format.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../controllers/contact_detail_controller.dart';
 import '../providers/contacts_providers.dart';
@@ -149,7 +150,12 @@ class _ContactDetailScreenState extends ConsumerState<ContactDetailScreen> {
                                   overflow: TextOverflow.ellipsis,
                                 ),
                                 const SizedBox(height: 2),
-                                Text(c.number, style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                                Text(
+                                  formatPhoneBr(c.number),
+                                  style: TextStyle(
+                                      color:
+                                          Theme.of(context).colorScheme.onSurfaceVariant),
+                                ),
                               ],
                             ),
                           ),

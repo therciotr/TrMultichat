@@ -21,6 +21,7 @@ import { i18n } from "../../translate/i18n";
 
 import api from "../../services/api";
 import toastError from "../../errors/toastError";
+import { formatPhoneBr, normalizePhoneBr } from "../../utils/phone";
 
 const useStyles = makeStyles(theme => ({
 	root: {
@@ -92,8 +93,7 @@ const ContactModal = ({ open, onClose, contactId, initialValues, onSave }) => {
 			try {
 				const { data } = await api.get(`/contacts/${contactId}`);
 				if (isMounted.current) {
-					console.log(data)
-					setContact(data);
+					setContact({ ...data, number: formatPhoneBr(data?.number) });
 				}
 			} catch (err) {
 				toastError(err);
@@ -109,12 +109,16 @@ const ContactModal = ({ open, onClose, contactId, initialValues, onSave }) => {
 	};
 
 	const handleSaveContact = async values => {
+		const payload = {
+			...values,
+			number: normalizePhoneBr(values?.number),
+		};
 		try {
 			if (contactId) {
-				await api.put(`/contacts/${contactId}`, values);
+				await api.put(`/contacts/${contactId}`, payload);
 				handleClose();
 			} else {
-				const { data } = await api.post("/contacts", values);
+				const { data } = await api.post("/contacts", payload);
 				if (onSave) {
 					onSave(data);
 				}
@@ -145,7 +149,7 @@ const ContactModal = ({ open, onClose, contactId, initialValues, onSave }) => {
 						}, 400);
 					}}
 				>
-					{({ values, errors, touched, isSubmitting }) => (
+					{({ values, errors, touched, isSubmitting, setFieldValue }) => (
 						<Form>
 							<DialogContent dividers>
 								<Typography variant="subtitle1" gutterBottom>
@@ -162,13 +166,16 @@ const ContactModal = ({ open, onClose, contactId, initialValues, onSave }) => {
 									margin="dense"
 									className={classes.textField}
 								/>
-								<Field
-									as={TextField}
+								<TextField
 									label={i18n.t("contactModal.form.number")}
 									name="number"
+									value={values.number || ""}
+									onChange={(e) =>
+										setFieldValue("number", formatPhoneBr(e.target.value))
+									}
 									error={touched.number && Boolean(errors.number)}
 									helperText={touched.number && errors.number}
-									placeholder="5513912344321"
+									placeholder="+55 (82)9 8193-1710"
 									variant="outlined"
 									margin="dense"
 								/>

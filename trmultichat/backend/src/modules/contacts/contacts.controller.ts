@@ -18,6 +18,16 @@ function userIdFromReq(req: any): number {
   return Number(req?.userId || 0);
 }
 
+function normalizeContactNumber(raw: any): string {
+  const digits = String(raw || "").replace(/\D+/g, "");
+  if (!digits) return "";
+  if (digits.startsWith("55")) {
+    return digits.length > 13 ? `55${digits.slice(-11)}` : digits;
+  }
+  if (digits.length === 10 || digits.length === 11) return `55${digits}`;
+  return digits;
+}
+
 async function requireAdmin(req: Request, res: Response): Promise<boolean> {
   const companyId = Number((req as any).tenantId || 0);
   const userId = userIdFromReq(req as any);
@@ -301,7 +311,8 @@ export async function importContacts(req: Request, res: Response) {
     seen.add(jid);
 
     const isGroup = jid.endsWith("@g.us");
-    const number = jid.split("@")[0] || jid;
+    const localPart = (jid.split("@")[0] || jid).split(":")[0] || "";
+    const number = normalizeContactNumber(localPart);
     const name = String(cand.name || number).trim() || number;
 
     const created = await pgQuery<any>(
