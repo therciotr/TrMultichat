@@ -378,7 +378,8 @@ const messages = {
       },
       transferTicketModal: {
         title: "Transferir Ticket",
-        fieldLabel: "Digite para buscar usuários",
+        fieldLabel: "Selecione um usuário",
+        noneUserOption: "Sem usuário (somente fila)",
         fieldQueueLabel: "Transferir para fila",
         fieldQueuePlaceholder: "Selecione uma fila",
         noOptions: "Nenhum usuário encontrado com esse nome",

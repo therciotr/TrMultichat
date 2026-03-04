@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../../core/notifications/notifications_providers.dart';
 import '../../../../core/socket/socket_client.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../../dashboard/presentation/providers/dashboard_providers.dart';
@@ -20,10 +19,12 @@ class TicketsController extends StateNotifier<TicketsState> {
   StreamSubscription? _subSocketRecreated;
   Timer? _pollTimer;
   Timer? _syncDebounce;
+  Timer? _searchDebounce;
   bool _syncing = false;
   bool _disposed = false;
 
-  TicketsController(this._remote, this._ref, this._socket) : super(TicketsState.initial()) {
+  TicketsController(this._remote, this._ref, this._socket)
+      : super(TicketsState.initial()) {
     // Default status for the "home" is open (latest tickets)
     refresh();
     _bindSocket();
@@ -37,18 +38,25 @@ class TicketsController extends StateNotifier<TicketsState> {
 
   void setSearch(String v) {
     state = state.copyWith(search: v);
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 300), () async {
+      if (_disposed) return;
+      await refresh();
+    });
   }
 
   Future<void> refresh() async {
     if (_disposed) return;
     state = state.copyWith(loading: true, error: null);
     try {
-      final list = await _remote.list(status: state.status, pageNumber: 1, searchParam: state.search);
+      final list = await _remote.list(
+          status: state.status, pageNumber: 1, searchParam: state.search);
       if (_disposed) return;
       state = state.copyWith(loading: false, items: list, error: null);
     } catch (_) {
       if (_disposed) return;
-      state = state.copyWith(loading: false, error: 'Falha ao carregar tickets');
+      state =
+          state.copyWith(loading: false, error: 'Falha ao carregar tickets');
     }
   }
 
@@ -213,9 +221,11 @@ class TicketsController extends StateNotifier<TicketsState> {
       _syncDebounce?.cancel();
     } catch (_) {}
     try {
+      _searchDebounce?.cancel();
+    } catch (_) {}
+    try {
       _pollTimer?.cancel();
     } catch (_) {}
     super.dispose();
   }
 }
-

@@ -19,7 +19,6 @@ import ContactModal from "../ContactModal";
 import toastError from "../../errors/toastError";
 import { makeStyles } from "@material-ui/core/styles";
 import { AuthContext } from "../../context/Auth/AuthContext";
-import {  WhatsApp } from "@material-ui/icons";
 import { Grid, ListItemText, MenuItem, Select } from "@material-ui/core";
 import Typography from "@material-ui/core/Typography";
 import { toast } from "react-toastify";
@@ -41,6 +40,42 @@ const filter = createFilterOptions({
   trim: true,
 });
 
+const parseTicketFromError = (err) => {
+  const payload = err?.response?.data;
+  const candidates = [
+    payload?.ticket,
+    payload?.data?.ticket,
+    payload?.error,
+    payload?.message,
+  ];
+
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    if (typeof candidate === "object" && candidate.id) return candidate;
+    if (typeof candidate === "string") {
+      const trimmed = candidate.trim();
+      try {
+        if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+          const parsed = JSON.parse(trimmed);
+          if (parsed?.id) return parsed;
+        }
+      } catch (_) {}
+
+      const firstBrace = trimmed.indexOf("{");
+      const lastBrace = trimmed.lastIndexOf("}");
+      if (firstBrace >= 0 && lastBrace > firstBrace) {
+        const maybeJson = trimmed.slice(firstBrace, lastBrace + 1);
+        try {
+          const parsed = JSON.parse(maybeJson);
+          if (parsed?.id) return parsed;
+        } catch (_) {}
+      }
+    }
+  }
+
+  return null;
+};
+
 const NewTicketModal = ({ modalOpen, onClose, initialContact }) => {
   const classes = useStyles();
   const [options, setOptions] = useState([]);
@@ -56,10 +91,6 @@ const NewTicketModal = ({ modalOpen, onClose, initialContact }) => {
   const { user } = useContext(AuthContext);
   const companyId = user?.companyId;
   const whatsappId = user?.whatsappId;
-
-  const [ openAlert, setOpenAlert ] = useState(false);
-	const [ userTicketOpen, setUserTicketOpen] = useState("");
-	const [ queueTicketOpen, setQueueTicketOpen] = useState("");
 
   useEffect(() => {
     if (initialContact?.id !== undefined) {
@@ -136,18 +167,7 @@ const NewTicketModal = ({ modalOpen, onClose, initialContact }) => {
   const handleClose = () => {
     onClose();
     setSearchParam("");
-    setOpenAlert(false);
-    setUserTicketOpen("");
-    setQueueTicketOpen("");
     setSelectedContact(null);
-  };
-
-  const handleCloseAlert = () => {
-    setOpenAlert(false);
-    setLoading(false);
-    setOpenAlert(false);
-    setUserTicketOpen("");
-    setQueueTicketOpen("");
   };
 
   const handleSaveTicket = async contactId => {
@@ -171,20 +191,28 @@ const NewTicketModal = ({ modalOpen, onClose, initialContact }) => {
 
       onClose(ticket);
     } catch (err) {
-      
-      const ticket  = JSON.parse(err.response.data.error);
+      const ticket = parseTicketFromError(err);
 
-      if (ticket.userId !== user?.id) {
-        setOpenAlert(true);
-        setUserTicketOpen(ticket.user.name);
-        setQueueTicketOpen(ticket.queue.name);
-      } else {
-        setOpenAlert(false);
-        setUserTicketOpen("");
-        setQueueTicketOpen("");
-        setLoading(false);
-        onClose(ticket);
+      if (ticket?.id) {
+        let ticketToOpen = ticket;
+        if (!ticketToOpen?.uuid) {
+          try {
+            const { data } = await api.get(`/tickets/${ticketToOpen.id}`);
+            if (data?.uuid) ticketToOpen = data;
+          } catch (_) {}
+        }
+
+        const ownerName = ticket?.user?.name || "outro usuário";
+        const queueName = ticket?.queue?.name || "sem fila";
+        if (ticket?.userId && ticket.userId !== user?.id) {
+          toast.info(`Já existe ticket aberto com ${ownerName} (${queueName}). Abrindo atendimento.`);
+        } else {
+          toast.info("Já existe ticket aberto para este contato. Abrindo atendimento.");
+        }
+        onClose(ticketToOpen);
+        return;
       }
+      toastError(err);
     }  
     setLoading(false);
   };

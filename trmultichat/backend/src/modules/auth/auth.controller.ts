@@ -34,6 +34,93 @@ async function loadCompanyRow(companyId: number): Promise<{ id: number; name?: s
   return null;
 }
 
+async function queryFirstSuccess<T>(builders: Array<() => Promise<T[]>>): Promise<T[]> {
+  let lastErr: any = null;
+  for (const run of builders) {
+    try {
+      const rows = await run();
+      return Array.isArray(rows) ? rows : [];
+    } catch (e: any) {
+      lastErr = e;
+      const msg = String(e?.message || "");
+      if (!/relation .* does not exist/i.test(msg)) throw e;
+    }
+  }
+  if (lastErr) throw lastErr;
+  return [];
+}
+
+async function loadQueuesForUser(
+  userId: number,
+  companyId: number,
+  opts?: { includeCompanyFallback?: boolean }
+): Promise<Array<{ id: number; name: string; color?: string | null }>> {
+  const uid = Number(userId || 0);
+  const cid = Number(companyId || 0);
+  if (!uid || !cid) return [];
+
+  let assigned: Array<{ id: number; name: string; color?: string | null }> = [];
+  try {
+    assigned = await queryFirstSuccess([
+      () =>
+        pgQuery<any>(
+          `
+            SELECT q.id, q.name, q.color
+            FROM "UserQueues" uq
+            JOIN "Queues" q ON q.id = uq."queueId"
+            WHERE uq."userId" = $1
+              AND q."companyId" = $2
+            ORDER BY q.id ASC
+          `,
+          [uid, cid]
+        ),
+      () =>
+        pgQuery<any>(
+          `
+            SELECT q.id, q.name, q.color
+            FROM userqueues uq
+            JOIN queues q ON q.id = uq."queueId"
+            WHERE uq."userId" = $1
+              AND q."companyId" = $2
+            ORDER BY q.id ASC
+          `,
+          [uid, cid]
+        )
+    ]);
+  } catch {
+    assigned = [];
+  }
+  if (assigned.length > 0) return assigned;
+
+  if (!opts?.includeCompanyFallback) return [];
+  try {
+    return await queryFirstSuccess([
+      () =>
+        pgQuery<any>(
+          `
+            SELECT id, name, color
+            FROM "Queues"
+            WHERE "companyId" = $1
+            ORDER BY id ASC
+          `,
+          [cid]
+        ),
+      () =>
+        pgQuery<any>(
+          `
+            SELECT id, name, color
+            FROM queues
+            WHERE "companyId" = $1
+            ORDER BY id ASC
+          `,
+          [cid]
+        )
+    ]);
+  } catch {
+    return [];
+  }
+}
+
 export async function login(req: Request, res: Response) {
   const { email, password } = req.body || {};
   if (!email || !password) {
@@ -115,21 +202,11 @@ export async function login(req: Request, res: Response) {
   };
 
   // Attach user queues for filtering/permissions in the UI (tickets + queue dropdown)
-  try {
-    const q = await pgQuery<any>(
-      `
-        SELECT q.id, q.name, q.color
-        FROM "UserQueues" uq
-        JOIN "Queues" q ON q.id = uq."queueId"
-        WHERE uq."userId" = $1
-        ORDER BY q.id ASC
-      `,
-      [Number(result.user.id)]
-    );
-    (legacy.user as any).queues = Array.isArray(q) ? q : [];
-  } catch {
-    (legacy.user as any).queues = [];
-  }
+  (legacy.user as any).queues = await loadQueuesForUser(
+    Number(result.user.id),
+    Number(result.user.tenantId),
+    { includeCompanyFallback: isAdmin || isSuper }
+  );
 
   return res.json(legacy);
 }
@@ -350,7 +427,7 @@ export async function refreshLegacy(req: Request, res: Response) {
         super?: boolean;
         admin?: boolean;
       }>(
-        'SELECT id, name, email, \"companyId\", profile, \"super\" FROM \"Users\" WHERE id = $1 LIMIT 1',
+        'SELECT id, name, email, "companyId", profile, "super" FROM "Users" WHERE id = $1 LIMIT 1',
         [payload.userId]
       );
       user = Array.isArray(rows) && rows[0];
@@ -390,10 +467,11 @@ export async function refreshLegacy(req: Request, res: Response) {
       ? settings.map((s: any) => ({ key: s.key, value: String(s.value) }))
       : [];
 
-    const isAdmin = Boolean((user as any).admin);
-    const profile = String(
-      (user as any).profile || (isAdmin ? "admin" : "user")
-    );
+    const rawProfile = String((user as any).profile || "").toLowerCase();
+    const inferredAdmin =
+      rawProfile === "admin" || rawProfile === "super" || Boolean((user as any).admin);
+    const isAdmin = Boolean(inferredAdmin);
+    const profile = String((user as any).profile || (isAdmin ? "admin" : "user"));
     const masterCompanyId = Number(process.env.MASTER_COMPANY_ID || 1);
     const masterEmail = String(process.env.ADMIN_EMAIL || "thercio@trtecnologias.com.br")
       .toLowerCase()
@@ -427,7 +505,10 @@ export async function refreshLegacy(req: Request, res: Response) {
           name: company?.name || "",
           dueDate: isDev ? (company?.dueDate || new Date(Date.now() + 365 * 24 * 3600 * 1000)) : (company?.dueDate || null),
           settings: settingsArr
-        }
+        },
+        queues: await loadQueuesForUser(Number(user.id), Number(user.companyId), {
+          includeCompanyFallback: isAdmin || isSuper
+        })
       }
     });
   } catch (e: any) {
@@ -483,10 +564,11 @@ export async function me(req: Request, res: Response) {
         .json({ error: true, message: "user not found" });
     }
 
-    const isAdmin = Boolean((user as any).admin);
-    const profile = String(
-      (user as any).profile || (isAdmin ? "admin" : "user")
-    );
+    const rawProfile = String((user as any).profile || "").toLowerCase();
+    const inferredAdmin =
+      rawProfile === "admin" || rawProfile === "super" || Boolean((user as any).admin);
+    const isAdmin = Boolean(inferredAdmin);
+    const profile = String((user as any).profile || (isAdmin ? "admin" : "user"));
     const isSuper = Boolean((user as any).super);
     return res.json({
       id: user.id,
@@ -495,7 +577,10 @@ export async function me(req: Request, res: Response) {
       companyId: user.companyId,
       admin: isAdmin,
       profile,
-      super: isSuper
+      super: isSuper,
+      queues: await loadQueuesForUser(Number(user.id), Number(user.companyId), {
+        includeCompanyFallback: isAdmin || isSuper
+      })
     });
   } catch (e: any) {
     return res.status(401).json({ error: true, message: e?.message || "invalid token" });

@@ -6,6 +6,8 @@ const router = Router();
 
 router.get("/", authMiddleware, Controller.list);
 router.get("/:id", authMiddleware, Controller.find);
+router.post("/", authMiddleware, Controller.create);
+router.put("/:id", authMiddleware, Controller.update);
 router.post("/import", authMiddleware, Controller.importContacts);
 router.post("/bulk-delete", authMiddleware, Controller.removeMany);
 router.delete("/", authMiddleware, Controller.removeAll);

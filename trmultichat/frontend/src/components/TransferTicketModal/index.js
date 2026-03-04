@@ -2,71 +2,55 @@ import React, { useState, useEffect } from "react";
 import { useHistory } from "react-router-dom";
 
 import { TrButton } from "../ui";
-import TextField from "@material-ui/core/TextField";
 import Dialog from "@material-ui/core/Dialog";
-
 import DialogActions from "@material-ui/core/DialogActions";
 import DialogContent from "@material-ui/core/DialogContent";
 import DialogTitle from "@material-ui/core/DialogTitle";
-import Autocomplete, {
-	createFilterOptions,
-} from "@material-ui/lab/Autocomplete";
-import CircularProgress from "@material-ui/core/CircularProgress";
+import FormControl from "@material-ui/core/FormControl";
+import InputLabel from "@material-ui/core/InputLabel";
+import MenuItem from "@material-ui/core/MenuItem";
+import Select from "@material-ui/core/Select";
 
 import { i18n } from "../../translate/i18n";
 import api from "../../services/api";
 import ButtonWithSpinner from "../ButtonWithSpinner";
 import toastError from "../../errors/toastError";
 
-const filterOptions = createFilterOptions({
-	trim: true,
-});
-
 const TransferTicketModal = ({ modalOpen, onClose, ticketid }) => {
 	const history = useHistory();
 	const [options, setOptions] = useState([]);
 	const [loading, setLoading] = useState(false);
-	const [searchParam, setSearchParam] = useState("");
-	const [selectedUser, setSelectedUser] = useState(null);
+	const [selectedUserId, setSelectedUserId] = useState("");
 
 	useEffect(() => {
-		if (!modalOpen || searchParam.length < 3) {
-			setLoading(false);
-			return;
-		}
+		if (!modalOpen) return;
 		setLoading(true);
-		const delayDebounceFn = setTimeout(() => {
-			const fetchUsers = async () => {
-				try {
-					const { data } = await api.get("/users/", {
-						params: { searchParam },
-					});
-					setOptions(data.users);
-					setLoading(false);
-				} catch (err) {
-					setLoading(false);
-					toastError(err);
-				}
-			};
-
-			fetchUsers();
-		}, 500);
-		return () => clearTimeout(delayDebounceFn);
-	}, [searchParam, modalOpen]);
+		const fetchUsers = async () => {
+			try {
+				const { data } = await api.get("/users/list");
+				setOptions(Array.isArray(data) ? data : []);
+			} catch (err) {
+				toastError(err);
+				setOptions([]);
+			} finally {
+				setLoading(false);
+			}
+		};
+		fetchUsers();
+	}, [modalOpen]);
 
 	const handleClose = () => {
 		onClose();
-		setSearchParam("");
-		setSelectedUser(null);
+		setSelectedUserId("");
 	};
 
 	const handleSaveTicket = async e => {
 		e.preventDefault();
-		if (!ticketid || !selectedUser) return;
+		if (!ticketid || !selectedUserId) return;
 		setLoading(true);
 		try {
 			await api.put(`/tickets/${ticketid}`, {
-				userId: selectedUser.id,
+				userId: selectedUserId,
 				queueId: null,
 				status: "open",
 			});
@@ -85,40 +69,22 @@ const TransferTicketModal = ({ modalOpen, onClose, ticketid }) => {
 					{i18n.t("transferTicketModal.title")}
 				</DialogTitle>
 				<DialogContent dividers>
-					<Autocomplete
-						style={{ width: 300 }}
-						getOptionLabel={option => `${option.name}`}
-						onChange={(e, newValue) => {
-							setSelectedUser(newValue);
-						}}
-						options={options}
-						filterOptions={filterOptions}
-						freeSolo
-						autoHighlight
-						noOptionsText={i18n.t("transferTicketModal.noOptions")}
-						loading={loading}
-						renderInput={params => (
-							<TextField
-								{...params}
-								label={i18n.t("transferTicketModal.fieldLabel")}
-								variant="outlined"
-								required
-								autoFocus
-								onChange={e => setSearchParam(e.target.value)}
-								InputProps={{
-									...params.InputProps,
-									endAdornment: (
-										<React.Fragment>
-											{loading ? (
-												<CircularProgress color="inherit" size={20} />
-											) : null}
-											{params.InputProps.endAdornment}
-										</React.Fragment>
-									),
-								}}
-							/>
-						)}
-					/>
+					<FormControl variant="outlined" style={{ width: 300 }}>
+						<InputLabel>{i18n.t("transferTicketModal.fieldLabel")}</InputLabel>
+						<Select
+							autoFocus
+							required
+							value={selectedUserId}
+							onChange={(e) => setSelectedUserId(e.target.value)}
+							label={i18n.t("transferTicketModal.fieldLabel")}
+						>
+							{options.map((u) => (
+								<MenuItem key={u.id} value={u.id}>
+									{u.name}
+								</MenuItem>
+							))}
+						</Select>
+					</FormControl>
 				</DialogContent>
 				<DialogActions>
 					<TrButton onClick={handleClose} disabled={loading}>

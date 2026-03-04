@@ -132,6 +132,197 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     }
   }
 
+  int? _asInt(dynamic v) {
+    if (v == null) return null;
+    if (v is int) return v;
+    if (v is num) return v.toInt();
+    return int.tryParse(v.toString());
+  }
+
+  List<Map<String, dynamic>> _extractMapList(dynamic raw) {
+    dynamic source = raw;
+    if (raw is Map) {
+      for (final key in ['data', 'users', 'queues', 'whatsapps', 'items']) {
+        final maybe = raw[key];
+        if (maybe is List) {
+          source = maybe;
+          break;
+        }
+      }
+    }
+    if (source is! List) return const [];
+    return source
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+  }
+
+  String _labelOf(Map<String, dynamic> item, String fallback) {
+    final name = (item['name'] ?? '').toString().trim();
+    if (name.isNotEmpty) return name;
+    final id = _asInt(item['id']);
+    return id != null ? '$fallback #$id' : fallback;
+  }
+
+  Future<void> _openTransferDialog() async {
+    final dio = ref.read(dioProvider);
+    try {
+      final responses = await Future.wait([
+        dio.get('/users/list'),
+        dio.get('/queue'),
+        dio.get('/whatsapp'),
+        dio.get('/tickets/${widget.ticketId}'),
+      ]);
+
+      final users = _extractMapList(responses[0].data);
+      final queues = _extractMapList(responses[1].data);
+      final whatsapps = _extractMapList(responses[2].data);
+      final ticketData = (responses[3].data is Map)
+          ? Map<String, dynamic>.from(responses[3].data as Map)
+          : <String, dynamic>{};
+
+      int? selectedUserId = _asInt(ticketData['userId']);
+      int? selectedQueueId = _asInt(ticketData['queueId']);
+      int? selectedWhatsappId = _asInt(ticketData['whatsappId']);
+
+      if (selectedQueueId == null && queues.length == 1) {
+        selectedQueueId = _asInt(queues.first['id']);
+      }
+      if (selectedWhatsappId == null && whatsapps.length == 1) {
+        selectedWhatsappId = _asInt(whatsapps.first['id']);
+      }
+
+      if (!mounted) return;
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) {
+          return StatefulBuilder(
+            builder: (ctx, setLocalState) {
+              return AlertDialog(
+                title: const Text('Transferir ticket'),
+                content: SizedBox(
+                  width: 420,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      DropdownButtonFormField<int?>(
+                        isExpanded: true,
+                        initialValue: selectedUserId,
+                        decoration: const InputDecoration(
+                          labelText: 'Selecione um usuário',
+                          border: OutlineInputBorder(),
+                        ),
+                        items: [
+                          const DropdownMenuItem<int?>(
+                            value: null,
+                            child: Text('Sem usuário (somente fila)'),
+                          ),
+                          ...users.map(
+                            (u) => DropdownMenuItem<int?>(
+                              value: _asInt(u['id']),
+                              child: Text(_labelOf(u, 'Usuário')),
+                            ),
+                          ),
+                        ],
+                        onChanged: (v) =>
+                            setLocalState(() => selectedUserId = v),
+                      ),
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<int?>(
+                        isExpanded: true,
+                        initialValue: selectedQueueId,
+                        decoration: const InputDecoration(
+                          labelText: 'Selecione uma fila',
+                          border: OutlineInputBorder(),
+                        ),
+                        items: queues
+                            .map(
+                              (q) => DropdownMenuItem<int?>(
+                                value: _asInt(q['id']),
+                                child: Text(_labelOf(q, 'Fila')),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (v) =>
+                            setLocalState(() => selectedQueueId = v),
+                      ),
+                      const SizedBox(height: 12),
+                      DropdownButtonFormField<int?>(
+                        isExpanded: true,
+                        initialValue: selectedWhatsappId,
+                        decoration: const InputDecoration(
+                          labelText: 'Selecione uma conexão',
+                          border: OutlineInputBorder(),
+                        ),
+                        items: whatsapps.map((w) {
+                          final name = _labelOf(w, 'Conexão');
+                          final status = (w['status'] ?? '').toString().trim();
+                          final label =
+                              status.isEmpty ? name : '$name ($status)';
+                          return DropdownMenuItem<int?>(
+                            value: _asInt(w['id']),
+                            child: Text(label),
+                          );
+                        }).toList(),
+                        onChanged: (v) =>
+                            setLocalState(() => selectedWhatsappId = v),
+                      ),
+                    ],
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx, false),
+                    child: const Text('Cancelar'),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.pop(ctx, true),
+                    child: const Text('Transferir'),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      );
+
+      if (confirmed != true) return;
+      if (selectedQueueId == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Selecione uma fila para continuar.')),
+        );
+        return;
+      }
+
+      final payload = <String, dynamic>{
+        'queueId': selectedQueueId,
+        if (selectedWhatsappId != null) 'whatsappId': selectedWhatsappId,
+      };
+      if (selectedUserId != null) {
+        payload['userId'] = selectedUserId;
+      } else {
+        payload['userId'] = null;
+        payload['status'] = 'pending';
+      }
+
+      await dio.put('/tickets/${widget.ticketId}', data: payload);
+      try {
+        await ref.read(ticketsControllerProvider.notifier).refresh();
+      } catch (_) {}
+      await _loadTicketMeta();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Ticket transferido com sucesso.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Falha ao transferir ticket: ${e.toString()}')),
+      );
+    }
+  }
+
   @override
   void dispose() {
     _ticketMetaTimer?.cancel();
@@ -281,8 +472,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                 if (ok == true) await _deleteTicket();
                 return;
               }
+              if (v == 'transfer') {
+                await _openTransferDialog();
+                return;
+              }
             },
             itemBuilder: (ctx) => [
+              if (status != 'closed')
+                const PopupMenuItem(
+                    value: 'transfer', child: Text('Transferir ticket')),
               if (status != 'closed')
                 const PopupMenuItem(
                     value: 'close', child: Text('Finalizar chamado')),

@@ -219,7 +219,10 @@ const messages = {
 			},
 			transferTicketModal: {
 				title: "Transfer Ticket",
-				fieldLabel: "Type to search for users",
+				fieldLabel: "Select a user",
+				noneUserOption: "No user (queue only)",
+				fieldQueueLabel: "Transfer to queue",
+				fieldQueuePlaceholder: "Select a queue",
 				noOptions: "No user found with this name",
 				buttons: {
 					ok: "Transfer",

@@ -433,6 +433,9 @@ function isInternalLikeName(name: string): boolean {
 function pickSafeContactName(inputName: string, fallbackNumber: string): string {
   const s = String(inputName || "").trim();
   if (!s) return fallbackNumber;
+  // Ignore internal/operator names accidentally propagated by WhatsApp metadata.
+  // Keep number as temporary label until we receive a trustworthy contact name.
+  if (isInternalLikeName(s)) return fallbackNumber;
   return s;
 }
 
@@ -469,8 +472,43 @@ function normalizeNumberFromJid(jid: string): { number: string; isGroup: boolean
     } else if (!number.startsWith("55") && (number.length === 10 || number.length === 11)) {
       number = `55${number}`;
     }
+    // Legacy BR mobile numbers can arrive without the 9 digit (55 + DDD + 8 digits).
+    // Keep a single canonical format to avoid duplicate contacts/tickets.
+    if (number.startsWith("55") && number.length === 12) {
+      number = `${number.slice(0, 4)}9${number.slice(4)}`;
+    }
   }
   return { number, isGroup };
+}
+
+function normalizeContactNumber(raw: any): string {
+  const digits = String(raw || "").replace(/\D+/g, "");
+  if (!digits) return "";
+  const withCountry =
+    digits.startsWith("55") || digits.length > 11 ? digits : `55${digits}`;
+  if (withCountry.startsWith("55")) {
+    let normalized = withCountry.length > 13 ? `55${withCountry.slice(-11)}` : withCountry;
+    if (normalized.length === 12) {
+      normalized = `${normalized.slice(0, 4)}9${normalized.slice(4)}`;
+    }
+    return normalized;
+  }
+  return withCountry;
+}
+
+function numberVariants(raw: string): string[] {
+  const base = normalizeContactNumber(raw);
+  if (!base) return [];
+  const variants = new Set<string>([base]);
+  // BR variant without mobile 9 (legacy/badly formatted data in old rows).
+  if (base.startsWith("55") && base.length === 13 && base[4] === "9") {
+    variants.add(`${base.slice(0, 4)}${base.slice(5)}`);
+  }
+  // BR variant with mobile 9 in case incoming came without it.
+  if (base.startsWith("55") && base.length === 12) {
+    variants.add(`${base.slice(0, 4)}9${base.slice(4)}`);
+  }
+  return Array.from(variants);
 }
 
 function resolveCanonicalRemoteJid(msg: any): string {
@@ -622,7 +660,11 @@ async function findOrCreateContact(opts: {
 }): Promise<ContactRow> {
   const { number, isGroup } = normalizeNumberFromJid(opts.jid);
   const incomingName = pickSafeContactName(String(opts.name || "").trim(), number);
-  const numberDigits = String(number || "").replace(/\D+/g, "");
+  const numberValues = numberVariants(number);
+  const fallbackNumberValues = numberValues.length ? numberValues : [number];
+  const numberDigitsValues = fallbackNumberValues
+    .map((n) => String(n || "").replace(/\D+/g, ""))
+    .filter(Boolean);
 
   const existing = await pgQuery<ContactRow>(
     `
@@ -630,22 +672,55 @@ async function findOrCreateContact(opts: {
       FROM "Contacts"
       WHERE "companyId" = $1
         AND (
-          number = $2
-          OR regexp_replace(COALESCE(number, ''), '\\D', '', 'g') = $3
+          number = ANY($2::text[])
+          OR regexp_replace(COALESCE(number, ''), '\\D', '', 'g') = ANY($3::text[])
         )
       ORDER BY
         CASE
-          WHEN number = $2 THEN 0
-          WHEN regexp_replace(COALESCE(number, ''), '\\D', '', 'g') = $3 THEN 1
+          WHEN EXISTS (
+            SELECT 1
+            FROM "Tickets" t
+            WHERE t."contactId" = "Contacts".id
+              AND t."companyId" = "Contacts"."companyId"
+              AND t.status IN ('open', 'pending')
+          ) THEN 0
+          ELSE 1
+        END,
+        CASE
+          WHEN number = ANY($2::text[]) THEN 0
+          WHEN regexp_replace(COALESCE(number, ''), '\\D', '', 'g') = ANY($3::text[]) THEN 1
           ELSE 2
         END,
         "updatedAt" DESC
       LIMIT 1
     `,
-    [opts.companyId, number, numberDigits]
+    [opts.companyId, fallbackNumberValues, numberDigitsValues]
   );
   if (existing[0]) {
     const cur = existing[0];
+    const canonicalIncoming = normalizeContactNumber(number);
+    const currentDigits = String(cur.number || "").replace(/\D+/g, "");
+    const shouldNormalizeStoredNumber =
+      !isGroup &&
+      canonicalIncoming &&
+      currentDigits &&
+      canonicalIncoming !== currentDigits;
+    if (shouldNormalizeStoredNumber) {
+      try {
+        const updatedNumber = await pgQuery<ContactRow>(
+          `
+            UPDATE "Contacts"
+            SET number = $1, "updatedAt" = NOW()
+            WHERE id = $2 AND "companyId" = $3
+            RETURNING id, name, number, "profilePicUrl", "companyId", "whatsappId"
+          `,
+          [canonicalIncoming, cur.id, opts.companyId]
+        );
+        if (updatedNumber[0]) {
+          return updatedNumber[0];
+        }
+      } catch {}
+    }
     // Only trust names from inbound customer messages.
     if (!opts.fromMe) {
       const curName = String(cur.name || "").trim();
@@ -653,7 +728,12 @@ async function findOrCreateContact(opts: {
         !curName ||
         curName === cur.number ||
         isInternalLikeName(curName);
-      if (shouldRefreshName && incomingName && incomingName != curName) {
+      if (
+        shouldRefreshName &&
+        incomingName &&
+        incomingName != curName &&
+        !isInternalLikeName(incomingName)
+      ) {
         try {
           const updated = await pgQuery<ContactRow>(
             `
@@ -696,13 +776,15 @@ async function findOrCreateTicket(opts: {
       SELECT id, status, "lastMessage", "contactId", "userId", "whatsappId", "isGroup",
              "unreadMessages", "queueId", "queueOptionId", "companyId", "updatedAt", "createdAt", "fromMe"
       FROM "Tickets"
-      WHERE "contactId" = $1 AND "companyId" = $2 AND "whatsappId" = $3
+      WHERE "contactId" = $1 AND "companyId" = $2
         AND status IN ('open', 'pending')
       ORDER BY
         CASE
-          WHEN status = 'open' THEN 0
-          WHEN status = 'pending' THEN 1
-          ELSE 2
+          WHEN "whatsappId" = $3 AND status = 'open' THEN 0
+          WHEN "whatsappId" = $3 AND status = 'pending' THEN 1
+          WHEN status = 'open' THEN 2
+          WHEN status = 'pending' THEN 3
+          ELSE 4
         END,
         "updatedAt" DESC,
         id DESC

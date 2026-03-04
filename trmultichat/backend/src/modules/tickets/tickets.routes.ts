@@ -11,6 +11,22 @@ import path from "path";
 
 const router = Router();
 
+const SQL_ACCENT_FROM =
+  "ÁÀÂÃÄáàâãäÉÈÊËéèêëÍÌÎÏíìîïÓÒÔÕÖóòôõöÚÙÛÜúùûüÇçÑñÝŸýÿ";
+const SQL_ACCENT_TO =
+  "AAAAAaaaaaEEEEeeeeIIIIiiiiOOOOOoooooUUUUuuuuCcNnYYyy";
+
+function normalizeSearchText(v: string): string {
+  return String(v || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+function sqlNormalized(column: string): string {
+  return `LOWER(translate(COALESCE(${column}, ''), '${SQL_ACCENT_FROM}', '${SQL_ACCENT_TO}'))`;
+}
+
 function escHtml(s: any) {
   return String(s ?? "")
     .replace(/&/g, "&amp;")
@@ -245,6 +261,33 @@ function quoteIdent(ident: string): string {
   return `"${s.replace(/"/g, '""')}"`;
 }
 
+async function resolveDefaultQueueForWhatsapp(
+  whatsappId: number,
+  companyId: number
+): Promise<number | null> {
+  if (!whatsappId || !companyId) return null;
+  const joinTableCandidates = [
+    `"WhatsappsQueues"`,
+    `"WhatsappQueues"`,
+    `"WhatsAppQueues"`,
+    "whatsapps_queues",
+    "whatsapp_queues"
+  ];
+  for (const tbl of joinTableCandidates) {
+    try {
+      const rows = await pgQuery<{ queueId: number }>(
+        `SELECT "queueId" as "queueId" FROM ${tbl} WHERE ("whatsappId" = $1 OR "whatsAppId" = $1) AND ("companyId" = $2 OR "tenantId" = $2) LIMIT 1`,
+        [whatsappId, companyId]
+      );
+      const qid = Number(rows?.[0]?.queueId || 0);
+      if (qid > 0) return qid;
+    } catch {
+      // try next candidate
+    }
+  }
+  return null;
+}
+
 async function deleteTicketCascade(ticketId: number, companyId: number) {
   // Generic FK cascade: delete rows in tables referencing Tickets (best-effort).
   // This prevents FK errors when deleting a ticket in customized schemas.
@@ -305,6 +348,7 @@ router.get("/", authMiddleware, async (req, res) => {
   const offset = (pageNumber - 1) * limit;
   const status = String(req.query.status || "").trim();
   const searchParam = String(req.query.searchParam || "").trim();
+  const normalizedSearch = normalizeSearchText(searchParam);
   const searchDigits = searchParam.replace(/\D+/g, "");
 
   const params: any[] = [companyId];
@@ -315,12 +359,12 @@ router.get("/", authMiddleware, async (req, res) => {
     where += ` AND t.status = $${params.length}`;
   }
   if (searchParam) {
-    params.push(`%${searchParam.toLowerCase()}%`);
+    params.push(`%${normalizedSearch}%`);
     const p = `$${params.length}`;
     const searchClauses: string[] = [
-      `lower(c.name) LIKE ${p}`,
+      `${sqlNormalized("c.name")} LIKE ${p}`,
       `lower(c.number) LIKE ${p}`,
-      `lower(t."lastMessage") LIKE ${p}`,
+      `${sqlNormalized('t."lastMessage"')} LIKE ${p}`,
     ];
     if (searchDigits) {
       params.push(`%${searchDigits}%`);
@@ -378,6 +422,150 @@ router.get("/", authMiddleware, async (req, res) => {
   });
 
   return res.json(list);
+});
+
+// POST /tickets
+router.post("/", authMiddleware, async (req, res) => {
+  setNoCache(res);
+  const companyId = tenantIdFromReq(req);
+  if (!companyId)
+    return res.status(401).json({ error: true, message: "missing tenantId" });
+
+  const body: any = req.body || {};
+  const contactId = Number(body.contactId || 0);
+  const requestedUserId =
+    body.userId !== undefined && body.userId !== null
+      ? Number(body.userId)
+      : null;
+  let queueId =
+    body.queueId !== undefined && body.queueId !== null
+      ? Number(body.queueId)
+      : null;
+  let whatsappId =
+    body.whatsappId !== undefined && body.whatsappId !== null
+      ? Number(body.whatsappId)
+      : null;
+  const statusRaw = String(body.status || "open").trim().toLowerCase();
+  const status =
+    statusRaw === "pending" || statusRaw === "closed" || statusRaw === "open"
+      ? statusRaw
+      : "open";
+
+  if (!contactId) {
+    return res.status(400).json({ error: true, message: "contactId is required" });
+  }
+
+  const contacts = await pgQuery<any>(
+    `
+      SELECT id, "companyId", "whatsappId", "isGroup"
+      FROM "Contacts"
+      WHERE id = $1 AND "companyId" = $2
+      LIMIT 1
+    `,
+    [contactId, companyId]
+  );
+  const contact = contacts?.[0];
+  if (!contact) return res.status(404).json({ error: true, message: "contact not found" });
+
+  const existingRows = await pgQuery<any>(
+    `
+      SELECT id
+      FROM "Tickets"
+      WHERE "companyId" = $1
+        AND "contactId" = $2
+        AND status IN ('open', 'pending')
+      ORDER BY
+        CASE
+          WHEN status = 'open' THEN 0
+          WHEN status = 'pending' THEN 1
+          ELSE 2
+        END,
+        "updatedAt" DESC,
+        id DESC
+      LIMIT 1
+    `,
+    [companyId, contactId]
+  );
+  const existingId = Number(existingRows?.[0]?.id || 0);
+  if (existingId > 0) {
+    const existing = await loadTicketWithRelations(existingId, companyId);
+    if (existing?.userId) {
+      try {
+        const u = await pgQuery<any>(
+          `SELECT id, name, email FROM "Users" WHERE id = $1 LIMIT 1`,
+          [Number(existing.userId)]
+        );
+        existing.user = u?.[0] || null;
+      } catch {
+        existing.user = null;
+      }
+    } else {
+      existing.user = null;
+    }
+    return res
+      .status(400)
+      .json({ error: JSON.stringify(existing || { id: existingId }) });
+  }
+
+  if (!whatsappId || whatsappId <= 0) {
+    const fromContact = Number(contact.whatsappId || 0);
+    if (fromContact > 0) whatsappId = fromContact;
+  }
+  if (!whatsappId || whatsappId <= 0) {
+    try {
+      const w = await pgQuery<any>(
+        `
+          SELECT id
+          FROM "Whatsapps"
+          WHERE "companyId" = $1
+          ORDER BY id ASC
+          LIMIT 1
+        `,
+        [companyId]
+      );
+      const firstWhatsapp = Number(w?.[0]?.id || 0);
+      if (firstWhatsapp > 0) whatsappId = firstWhatsapp;
+    } catch {}
+  }
+  if (!whatsappId || whatsappId <= 0) {
+    return res.status(400).json({
+      error: true,
+      message: "Nenhuma conexão disponível para criar o ticket."
+    });
+  }
+
+  if (!queueId || queueId <= 0) {
+    queueId = await resolveDefaultQueueForWhatsapp(whatsappId, companyId);
+  }
+
+  const inserted = await pgQuery<any>(
+    `
+      INSERT INTO "Tickets"
+        (status, "lastMessage", "contactId", "createdAt", "updatedAt", "whatsappId", "isGroup", "unreadMessages", "companyId", "queueId", "queueOptionId", "userId", "fromMe")
+      VALUES
+        ($1, '', $2, NOW(), NOW(), $3, $4, 0, $5, $6, NULL, $7, false)
+      RETURNING id
+    `,
+    [
+      status,
+      contactId,
+      whatsappId,
+      contact.isGroup === true,
+      companyId,
+      queueId && queueId > 0 ? queueId : null,
+      requestedUserId && requestedUserId > 0 ? requestedUserId : null
+    ]
+  );
+  const id = Number(inserted?.[0]?.id || 0);
+  if (!id) return res.status(500).json({ error: true, message: "create ticket failed" });
+
+  const ticket = await loadTicketWithRelations(id, companyId);
+  if (!ticket) return res.status(404).json({ error: true, message: "not found" });
+  try {
+    const io = getIO();
+    io.emit(`company-${companyId}-ticket`, { action: "update", ticket });
+  } catch {}
+  return res.status(201).json(ticket);
 });
 
 // POST /tickets/:ticketId/email (send attachment by e-mail)

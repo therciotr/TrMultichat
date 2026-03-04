@@ -1,8 +1,8 @@
 import 'dart:convert';
+import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../../core/di/core_providers.dart';
 import '../../../../core/storage/secure_store.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../../data/datasources/announcements_remote_datasource.dart';
@@ -12,8 +12,10 @@ class AnnouncementsController extends StateNotifier<AnnouncementsState> {
   final Ref _ref;
   final AnnouncementsRemoteDataSource _remote;
   final SecureStore _store;
+  Timer? _searchDebounce;
 
-  AnnouncementsController(this._ref, this._remote, this._store) : super(AnnouncementsState.initial()) {
+  AnnouncementsController(this._ref, this._remote, this._store)
+      : super(AnnouncementsState.initial()) {
     _loadReadIds();
     refresh();
   }
@@ -30,7 +32,10 @@ class AnnouncementsController extends StateNotifier<AnnouncementsState> {
       final raw = await _store.readString(_key());
       if (raw == null || raw.trim().isEmpty) return;
       final list = (jsonDecode(raw) as List).cast<dynamic>();
-      final ids = list.map((e) => int.tryParse(e.toString()) ?? 0).where((i) => i > 0).toSet();
+      final ids = list
+          .map((e) => int.tryParse(e.toString()) ?? 0)
+          .where((i) => i > 0)
+          .toSet();
       state = state.copyWith(readIds: ids);
     } catch (_) {}
   }
@@ -43,15 +48,21 @@ class AnnouncementsController extends StateNotifier<AnnouncementsState> {
 
   void setSearch(String v) {
     state = state.copyWith(search: v);
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 300), () {
+      refresh();
+    });
   }
 
   Future<void> refresh() async {
     state = state.copyWith(loading: true, error: null);
     try {
-      final (items, _) = await _remote.list(pageNumber: 1, searchParam: state.search);
+      final (items, _) =
+          await _remote.list(pageNumber: 1, searchParam: state.search);
       state = state.copyWith(loading: false, items: items, error: null);
     } catch (_) {
-      state = state.copyWith(loading: false, error: 'Falha ao carregar comunicados');
+      state = state.copyWith(
+          loading: false, error: 'Falha ao carregar comunicados');
     }
   }
 
@@ -77,11 +88,13 @@ class AnnouncementsController extends StateNotifier<AnnouncementsState> {
         sendToAll: sendToAll,
         allowReply: allowReply,
       );
-      final (items, _) = await _remote.list(pageNumber: 1, searchParam: state.search);
+      final (items, _) =
+          await _remote.list(pageNumber: 1, searchParam: state.search);
       state = state.copyWith(loading: false, items: items, error: null);
       return true;
     } catch (_) {
-      state = state.copyWith(loading: false, error: 'Falha ao criar chat interno');
+      state =
+          state.copyWith(loading: false, error: 'Falha ao criar chat interno');
       return false;
     }
   }
@@ -93,5 +106,10 @@ class AnnouncementsController extends StateNotifier<AnnouncementsState> {
     state = state.copyWith(readIds: next);
     await _persistReadIds(next);
   }
-}
 
+  @override
+  void dispose() {
+    _searchDebounce?.cancel();
+    super.dispose();
+  }
+}

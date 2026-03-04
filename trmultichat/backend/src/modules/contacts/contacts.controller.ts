@@ -3,6 +3,11 @@ import { pgQuery } from "../../utils/pgClient";
 import { getSessionStore } from "../../libs/baileysManager";
 import { getIO } from "../../libs/socket";
 
+const SQL_ACCENT_FROM =
+  "ÁÀÂÃÄáàâãäÉÈÊËéèêëÍÌÎÏíìîïÓÒÔÕÖóòôõöÚÙÛÜúùûüÇçÑñÝŸýÿ";
+const SQL_ACCENT_TO =
+  "AAAAAaaaaaEEEEeeeeIIIIiiiiOOOOOoooooUUUUuuuuCcNnYYyy";
+
 function setNoCache(res: any) {
   try {
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
@@ -14,6 +19,17 @@ function setNoCache(res: any) {
   } catch {}
 }
 
+function normalizeSearchText(v: string): string {
+  return String(v || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+function sqlNormalized(column: string): string {
+  return `LOWER(translate(COALESCE(${column}, ''), '${SQL_ACCENT_FROM}', '${SQL_ACCENT_TO}'))`;
+}
+
 function userIdFromReq(req: any): number {
   return Number(req?.userId || 0);
 }
@@ -21,11 +37,35 @@ function userIdFromReq(req: any): number {
 function normalizeContactNumber(raw: any): string {
   const digits = String(raw || "").replace(/\D+/g, "");
   if (!digits) return "";
-  if (digits.startsWith("55")) {
-    return digits.length > 13 ? `55${digits.slice(-11)}` : digits;
+  const withCountry =
+    digits.startsWith("55") || digits.length > 11 ? digits : `55${digits}`;
+  if (withCountry.startsWith("55")) {
+    let normalized = withCountry.length > 13 ? `55${withCountry.slice(-11)}` : withCountry;
+    // Legacy BR contacts sometimes arrived as 55 + DDD + 8 digits (missing mobile 9).
+    // User requested to normalize all these to 55 + DDD + 9 + 8 digits.
+    if (normalized.length === 12) {
+      normalized = `${normalized.slice(0, 4)}9${normalized.slice(4)}`;
+    }
+    return normalized;
   }
-  if (digits.length === 10 || digits.length === 11) return `55${digits}`;
-  return digits;
+  return withCountry;
+}
+
+function sanitizeContactPayload(body: any) {
+  const name = String(body?.name || "").trim();
+  const number = normalizeContactNumber(body?.number);
+  const email = String(body?.email || "").trim();
+  const profilePicUrlRaw = body?.profilePicUrl;
+  const profilePicUrl =
+    profilePicUrlRaw === null || profilePicUrlRaw === undefined
+      ? null
+      : String(profilePicUrlRaw).trim() || null;
+  const isGroup = body?.isGroup === true;
+  const whatsappId =
+    body?.whatsappId === null || body?.whatsappId === undefined
+      ? null
+      : Number(body?.whatsappId || 0) || null;
+  return { name, number, email, profilePicUrl, isGroup, whatsappId };
 }
 
 async function requireAdmin(req: Request, res: Response): Promise<boolean> {
@@ -53,7 +93,8 @@ export async function list(req: Request, res: Response) {
   if (!companyId) return res.status(401).json({ error: true, message: "missing tenantId" });
   const pageNumber = Number(req.query.pageNumber || 1);
   const rawSearch = String((req.query as any).searchParam || "").trim();
-  const q = rawSearch ? `%${rawSearch.toLowerCase()}%` : "";
+  const normalizedSearch = normalizeSearchText(rawSearch);
+  const q = normalizedSearch ? `%${normalizedSearch}%` : "";
   const digits = rawSearch ? rawSearch.replace(/\D+/g, "") : "";
   const digitsLike = digits ? `%${digits}%` : "";
   const digitsPrefixLike = digits ? `${digits}%` : "";
@@ -69,7 +110,7 @@ export async function list(req: Request, res: Response) {
     const qIdx = params.length;
 
     const orParts: string[] = [
-      `LOWER(COALESCE(name, '')) LIKE $${qIdx}`,
+      `${sqlNormalized("name")} LIKE $${qIdx}`,
       `LOWER(COALESCE(email, '')) LIKE $${qIdx}`,
     ];
 
@@ -87,7 +128,7 @@ export async function list(req: Request, res: Response) {
   const orderParts: string[] = [];
   if (rawSearch) {
     // Improve contact discoverability while typing by ranking stronger matches first.
-    params.push(rawSearch.toLowerCase());
+    params.push(normalizedSearch);
     const rawLowerIdx = params.length;
     if (digitsPrefixLike) {
       params.push(digitsPrefixLike);
@@ -95,16 +136,16 @@ export async function list(req: Request, res: Response) {
       orderParts.push(
         `CASE
           WHEN regexp_replace(COALESCE(number,''), '\\\\D', '', 'g') LIKE $${digitsPrefixIdx} THEN 0
-          WHEN LOWER(COALESCE(name,'')) LIKE $${rawLowerIdx} || '%' THEN 1
-          WHEN LOWER(COALESCE(name,'')) LIKE '%' || $${rawLowerIdx} || '%' THEN 2
+          WHEN ${sqlNormalized("name")} LIKE $${rawLowerIdx} || '%' THEN 1
+          WHEN ${sqlNormalized("name")} LIKE '%' || $${rawLowerIdx} || '%' THEN 2
           ELSE 3
         END`
       );
     } else {
       orderParts.push(
         `CASE
-          WHEN LOWER(COALESCE(name,'')) LIKE $${rawLowerIdx} || '%' THEN 0
-          WHEN LOWER(COALESCE(name,'')) LIKE '%' || $${rawLowerIdx} || '%' THEN 1
+          WHEN ${sqlNormalized("name")} LIKE $${rawLowerIdx} || '%' THEN 0
+          WHEN ${sqlNormalized("name")} LIKE '%' || $${rawLowerIdx} || '%' THEN 1
           ELSE 2
         END`
       );
@@ -147,6 +188,92 @@ export async function find(req: Request, res: Response) {
   const contact = rows[0] || null;
   if (!contact) return res.status(404).json({ error: true, message: "not found" });
   return res.json(contact);
+}
+
+export async function create(req: Request, res: Response) {
+  setNoCache(res);
+  const companyId = Number((req as any).tenantId || 0);
+  if (!companyId) return res.status(401).json({ error: true, message: "missing tenantId" });
+
+  const { name, number, email, profilePicUrl, isGroup, whatsappId } =
+    sanitizeContactPayload((req as any).body || {});
+  if (!name) return res.status(400).json({ error: true, message: "name is required" });
+  if (!number) return res.status(400).json({ error: true, message: "number is required" });
+
+  try {
+    const existing = await pgQuery<any>(
+      `
+        SELECT id, name, number, "profilePicUrl", "createdAt", "updatedAt", email, "isGroup", "companyId", "whatsappId"
+        FROM "Contacts"
+        WHERE "companyId" = $1
+          AND regexp_replace(COALESCE(number, ''), '\\D', '', 'g') = $2
+        LIMIT 1
+      `,
+      [companyId, number]
+    );
+    if (existing?.[0]) {
+      return res.status(200).json(existing[0]);
+    }
+
+    const inserted = await pgQuery<any>(
+      `
+        INSERT INTO "Contacts"
+          (name, number, email, "profilePicUrl", "createdAt", "updatedAt", "isGroup", "companyId", "whatsappId")
+        VALUES
+          ($1, $2, $3, $4, NOW(), NOW(), $5, $6, $7)
+        RETURNING id, name, number, "profilePicUrl", "createdAt", "updatedAt", email, "isGroup", "companyId", "whatsappId"
+      `,
+      [name, number, email, profilePicUrl, isGroup, companyId, whatsappId]
+    );
+    const contact = inserted?.[0];
+    if (!contact) return res.status(500).json({ error: true, message: "failed to create contact" });
+    try {
+      getIO().emit(`company-${companyId}-contact`, { action: "create", contact });
+    } catch {}
+    return res.status(201).json(contact);
+  } catch (e: any) {
+    return res.status(500).json({ error: true, message: e?.message || "create failed" });
+  }
+}
+
+export async function update(req: Request, res: Response) {
+  setNoCache(res);
+  const id = Number(req.params.id || 0);
+  const companyId = Number((req as any).tenantId || 0);
+  if (!companyId) return res.status(401).json({ error: true, message: "missing tenantId" });
+  if (!id) return res.status(400).json({ error: true, message: "invalid id" });
+
+  const { name, number, email, profilePicUrl, isGroup, whatsappId } =
+    sanitizeContactPayload((req as any).body || {});
+  if (!name) return res.status(400).json({ error: true, message: "name is required" });
+  if (!number) return res.status(400).json({ error: true, message: "number is required" });
+
+  try {
+    const updated = await pgQuery<any>(
+      `
+        UPDATE "Contacts"
+        SET
+          name = $1,
+          number = $2,
+          email = $3,
+          "profilePicUrl" = $4,
+          "isGroup" = $5,
+          "whatsappId" = $6,
+          "updatedAt" = NOW()
+        WHERE id = $7 AND "companyId" = $8
+        RETURNING id, name, number, "profilePicUrl", "createdAt", "updatedAt", email, "isGroup", "companyId", "whatsappId"
+      `,
+      [name, number, email, profilePicUrl, isGroup, whatsappId, id, companyId]
+    );
+    const contact = updated?.[0];
+    if (!contact) return res.status(404).json({ error: true, message: "not found" });
+    try {
+      getIO().emit(`company-${companyId}-contact`, { action: "update", contact });
+    } catch {}
+    return res.json(contact);
+  } catch (e: any) {
+    return res.status(500).json({ error: true, message: e?.message || "update failed" });
+  }
 }
 
 export async function remove(req: Request, res: Response) {
