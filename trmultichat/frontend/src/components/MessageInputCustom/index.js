@@ -635,11 +635,17 @@ const CustomInput = (props) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inputMessage]);
 
-  const onKeyPress = (e) => {
-    if (loading || e.shiftKey) return;
-    else if (e.key === "Enter") {
+  const onInputKeyDown = (e) => {
+    if (loading) return;
+    if (e.key === "Enter" && e.shiftKey) {
+      return;
+    }
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      e.stopPropagation();
+      const currentValue = String(e?.target?.value || inputMessage || "");
       // Premium UX: se o usuário digitou exatamente "/atalho", já envia a resposta rápida
-      const raw = String(inputMessage || "").trim();
+      const raw = String(currentValue || "").trim();
       if (raw.startsWith("/")) {
         const typed = raw.replace(/^\//, "").trim().toLowerCase();
         const exact = quickMessages.find((m) => String(m.shortcode || "").toLowerCase() === typed);
@@ -655,7 +661,7 @@ const CustomInput = (props) => {
           return;
         }
       }
-      handleSendMessage();
+      handleSendMessage(currentValue);
     }
   };
 
@@ -728,7 +734,6 @@ const CustomInput = (props) => {
           }
         }}
         onPaste={onPaste}
-        onKeyPress={onKeyPress}
         style={{ width: "100%" }}
         renderOption={(opt) => {
           try {
@@ -786,6 +791,7 @@ const CustomInput = (props) => {
               multiline
               className={classes.messageInput}
               maxRows={5}
+              onKeyDown={onInputKeyDown}
             />
           );
         }}
@@ -804,6 +810,7 @@ const MessageInputCustom = (props) => {
   const [loading, setLoading] = useState(false);
   const [recording, setRecording] = useState(false);
   const inputRef = useRef();
+  const sendingRef = useRef(false);
   const { setReplyingMessage, replyingMessage } =
     useContext(ReplyMessageContext);
   const { user } = useContext(AuthContext);
@@ -975,8 +982,10 @@ const MessageInputCustom = (props) => {
   };
 
   const handleSendMessage = async (overrideMessage) => {
+    if (sendingRef.current) return;
     const bodyRaw = typeof overrideMessage === "string" ? overrideMessage : inputMessage;
     if (String(bodyRaw || "").trim() === "") return;
+    sendingRef.current = true;
     setLoading(true);
 
     const message = {
@@ -988,16 +997,24 @@ const MessageInputCustom = (props) => {
         : String(bodyRaw || "").trim(),
       quotedMsg: replyingMessage,
     };
+    let sent = false;
     try {
       await api.post(`/messages/${ticketId}`, message);
+      sent = true;
     } catch (err) {
       toastError(err);
     }
 
-    setInputMessage("");
-    setShowEmoji(false);
-    setLoading(false);
-    setReplyingMessage(null);
+    try {
+      setLoading(false);
+      if (sent) {
+        setInputMessage("");
+        setShowEmoji(false);
+        setReplyingMessage(null);
+      }
+    } finally {
+      sendingRef.current = false;
+    }
   };
 
   const handleStartRecording = async () => {

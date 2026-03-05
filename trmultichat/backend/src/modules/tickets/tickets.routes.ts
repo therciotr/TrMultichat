@@ -111,6 +111,58 @@ function safeFileName(input: string): string {
   return s.replace(/[^\w.\-]+/g, "_").slice(0, 140);
 }
 
+function normalizeOutboundNumber(raw: any): string {
+  const digits = String(raw || "").replace(/\D+/g, "");
+  if (!digits) return "";
+  if (digits.startsWith("55")) {
+    if (digits.length > 13) return `55${digits.slice(-11)}`;
+    return digits;
+  }
+  if (digits.length === 10 || digits.length === 11) return `55${digits}`;
+  return digits;
+}
+
+function normalizeLookupNumber(raw: any): string {
+  const digits = normalizeOutboundNumber(raw);
+  if (!digits.startsWith("55")) return digits;
+  if (digits.length === 12) return `${digits.slice(0, 4)}9${digits.slice(4)}`;
+  return digits;
+}
+
+function removeBrazilNinthDigit(raw: string): string {
+  const digits = String(raw || "").replace(/\D+/g, "");
+  if (!digits.startsWith("55")) return digits;
+  if (digits.length === 13 && digits[4] === "9") return `${digits.slice(0, 4)}${digits.slice(5)}`;
+  return digits;
+}
+
+function outboundNumberCandidates(raw: any): string[] {
+  const seen = new Set<string>();
+  const list: string[] = [];
+  const push = (v: string) => {
+    const d = String(v || "").replace(/\D+/g, "");
+    if (!d || seen.has(d)) return;
+    seen.add(d);
+    list.push(d);
+  };
+  const canonical = normalizeLookupNumber(raw);
+  push(canonical);
+  push(removeBrazilNinthDigit(canonical));
+  push(normalizeOutboundNumber(raw));
+  return list;
+}
+
+function extractRemoteJid(row: { remoteJid?: string | null; dataJson?: string | null } | null | undefined): string {
+  let jid = String(row?.remoteJid || "").trim();
+  if (!jid.endsWith("@lid")) return jid;
+  try {
+    const dj = JSON.parse(String(row?.dataJson || "{}"));
+    const alt = String(dj?.key?.remoteJidAlt || "").trim();
+    if (alt.includes("@")) jid = alt;
+  } catch {}
+  return jid;
+}
+
 const emailUpload = multer({
   storage: multer.diskStorage({
     destination: (req, _file, cb) => {
@@ -824,22 +876,42 @@ router.put("/:id", authMiddleware, async (req, res) => {
           return;
         }
 
-        // Find remoteJid
+        // Delivery routing:
+        // 1) Prefer last inbound in this ticket (most reliable route for current thread).
+        // 2) Then inbound from this contact.
+        // 3) Only then fallback to canonical number candidates (with/without 9).
         let remoteJid = "";
+        const c = await pgQuery<{ number: string }>(
+          `SELECT number FROM "Contacts" WHERE id = $1 AND "companyId" = $2 LIMIT 1`,
+          [contactId, companyId]
+        );
+        const outboundCandidates = outboundNumberCandidates(String(c?.[0]?.number || ""));
+
         try {
-          const m = await pgQuery<{ remoteJid: string }>(
-            `SELECT "remoteJid" FROM "Messages" WHERE "ticketId" = $1 AND "companyId" = $2 ORDER BY "createdAt" DESC LIMIT 1`,
+          const inboundTicket = await pgQuery<{ remoteJid: string; dataJson: string | null }>(
+            `SELECT "remoteJid", "dataJson" FROM "Messages" WHERE "ticketId" = $1 AND "companyId" = $2 AND "fromMe" = false ORDER BY "createdAt" DESC LIMIT 1`,
             [id, companyId]
           );
-          remoteJid = String(m?.[0]?.remoteJid || "").trim();
+          const inboundJid = extractRemoteJid(inboundTicket?.[0]);
+          if (inboundJid.includes("@")) remoteJid = inboundJid;
         } catch {}
+
         if (!remoteJid) {
-          const c = await pgQuery<{ number: string }>(
-            `SELECT number FROM "Contacts" WHERE id = $1 AND "companyId" = $2 LIMIT 1`,
-            [contactId, companyId]
-          );
-          const number = String(c?.[0]?.number || "").replace(/\D/g, "");
-          if (number) remoteJid = `${number}@s.whatsapp.net`;
+          try {
+            const inboundContact = await pgQuery<{ remoteJid: string; dataJson: string | null }>(
+              `SELECT "remoteJid", "dataJson" FROM "Messages" WHERE "companyId" = $1 AND "contactId" = $2 AND "fromMe" = false ORDER BY "createdAt" DESC LIMIT 1`,
+              [companyId, contactId]
+            );
+            const inboundJid = extractRemoteJid(inboundContact?.[0]);
+            if (inboundJid.includes("@")) remoteJid = inboundJid;
+          } catch {}
+        }
+
+        if (!remoteJid) {
+          const fallbackDigits = outboundCandidates.find((d) => d.startsWith("55") && (d.length === 12 || d.length === 13))
+            || outboundCandidates[0]
+            || "";
+          if (fallbackDigits) remoteJid = `${fallbackDigits}@s.whatsapp.net`;
         }
         if (!remoteJid) {
           appendAcceptLog({ where: "accept", reason: "missing remoteJid", whatsappId, contactId, ticketId: id });

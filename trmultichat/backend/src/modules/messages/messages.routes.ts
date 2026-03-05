@@ -32,6 +32,65 @@ function detectOutgoingMediaType(mimetype?: string): "image" | "video" | "audio"
   return "application";
 }
 
+function normalizeOutboundNumber(raw: any): string {
+  const digits = String(raw || "").replace(/\D+/g, "");
+  if (!digits) return "";
+  if (digits.startsWith("55")) {
+    if (digits.length > 13) return `55${digits.slice(-11)}`;
+    return digits;
+  }
+  if (digits.length === 10 || digits.length === 11) return `55${digits}`;
+  return digits;
+}
+
+function normalizeLookupNumber(raw: any): string {
+  const digits = normalizeOutboundNumber(raw);
+  if (!digits.startsWith("55")) return digits;
+  // Canonical format for lookup/indexing: if BR local part has 10 digits, include ninth digit.
+  if (digits.length === 12) {
+    return `${digits.slice(0, 4)}9${digits.slice(4)}`;
+  }
+  return digits;
+}
+
+function removeBrazilNinthDigit(raw: string): string {
+  const digits = String(raw || "").replace(/\D+/g, "");
+  if (!digits.startsWith("55")) return digits;
+  // 55 + DDD(2) + 9 + number(8) => remove the synthetic ninth digit fallback.
+  if (digits.length === 13 && digits[4] === "9") {
+    return `${digits.slice(0, 4)}${digits.slice(5)}`;
+  }
+  return digits;
+}
+
+function outboundNumberCandidates(raw: any): string[] {
+  // Delivery uses real remoteJid. These are fallback candidates only.
+  const seen = new Set<string>();
+  const ordered: string[] = [];
+  const push = (v: string) => {
+    const d = String(v || "").replace(/\D+/g, "");
+    if (!d || seen.has(d)) return;
+    seen.add(d);
+    ordered.push(d);
+  };
+  const canonical = normalizeLookupNumber(raw);
+  push(canonical);
+  push(removeBrazilNinthDigit(canonical));
+  push(normalizeOutboundNumber(raw));
+  return ordered;
+}
+
+function extractRemoteJid(row: { remoteJid?: string | null; dataJson?: string | null } | null | undefined): string {
+  let jid = String(row?.remoteJid || "").trim();
+  if (!jid.endsWith("@lid")) return jid;
+  try {
+    const dj = JSON.parse(String(row?.dataJson || "{}"));
+    const alt = String(dj?.key?.remoteJidAlt || "").trim();
+    if (alt.includes("@")) jid = alt;
+  } catch {}
+  return jid;
+}
+
 async function loadTicketWithContact(ticketId: number, companyId: number) {
   const rows = await pgQuery<any>(
     `
@@ -263,8 +322,9 @@ router.post("/:ticketId", authMiddleware, upload.any(), async (req, res) => {
   const companyId = tenantIdFromReq(req);
   if (!companyId) return res.status(401).json({ error: true, message: "missing tenantId" });
 
-  // Prefer legacy implementation if available (it uses the real wbot session currently connected)
-  if (tryRunLegacyMessageController("store", req, res)) return;
+  // IMPORTANT:
+  // Keep sending in the inline manager flow to avoid diverging sessions
+  // (legacy controller may use a different wbot map than the active inline socket).
 
   const ticketId = Number(req.params.ticketId);
   const files = Array.isArray((req as any)?.files) ? ((req as any).files as any[]) : [];
@@ -350,6 +410,31 @@ router.post("/:ticketId", authMiddleware, upload.any(), async (req, res) => {
   }
   if (!whatsappId) return res.status(400).json({ error: true, message: "ticket has no whatsappId" });
 
+  // Idempotency guard for accidental double submit (e.g., duplicated key events/network retry).
+  // If an equal outbound text was just persisted for this ticket in the last 3 seconds, reuse it.
+  if (!hasMedia) {
+    try {
+      const dupRows = await pgQuery<{ id: string }>(
+        `
+          SELECT id
+          FROM "Messages"
+          WHERE "ticketId" = $1
+            AND "companyId" = $2
+            AND "fromMe" = true
+            AND COALESCE(body, '') = $3
+            AND "createdAt" >= NOW() - INTERVAL '3 seconds'
+          ORDER BY "createdAt" DESC
+          LIMIT 1
+        `,
+        [ticketId, companyId, bodyText]
+      );
+      const existingId = String(dupRows?.[0]?.id || "").trim();
+      if (existingId) {
+        return res.status(200).json({ id: existingId, ids: [existingId], deduplicated: true });
+      }
+    } catch {}
+  }
+
   function sockReady(s: any): boolean {
     if (!s) return false;
     // Baileys uses WebSocket under sock.ws
@@ -388,6 +473,40 @@ router.post("/:ticketId", authMiddleware, upload.any(), async (req, res) => {
   // Send via inline session (auto-start/refresh if needed)
   let sock = await ensureSock();
   if (!sock) {
+    // Fallback: ticket can point to an outdated whatsappId. Try another active company session.
+    try {
+      const candidates = await pgQuery<{ id: number }>(
+        `
+          SELECT id
+          FROM "Whatsapps"
+          WHERE "companyId" = $1
+          ORDER BY
+            CASE WHEN status = 'CONNECTED' THEN 1 ELSE 0 END DESC,
+            CASE WHEN "isDefault" = true THEN 1 ELSE 0 END DESC,
+            "updatedAt" DESC,
+            id ASC
+        `,
+        [companyId]
+      );
+
+      for (const c of candidates || []) {
+        const candidateId = Number(c?.id || 0);
+        if (!candidateId || candidateId === whatsappId) continue;
+        whatsappId = candidateId;
+        const candidateSock = await ensureSock();
+        if (!candidateSock) continue;
+        sock = candidateSock;
+        try {
+          await pgQuery(
+            `UPDATE "Tickets" SET "whatsappId" = $1, "updatedAt" = NOW() WHERE id = $2 AND "companyId" = $3`,
+            [whatsappId, ticketId, companyId]
+          );
+        } catch {}
+        break;
+      }
+    } catch {}
+  }
+  if (!sock) {
     return res.status(409).json({
       error: true,
       message:
@@ -395,26 +514,39 @@ router.post("/:ticketId", authMiddleware, upload.any(), async (req, res) => {
     });
   }
 
-  // Prefer the ticket's last known remoteJid (more reliable than reformatting number).
-  // If the last JID is in LID mode, use remoteJidAlt (phone JID) when available.
-  let remoteJid = `${String(contact.number).replace(/\D/g, "")}@s.whatsapp.net`;
+  // Delivery strategy:
+  // - Use last real inbound JID whenever possible (this is the true WA route).
+  // - Keep canonical numbers only for lookup/fallback, never to overwrite a valid inbound JID.
+  let remoteJid = "";
+  const outboundCandidates = outboundNumberCandidates(contact.number);
+  const canonicalDigits = outboundCandidates[0] || normalizeOutboundNumber(contact.number);
+
   try {
-    const r = await pgQuery<{ remoteJid: string; dataJson: string | null }>(
-      `SELECT "remoteJid", "dataJson" FROM "Messages" WHERE "ticketId" = $1 AND "companyId" = $2 ORDER BY "createdAt" DESC LIMIT 1`,
+    const inboundTicket = await pgQuery<{ remoteJid: string; dataJson: string | null }>(
+      `SELECT "remoteJid", "dataJson" FROM "Messages" WHERE "ticketId" = $1 AND "companyId" = $2 AND "fromMe" = false ORDER BY "createdAt" DESC LIMIT 1`,
       [ticketId, companyId]
     );
-    const last = String(r?.[0]?.remoteJid || "").trim();
-    if (last) {
-      remoteJid = last;
-      if (last.endsWith("@lid")) {
-        try {
-          const dj = JSON.parse(String(r?.[0]?.dataJson || "{}"));
-          const alt = String(dj?.key?.remoteJidAlt || "").trim();
-          if (alt.includes("@")) remoteJid = alt;
-        } catch {}
-      }
-    }
+    const inboundJid = extractRemoteJid(inboundTicket?.[0]);
+    if (inboundJid.includes("@")) remoteJid = inboundJid;
   } catch {}
+
+  if (!remoteJid) {
+    try {
+      const inboundContact = await pgQuery<{ remoteJid: string; dataJson: string | null }>(
+        `SELECT "remoteJid", "dataJson" FROM "Messages" WHERE "companyId" = $1 AND "contactId" = $2 AND "fromMe" = false ORDER BY "createdAt" DESC LIMIT 1`,
+        [companyId, Number(contact.id)]
+      );
+      const inboundJid = extractRemoteJid(inboundContact?.[0]);
+      if (inboundJid.includes("@")) remoteJid = inboundJid;
+    } catch {}
+  }
+
+  if (!remoteJid) {
+    const fallbackDigits = outboundCandidates.find((d) => d.startsWith("55") && (d.length === 12 || d.length === 13))
+      || canonicalDigits
+      || String(contact.number || "").replace(/\D+/g, "");
+    if (fallbackDigits) remoteJid = `${fallbackDigits}@s.whatsapp.net`;
+  }
 
   const createdIds: string[] = [];
   let lastBodyForTicket = bodyText;
@@ -465,7 +597,7 @@ router.post("/:ticketId", authMiddleware, upload.any(), async (req, res) => {
     } catch (e: any) {
       const msg = String(e?.message || e?.toString?.() || "sendMessage failed");
       // Common transient error when the WS is in a bad state. Refresh session and retry once.
-      if (attempt < 1 && /connection closed|closed/i.test(msg)) {
+      if (attempt < 2 && /connection closed|closed|socket unavailable|timed out|not-authorized|stream errored|econnreset|broken pipe/i.test(msg)) {
         const refreshed = await ensureSock();
         if (refreshed) sock = refreshed;
         return await sendOne(opts, attempt + 1);
