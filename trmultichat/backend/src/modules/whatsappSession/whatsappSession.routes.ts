@@ -5,7 +5,14 @@ import jwt from "jsonwebtoken";
 import env from "../../config/env";
 import { getIO } from "../../libs/socket";
 import { getStoredQr } from "../../libs/baileysManager";
-import { getInlineSock, getInlineSnapshot, startOrRefreshInlineSession } from "../../libs/waInlineManager";
+import {
+  disconnectInlineSession,
+  generateInlinePairingCode,
+  getInlinePairingStatus,
+  getInlineSock,
+  getInlineSnapshot,
+  startOrRefreshInlineSession
+} from "../../libs/waInlineManager";
 import { pgQuery } from "../../utils/pgClient";
 
 const router = Router();
@@ -27,6 +34,72 @@ async function updateWhatsAppStatus(companyId: number, whatsappId: number, statu
   } catch {
     // do not crash session flow if DB is unavailable
   }
+}
+
+let pairingColumnsEnsured = false;
+async function ensurePairingColumns() {
+  if (pairingColumnsEnsured) return;
+  try {
+    await pgQuery(`ALTER TABLE "Whatsapps" ADD COLUMN IF NOT EXISTS "pairingCode" varchar(255)`, []);
+  } catch {}
+  try {
+    await pgQuery(`ALTER TABLE "Whatsapps" ADD COLUMN IF NOT EXISTS "pairingExpiresAt" timestamptz`, []);
+  } catch {}
+  pairingColumnsEnsured = true;
+}
+
+async function updateWhatsAppPairingInfo(
+  companyId: number,
+  whatsappId: number,
+  patch: { pairingCode?: string | null; pairingExpiresAt?: string | null; status?: string | null }
+) {
+  await ensurePairingColumns();
+  try {
+    await pgQuery(
+      `
+      UPDATE "Whatsapps"
+      SET
+        "pairingCode" = COALESCE($1, "pairingCode"),
+        "pairingExpiresAt" = COALESCE($2::timestamptz, "pairingExpiresAt"),
+        status = COALESCE($3, status),
+        "updatedAt" = NOW()
+      WHERE id = $4 AND "companyId" = $5
+      `,
+      [patch.pairingCode ?? null, patch.pairingExpiresAt ?? null, patch.status ?? null, whatsappId, companyId]
+    );
+  } catch {}
+}
+
+function normalizePairingPhoneNumber(raw: any): string {
+  const digits = String(raw || "").replace(/\D+/g, "");
+  if (!digits) return "";
+  const withCountry = digits.startsWith("55") ? digits : `55${digits}`;
+  if (!withCountry.startsWith("55")) return "";
+  if (withCountry.length >= 13) return `55${withCountry.slice(-11)}`;
+  if (withCountry.length === 12) return withCountry;
+  return "";
+}
+
+function formatPairingPhonePreview(normalized: string): string {
+  const d = String(normalized || "").replace(/\D+/g, "");
+  if (!d.startsWith("55") || (d.length !== 12 && d.length !== 13)) return d;
+  const local = d.slice(2);
+  const ddd = local.slice(0, 2);
+  const rest = local.slice(2);
+  if (rest.length === 9) {
+    return `+55 ${ddd} ${rest.slice(0, 5)}-${rest.slice(5)}`;
+  }
+  return `+55 ${ddd} ${rest.slice(0, 4)}-${rest.slice(4)}`;
+}
+
+function emitWhatsAppPairingEvent(companyId: number, event: string, payload: any) {
+  try {
+    const io = getIO();
+    io.emit(`company-${companyId}-whatsapp`, {
+      event,
+      ...payload,
+    });
+  } catch {}
 }
 
 function readRealSessions(): Record<string, any> {
@@ -322,6 +395,183 @@ router.get("/:id", (req, res) => {
     lastDisconnectMessage: sess.lastDisconnectMessage || null,
     restartAttempts: typeof (sess as any).restartAttempts === "number" ? (sess as any).restartAttempts : 0
   });
+});
+
+router.post("/:id/pairing-code", async (req, res) => {
+  const id = Number(req.params.id);
+  const tenantId = extractTenantIdFromAuth(req.headers.authorization as string);
+  if (!tenantId) return res.status(401).json({ error: true, message: "missing tenantId" });
+  if (!id) return res.status(400).json({ error: true, message: "invalid id" });
+
+  const phoneNumber = normalizePairingPhoneNumber(req.body?.phoneNumber);
+  if (
+    !phoneNumber ||
+    !phoneNumber.startsWith("55") ||
+    (phoneNumber.length !== 12 && phoneNumber.length !== 13)
+  ) {
+    return res.status(400).json({
+      error: true,
+      message: "invalid phoneNumber. Use DDI 55 + DDD + numero (com ou sem 9). Ex.: +55 82 98133-0112"
+    });
+  }
+
+  try {
+    const pair = await generateInlinePairingCode({
+      companyId: tenantId,
+      whatsappId: id,
+      phoneNumber,
+      forceRestart: true,
+      expiresInMs: 180_000
+    });
+
+    await updateWhatsAppPairingInfo(tenantId, id, {
+      pairingCode: pair.pairingCode,
+      pairingExpiresAt: pair.pairingExpiresAt,
+      status: "pairing"
+    });
+
+    emitWhatsAppPairingEvent(tenantId, "whatsapp:pairing", {
+      whatsappId: id,
+      status: "pairing",
+      pairingCode: pair.pairingCode,
+      pairingExpiresAt: pair.pairingExpiresAt,
+      phoneNumber: pair.pairingPhoneNumber
+    });
+
+    return res.json({
+      whatsappId: id,
+      status: "pairing",
+      pairingCode: pair.pairingCode,
+      pairingExpiresAt: pair.pairingExpiresAt,
+      phoneNumber: pair.pairingPhoneNumber,
+      phonePreview: formatPairingPhonePreview(pair.pairingPhoneNumber)
+    });
+  } catch (e: any) {
+    logWhatsappSessionError(req, e, { action: "post_pairing_code" });
+    const msg = String(e?.message || "failed to generate pairing code");
+    if (/already connected/i.test(msg)) {
+      return res.status(422).json({
+        error: true,
+        message: "session still connected. disconnect and try again",
+        details: msg
+      });
+    }
+    return res.status(422).json({ error: true, message: msg });
+  }
+});
+
+router.get("/:id/pairing-status", async (req, res) => {
+  const id = Number(req.params.id);
+  const tenantId = extractTenantIdFromAuth(req.headers.authorization as string);
+  if (!tenantId) return res.status(401).json({ error: true, message: "missing tenantId" });
+  if (!id) return res.status(400).json({ error: true, message: "invalid id" });
+
+  const snap = getInlineSnapshot(id) || getStoredQr(id) || {};
+  const status = String((snap as any)?.status || "DISCONNECTED");
+  const pairing = getInlinePairingStatus(id);
+
+  // fallback from DB (useful after backend restart)
+  let dbPairingCode: string | null = null;
+  let dbPairingExpiresAt: string | null = null;
+  try {
+    await ensurePairingColumns();
+    const rows = await pgQuery<{ pairingCode: string | null; pairingExpiresAt: string | null; status: string | null }>(
+      `SELECT "pairingCode" as "pairingCode", "pairingExpiresAt"::text as "pairingExpiresAt", status
+       FROM "Whatsapps" WHERE id = $1 AND "companyId" = $2 LIMIT 1`,
+      [id, tenantId]
+    );
+    dbPairingCode = rows?.[0]?.pairingCode || null;
+    dbPairingExpiresAt = rows?.[0]?.pairingExpiresAt || null;
+  } catch {}
+
+  const code = pairing.pairingCode || dbPairingCode;
+  const expiresAt = pairing.pairingExpiresAt || dbPairingExpiresAt;
+  const expMs = expiresAt ? Date.parse(expiresAt) : NaN;
+  const remainingSeconds = Number.isFinite(expMs) ? Math.max(0, Math.ceil((expMs - Date.now()) / 1000)) : 0;
+  const awaitingPairing =
+    String(status).toUpperCase() !== "CONNECTED" &&
+    Boolean(code) &&
+    remainingSeconds > 0;
+
+  if (!awaitingPairing && code && String(status).toUpperCase() === "PAIRING") {
+    try {
+      await ensurePairingColumns();
+      await pgQuery(
+        `UPDATE "Whatsapps"
+         SET "pairingCode" = NULL, "pairingExpiresAt" = NULL, "updatedAt" = NOW()
+         WHERE id = $1 AND "companyId" = $2`,
+        [id, tenantId]
+      );
+    } catch {}
+  }
+
+  return res.json({
+    whatsappId: id,
+    status,
+    awaitingPairing,
+    pairingCode: code || null,
+    pairingExpiresAt: expiresAt || null,
+    remainingSeconds,
+  });
+});
+
+router.delete("/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  const tenantId = extractTenantIdFromAuth(req.headers.authorization as string);
+  if (!tenantId) return res.status(401).json({ error: true, message: "missing tenantId" });
+  if (!id) return res.status(400).json({ error: true, message: "invalid id" });
+
+  try {
+    // Primary path: disconnect inline Baileys session and wipe auth to force fresh login.
+    await disconnectInlineSession({
+      companyId: tenantId,
+      whatsappId: id,
+      removeAuth: true
+    });
+
+    // Keep DB metadata coherent for UI after disconnect.
+    try {
+      await ensurePairingColumns();
+      await pgQuery(
+        `UPDATE "Whatsapps"
+         SET
+           status = 'DISCONNECTED',
+           "pairingCode" = NULL,
+           "pairingExpiresAt" = NULL,
+           "updatedAt" = NOW()
+         WHERE id = $1 AND "companyId" = $2`,
+        [id, tenantId]
+      );
+    } catch {
+      await updateWhatsAppStatus(tenantId, id, "DISCONNECTED");
+    }
+
+    const session = {
+      id,
+      status: "DISCONNECTED",
+      qrcode: "",
+      updatedAt: new Date().toISOString(),
+      retries: 0,
+      restartAttempts: 0
+    };
+    emitSessionUpdate(tenantId, session);
+    emitWhatsAppPairingEvent(tenantId, "whatsapp:disconnected", { whatsappId: id });
+    return res.status(200).json({ ok: true, id, status: "DISCONNECTED" });
+  } catch (e: any) {
+    logWhatsappSessionError(req, e, { action: "delete_disconnect_session" });
+
+    // Fallback: legacy controller remove flow.
+    try {
+      const handled = tryRunLegacyWhatsAppSessionController("remove", req, res);
+      if (handled) return;
+    } catch {}
+
+    return res.status(422).json({
+      error: true,
+      message: "could not disconnect session",
+      details: e?.message || "unknown error"
+    });
+  }
 });
 
 // Debug helper (admin only): last whatsappsession errors
