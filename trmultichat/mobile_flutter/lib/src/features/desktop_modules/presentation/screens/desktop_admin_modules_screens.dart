@@ -1058,6 +1058,37 @@ class _DesktopConnectionsScreenState
         text: (initial?['outOfHoursMessage'] ?? '').toString());
     final rating = TextEditingController(
         text: (initial?['ratingMessage'] ?? '').toString());
+    final queueIdsCtrl = TextEditingController(
+      text: ((initial?['queues'] as List?)
+                  ?.whereType<Map>()
+                  .map((q) => q['id'])
+                  .whereType<num>()
+                  .map((n) => n.toInt().toString())
+                  .join(',') ??
+              '')
+          .toString(),
+    );
+    final promptIdCtrl = TextEditingController(
+      text: (initial?['promptId'] ?? '').toString(),
+    );
+    final sendIdQueueCtrl = TextEditingController(
+      text: (initial?['sendIdQueue'] ?? '').toString(),
+    );
+    final timeSendQueueCtrl = TextEditingController(
+      text: (initial?['timeSendQueue'] ?? '').toString(),
+    );
+    final maxUseBotQueuesCtrl = TextEditingController(
+      text: (initial?['maxUseBotQueues'] ?? '').toString(),
+    );
+    final timeUseBotQueuesCtrl = TextEditingController(
+      text: (initial?['timeUseBotQueues'] ?? '').toString(),
+    );
+    final expiresTicketCtrl = TextEditingController(
+      text: (initial?['expiresTicket'] ?? '').toString(),
+    );
+    final expiresInactiveMsgCtrl = TextEditingController(
+      text: (initial?['expiresInactiveMessage'] ?? '').toString(),
+    );
     String provider = (initial?['provider'] ?? 'beta').toString();
     bool isDefault = initial?['isDefault'] == true;
     await showDialog<void>(
@@ -1113,6 +1144,79 @@ class _DesktopConnectionsScreenState
                       controller: rating,
                       decoration: const InputDecoration(
                           labelText: 'Mensagem avaliação')),
+                  const SizedBox(height: 12),
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Campos avançados (alinhados ao Web)',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: queueIdsCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Filas (IDs separados por vírgula)',
+                      hintText: 'Ex.: 1,2,5',
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: promptIdCtrl,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Prompt ID',
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: sendIdQueueCtrl,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Redirecionar para fila (sendIdQueue)',
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: timeSendQueueCtrl,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Redirecionar fila em X minutos (timeSendQueue)',
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: maxUseBotQueuesCtrl,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Enviar bot X vezes (maxUseBotQueues)',
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: timeUseBotQueuesCtrl,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Intervalo envio bot em minutos (timeUseBotQueues)',
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: expiresTicketCtrl,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Encerrar chats após X minutos (expiresTicket)',
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: expiresInactiveMsgCtrl,
+                    minLines: 2,
+                    maxLines: 4,
+                    decoration: const InputDecoration(
+                      labelText: 'Mensagem por inatividade (expiresInactiveMessage)',
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -1123,6 +1227,11 @@ class _DesktopConnectionsScreenState
                 child: const Text('Cancelar')),
             FilledButton(
               onPressed: () async {
+                final queueIds = queueIdsCtrl.text
+                    .split(',')
+                    .map((s) => int.tryParse(s.trim()))
+                    .whereType<int>()
+                    .toList();
                 final payload = <String, dynamic>{
                   'name': name.text.trim(),
                   'token': token.text.trim(),
@@ -1132,6 +1241,16 @@ class _DesktopConnectionsScreenState
                   'complationMessage': completion.text.trim(),
                   'outOfHoursMessage': out.text.trim(),
                   'ratingMessage': rating.text.trim(),
+                  'queueIds': queueIds,
+                  'promptId': int.tryParse(promptIdCtrl.text.trim()),
+                  'sendIdQueue': int.tryParse(sendIdQueueCtrl.text.trim()) ?? 0,
+                  'timeSendQueue': int.tryParse(timeSendQueueCtrl.text.trim()) ?? 0,
+                  'maxUseBotQueues':
+                      int.tryParse(maxUseBotQueuesCtrl.text.trim()) ?? 0,
+                  'timeUseBotQueues':
+                      int.tryParse(timeUseBotQueuesCtrl.text.trim()) ?? 0,
+                  'expiresTicket': int.tryParse(expiresTicketCtrl.text.trim()) ?? 0,
+                  'expiresInactiveMessage': expiresInactiveMsgCtrl.text.trim(),
                 };
                 if (id == null) {
                   await dio.post('/whatsapp', data: payload);
@@ -1154,6 +1273,14 @@ class _DesktopConnectionsScreenState
     completion.dispose();
     out.dispose();
     rating.dispose();
+    queueIdsCtrl.dispose();
+    promptIdCtrl.dispose();
+    sendIdQueueCtrl.dispose();
+    timeSendQueueCtrl.dispose();
+    maxUseBotQueuesCtrl.dispose();
+    timeUseBotQueuesCtrl.dispose();
+    expiresTicketCtrl.dispose();
+    expiresInactiveMsgCtrl.dispose();
   }
 
   @override
