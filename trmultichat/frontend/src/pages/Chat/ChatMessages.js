@@ -14,7 +14,6 @@ import SendIcon from "@material-ui/icons/Send";
 import { AuthContext } from "../../context/Auth/AuthContext";
 import { useDate } from "../../hooks/useDate";
 import api from "../../services/api";
-import { green } from "@material-ui/core/colors";
 
 const useStyles = makeStyles((theme) => ({
   mainContainer: {
@@ -153,9 +152,10 @@ export default function ChatMessages({
           <Input
             multiline
             value={contentMessage}
-            onKeyUp={(e) => {
-              if (e.key === "Enter" && contentMessage.trim() !== "") {
-                handleSendMessage(contentMessage);
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey && contentMessage.trim() !== "") {
+                e.preventDefault();
+                handleSendMessage(contentMessage.trim());
                 setContentMessage("");
               }
             }}

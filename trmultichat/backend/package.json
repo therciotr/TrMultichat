@@ -19,6 +19,7 @@
     "test:auth-flow": "npm run test:forgot && npm run test:reset",
     "test:mail": "npm run build && node dist/scripts/testMail.js",
     "fix:super": "npm run build && node dist/scripts/fixSuperUsers.js",
+    "ops:cleanup-duplicate-tickets": "node scripts/cleanupDuplicateTickets.js",
     "posttest": "NODE_ENV=test sequelize db:migrate:undo:all",
     "lint": "eslint src/**/*.ts",
     "admin:ensure": "node dist/scripts/ensureAdmin.js"

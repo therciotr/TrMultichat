@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -779,6 +780,19 @@ class DesktopConnectionsScreen extends ConsumerStatefulWidget {
 class _DesktopConnectionsScreenState
     extends _BaseCrudScreen<DesktopConnectionsScreen> {
   List<Map<String, dynamic>> rows = const [];
+  final Set<int> _sessionBusy = <int>{};
+
+  int? _asInt(dynamic value) {
+    if (value == null) return null;
+    if (value is num) return value.toInt();
+    return int.tryParse(value.toString().trim());
+  }
+
+  String _statusOf(Map<String, dynamic> row) {
+    return (row['status'] ?? 'DISCONNECTED').toString().trim().toUpperCase();
+  }
+
+  bool _isBusy(int whatsappId) => _sessionBusy.contains(whatsappId);
   @override
   void initState() {
     super.initState();
@@ -792,6 +806,239 @@ class _DesktopConnectionsScreenState
       rows =
           list.whereType<Map>().map((e) => e.cast<String, dynamic>()).toList();
     });
+  }
+
+  Future<void> _triggerSessionAction(
+    int whatsappId, {
+    bool forceRestart = false,
+    bool forceNewQr = false,
+  }) async {
+    if (whatsappId <= 0 || _isBusy(whatsappId)) return;
+    setState(() => _sessionBusy.add(whatsappId));
+    try {
+      final query = <String, dynamic>{};
+      if (forceRestart) query['forceRestart'] = 1;
+      if (forceNewQr) query['forceNewQr'] = 1;
+      final res = await dio.put(
+        '/whatsappsession/$whatsappId',
+        queryParameters: query.isEmpty ? null : query,
+      );
+      final data = res.data is Map
+          ? (res.data as Map).map((k, v) => MapEntry(k.toString(), v))
+          : <String, dynamic>{};
+      final status = (data['status'] ?? '').toString().trim().toUpperCase();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            status.isEmpty
+                ? 'Ação enviada para a conexão #$whatsappId.'
+                : 'Conexão #$whatsappId: status $status.',
+          ),
+        ),
+      );
+      await fetch();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Falha ao atualizar sessão: $e')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _sessionBusy.remove(whatsappId));
+      }
+    }
+  }
+
+  Future<void> _openPairingDialog(Map<String, dynamic> row) async {
+    final whatsappId = _asInt(row['id']) ?? 0;
+    if (whatsappId <= 0) return;
+
+    final phoneCtrl = TextEditingController();
+    String pairingCode = '';
+    String status = _statusOf(row);
+    DateTime? expiresAt;
+    int remainingSeconds = 0;
+    bool loading = false;
+    int regenerateCooldownSeconds = 0;
+    Timer? regenerateCooldownTimer;
+
+    void startRegenerateCooldown(StateSetter setLocal, {int seconds = 20}) {
+      regenerateCooldownTimer?.cancel();
+      setLocal(() => regenerateCooldownSeconds = seconds);
+      regenerateCooldownTimer =
+          Timer.periodic(const Duration(seconds: 1), (timer) {
+        if (!mounted) {
+          timer.cancel();
+          return;
+        }
+        setLocal(() {
+          if (regenerateCooldownSeconds <= 1) {
+            regenerateCooldownSeconds = 0;
+            timer.cancel();
+          } else {
+            regenerateCooldownSeconds -= 1;
+          }
+        });
+      });
+    }
+
+    Future<void> refreshPairingStatus(StateSetter setLocal) async {
+      setLocal(() => loading = true);
+      try {
+        final res = await dio.get('/whatsappsession/$whatsappId/pairing-status');
+        final data = res.data is Map
+            ? (res.data as Map).map((k, v) => MapEntry(k.toString(), v))
+            : <String, dynamic>{};
+        final rawExp = (data['pairingExpiresAt'] ?? '').toString().trim();
+        final exp = rawExp.isEmpty ? null : DateTime.tryParse(rawExp)?.toLocal();
+        final secs = _asInt(data['remainingSeconds']) ?? 0;
+        setLocal(() {
+          status = (data['status'] ?? status).toString().trim().toUpperCase();
+          pairingCode = (data['pairingCode'] ?? '').toString().trim();
+          expiresAt = exp;
+          remainingSeconds = secs;
+        });
+      } catch (_) {
+        // keep existing values on silent refresh failure
+      } finally {
+        setLocal(() => loading = false);
+      }
+    }
+
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: Text('Pairing Code • Conexão #$whatsappId'),
+          content: SizedBox(
+            width: 520,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: phoneCtrl,
+                  keyboardType: TextInputType.phone,
+                  decoration: const InputDecoration(
+                    labelText: 'Número (55 + DDD + número)',
+                    hintText: 'Ex.: 5511999999999',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    FilledButton.icon(
+                      onPressed: loading || regenerateCooldownSeconds > 0
+                          ? null
+                          : () async {
+                              final phone = phoneCtrl.text.trim();
+                              if (phone.isEmpty) return;
+                              setLocal(() => loading = true);
+                              try {
+                                final res = await dio.post(
+                                  '/whatsappsession/$whatsappId/pairing-code',
+                                  data: {'phoneNumber': phone},
+                                );
+                                final data = res.data is Map
+                                    ? (res.data as Map)
+                                        .map((k, v) => MapEntry(k.toString(), v))
+                                    : <String, dynamic>{};
+                                final rawExp =
+                                    (data['pairingExpiresAt'] ?? '').toString();
+                                setLocal(() {
+                                  status = (data['status'] ?? 'PAIRING')
+                                      .toString()
+                                      .trim()
+                                      .toUpperCase();
+                                  pairingCode = (data['pairingCode'] ?? '')
+                                      .toString()
+                                      .trim();
+                                  expiresAt = DateTime.tryParse(rawExp)?.toLocal();
+                                  remainingSeconds = 0;
+                                });
+                                startRegenerateCooldown(setLocal);
+                              } catch (e) {
+                                if (!mounted) return;
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                        'Falha ao gerar pairing code: $e'),
+                                  ),
+                                );
+                              } finally {
+                                setLocal(() => loading = false);
+                              }
+                            },
+                      icon: const Icon(Icons.password_rounded),
+                      label: Text(
+                        regenerateCooldownSeconds > 0
+                            ? 'Aguarde ${regenerateCooldownSeconds}s'
+                            : 'Gerar código',
+                      ),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: loading ? null : () => refreshPairingStatus(setLocal),
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('Atualizar status'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Text('Status: $status',
+                    style: const TextStyle(fontWeight: FontWeight.w700)),
+                const SizedBox(height: 6),
+                if (pairingCode.isEmpty)
+                  const Text('Sem código ativo no momento.')
+                else
+                  SelectableText(
+                    pairingCode,
+                    style: const TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1.5,
+                    ),
+                  ),
+                if (expiresAt != null) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    'Expira em: ${expiresAt!.day.toString().padLeft(2, '0')}/${expiresAt!.month.toString().padLeft(2, '0')} ${expiresAt!.hour.toString().padLeft(2, '0')}:${expiresAt!.minute.toString().padLeft(2, '0')}',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ],
+                if (remainingSeconds > 0) ...[
+                  const SizedBox(height: 2),
+                  Text('Tempo restante: ${remainingSeconds}s',
+                      style: const TextStyle(fontSize: 12)),
+                ],
+                const SizedBox(height: 6),
+                const Text(
+                  'Dica iPhone 8: abra "Inserir o código", aguarde 5-10s e confirme sem gerar outro código.',
+                  style: TextStyle(fontSize: 12),
+                ),
+                if (loading) ...[
+                  const SizedBox(height: 12),
+                  const LinearProgressIndicator(minHeight: 2),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Fechar'),
+            ),
+          ],
+        ),
+      ),
+    );
+    regenerateCooldownTimer?.cancel();
+    phoneCtrl.dispose();
+    await fetch();
   }
 
   Future<void> openForm([Map<String, dynamic>? initial]) async {
@@ -930,7 +1177,47 @@ class _DesktopConnectionsScreenState
                         const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
                     title: Text((r['name'] ?? '').toString(),
                         style: const TextStyle(fontWeight: FontWeight.w800)),
-                    subtitle: Text('Status: ${r['status'] ?? 'DISCONNECTED'}'),
+                    isThreeLine: true,
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text('Status: ${r['status'] ?? 'DISCONNECTED'}'),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            OutlinedButton.icon(
+                              onPressed: _isBusy(id)
+                                  ? null
+                                  : () => _triggerSessionAction(
+                                        id,
+                                        forceRestart: true,
+                                      ),
+                              icon: const Icon(Icons.sync, size: 16),
+                              label: const Text('Reconectar'),
+                            ),
+                            OutlinedButton.icon(
+                              onPressed: _isBusy(id)
+                                  ? null
+                                  : () => _triggerSessionAction(
+                                        id,
+                                        forceNewQr: true,
+                                      ),
+                              icon: const Icon(Icons.qr_code, size: 16),
+                              label: const Text('Novo QR'),
+                            ),
+                            FilledButton.tonalIcon(
+                              onPressed:
+                                  _isBusy(id) ? null : () => _openPairingDialog(r),
+                              icon: const Icon(Icons.password_rounded, size: 16),
+                              label: const Text('Pairing Code'),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                     trailing: _CrudActionButtons(
                       onEdit: () => openForm(r),
                       onDelete: id <= 0

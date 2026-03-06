@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import QRCode from "qrcode.react";
 import toastError from "../../errors/toastError";
 
 import {
+  Button,
   Box,
   Chip,
   Dialog,
@@ -67,6 +68,12 @@ const useStyles = makeStyles((theme) => {
       border: `1px dashed ${theme.palette.divider}`,
       background: isDark ? "rgba(51, 65, 85, 0.35)" : "rgba(15, 23, 42, 0.04)",
     },
+    pairingActions: {
+      marginTop: theme.spacing(1),
+      display: "flex",
+      flexWrap: "wrap",
+      gap: 8,
+    },
     pairingCode: {
       fontSize: 28,
       fontWeight: 900,
@@ -104,7 +111,10 @@ const QrcodeModal = ({ open, onClose, whatsAppId }) => {
   const [pairingCode, setPairingCode] = useState("");
   const [pairingExpiresAt, setPairingExpiresAt] = useState("");
   const [pairingPhonePreview, setPairingPhonePreview] = useState("");
+  const [pairingRemainingSeconds, setPairingRemainingSeconds] = useState(0);
+  const [pairingRegenerateCooldownUntil, setPairingRegenerateCooldownUntil] = useState(0);
   const [pairingLoading, setPairingLoading] = useState(false);
+  const [copiedTarget, setCopiedTarget] = useState("");
 
   const extractQr = (payload) => {
     if (!payload) return "";
@@ -242,6 +252,7 @@ const QrcodeModal = ({ open, onClose, whatsAppId }) => {
       setPairingExpiresAt(String(data?.pairingExpiresAt || ""));
       setPairingPhonePreview(String(data?.phonePreview || ""));
       setQrCode("");
+      setPairingRegenerateCooldownUntil(Date.now() + 20_000);
     } catch (err) {
       toastError(err);
     } finally {
@@ -251,6 +262,76 @@ const QrcodeModal = ({ open, onClose, whatsAppId }) => {
 
   // reset state on close/open changes
   useEffect(() => {
+    if (!pairingExpiresAt) {
+      setPairingRemainingSeconds(0);
+      return;
+    }
+    const compute = () => {
+      const expMs = Date.parse(String(pairingExpiresAt));
+      if (!Number.isFinite(expMs)) {
+        setPairingRemainingSeconds(0);
+        return;
+      }
+      setPairingRemainingSeconds(Math.max(0, Math.ceil((expMs - Date.now()) / 1000)));
+    };
+    compute();
+    const t = setInterval(compute, 1000);
+    return () => clearInterval(t);
+  }, [pairingExpiresAt]);
+
+  const phoneLocalDigits = useMemo(() => {
+    const source = String(pairingPhonePreview || pairingPhoneNumber || "").replace(/\D+/g, "");
+    if (!source) return "";
+    const withCountry = source.startsWith("55") ? source : `55${source}`;
+    return withCountry.slice(2);
+  }, [pairingPhonePreview, pairingPhoneNumber]);
+
+  const phoneE164Digits = useMemo(() => {
+    const source = String(pairingPhonePreview || pairingPhoneNumber || "").replace(/\D+/g, "");
+    if (!source) return "";
+    return source.startsWith("55") ? source : `55${source}`;
+  }, [pairingPhonePreview, pairingPhoneNumber]);
+
+  const phoneDigitsForWeb = useMemo(() => {
+    const local = String(phoneLocalDigits || "").replace(/\D+/g, "");
+    if (local.length === 11) return `${local.slice(0, 2)} ${local.slice(2, 7)}-${local.slice(7)}`;
+    if (local.length === 10) return `${local.slice(0, 2)} ${local.slice(2, 6)}-${local.slice(6)}`;
+    return local;
+  }, [phoneLocalDigits]);
+
+  const pairingRegenerateCooldownSeconds = useMemo(() => {
+    const ms = Number(pairingRegenerateCooldownUntil || 0) - Date.now();
+    return Math.max(0, Math.ceil(ms / 1000));
+  }, [pairingRegenerateCooldownUntil, pairingRemainingSeconds]);
+
+  const copyText = async (value, target) => {
+    const text = String(value || "").trim();
+    if (!text) return;
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const input = document.createElement("textarea");
+        input.value = text;
+        document.body.appendChild(input);
+        input.select();
+        document.execCommand("copy");
+        document.body.removeChild(input);
+      }
+      setCopiedTarget(target);
+      setTimeout(() => {
+        setCopiedTarget((prev) => (prev === target ? "" : prev));
+      }, 1500);
+    } catch (err) {
+      toastError(err);
+    }
+  };
+
+  const isPairingMode =
+    String(status || "").toUpperCase() === "PAIRING" ||
+    (Boolean(pairingCode) && pairingRemainingSeconds > 0);
+
+  useEffect(() => {
     if (!open) {
       setQrCode("");
       setStatus("");
@@ -258,7 +339,9 @@ const QrcodeModal = ({ open, onClose, whatsAppId }) => {
       setPairingCode("");
       setPairingExpiresAt("");
       setPairingPhonePreview("");
+      setPairingRegenerateCooldownUntil(0);
       setPairingLoading(false);
+      setCopiedTarget("");
     }
   }, [open]);
 
@@ -298,12 +381,20 @@ const QrcodeModal = ({ open, onClose, whatsAppId }) => {
               onChange={(e) => setPairingPhoneNumber(e.target.value)}
               helperText="Aceita +55 82 98133-0112, 5582981330112 ou 82981330112"
             />
-            <TrButton onClick={handleGeneratePairingCode} disabled={pairingLoading || !pairingPhoneNumber}>
-              {pairingLoading ? "Gerando..." : "Gerar código"}
+            <TrButton
+              onClick={handleGeneratePairingCode}
+              disabled={pairingLoading || !pairingPhoneNumber || pairingRegenerateCooldownSeconds > 0}
+            >
+              {pairingLoading
+                ? "Gerando..."
+                : pairingRegenerateCooldownSeconds > 0
+                  ? `Aguarde ${pairingRegenerateCooldownSeconds}s`
+                  : "Gerar código"}
             </TrButton>
           </Box>
-          {pairingCode ? (
-            <Box className={classes.pairingCodeBox}>
+          <Box className={classes.pairingCodeBox}>
+            {pairingCode ? (
+              <>
               <Typography variant="caption" color="textSecondary">
                 Código atual
               </Typography>
@@ -313,17 +404,68 @@ const QrcodeModal = ({ open, onClose, whatsAppId }) => {
                   Expira em: {new Date(pairingExpiresAt).toLocaleString()}
                 </Typography>
               ) : null}
+              {pairingRemainingSeconds > 0 ? (
+                <Typography variant="caption" color="textSecondary" display="block">
+                  Tempo restante: {Math.floor(pairingRemainingSeconds / 60)}m {pairingRemainingSeconds % 60}s
+                </Typography>
+              ) : null}
               {pairingPhonePreview ? (
                 <Typography variant="caption" color="textSecondary" display="block">
                   Número para confirmar no WhatsApp: {pairingPhonePreview}
                 </Typography>
               ) : null}
+              {phoneDigitsForWeb ? (
+                <Typography variant="caption" color="textSecondary" display="block">
+                  Se o país no WhatsApp já estiver em Brasil (+55), digite assim: {phoneDigitsForWeb}
+                </Typography>
+              ) : null}
+              {phoneE164Digits ? (
+                <Typography variant="caption" color="textSecondary" display="block">
+                  Se não houver seletor de país na tela do iPhone, digite o número completo: {phoneE164Digits}
+                </Typography>
+              ) : null}
+              <Typography variant="caption" color="textSecondary" display="block">
+                No iPhone, confirme que o país está em Brasil (+55) antes de inserir o número.
+              </Typography>
+              <Typography variant="caption" color="textSecondary" display="block" style={{ marginTop: 6 }}>
+                Passos: WhatsApp no celular &gt; Dispositivos conectados &gt; Conectar com número &gt; inserir o código acima.
+              </Typography>
+              <Typography variant="caption" color="textSecondary" display="block" style={{ marginTop: 4 }}>
+                Dica para iPhone 8: depois de abrir "Inserir o código", aguarde 5-10s e confirme sem gerar outro código.
+              </Typography>
+              </>
+            ) : (
+              <Typography variant="body2" className={classes.helpText}>
+                Informe o número do aparelho e clique em Gerar código.
+              </Typography>
+            )}
+            <Box className={classes.pairingActions}>
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => copyText(pairingCode, "code")}
+                disabled={!pairingCode}
+              >
+                {copiedTarget === "code" ? "Código copiado" : "Copiar código"}
+              </Button>
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => copyText(phoneLocalDigits, "phone")}
+                disabled={!phoneLocalDigits}
+              >
+                {copiedTarget === "phone" ? "Número copiado" : "Copiar número (sem +55)"}
+              </Button>
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => copyText(phoneE164Digits, "phoneE164")}
+                disabled={!phoneE164Digits}
+              >
+                {copiedTarget === "phoneE164" ? "Número completo copiado" : "Copiar número completo (+55)"}
+              </Button>
             </Box>
-          ) : (
-            <Typography variant="body2" className={classes.helpText}>
-              Informe o número do aparelho para gerar o código de pareamento.
-            </Typography>
-          )}
+          </Box>
         </Box>
 
         <Box className={classes.section}>
@@ -338,6 +480,8 @@ const QrcodeModal = ({ open, onClose, whatsAppId }) => {
             <Typography variant="body2" className={classes.helpText}>
               {String(status || "").toUpperCase() === "CONNECTED"
                 ? "Conexão já está ativa."
+                : isPairingMode
+                  ? "Pareamento por código ativo. O QR pode não aparecer enquanto você confirma o código no WhatsApp."
                 : timedOut
                   ? "Não foi possível gerar o QR Code. Tente novamente."
                   : "Gerando QR Code..."}

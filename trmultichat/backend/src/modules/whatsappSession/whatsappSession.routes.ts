@@ -421,7 +421,7 @@ router.post("/:id/pairing-code", async (req, res) => {
       whatsappId: id,
       phoneNumber,
       forceRestart: true,
-      expiresInMs: 180_000
+      expiresInMs: 300_000
     });
 
     await updateWhatsAppPairingInfo(tenantId, id, {

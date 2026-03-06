@@ -1,5 +1,17 @@
 # Backend – TrMultichat
 
+## Entrega WhatsApp (anti-regressao)
+
+Para evitar regressao de entrega outbound e duplicidade de tickets por variacao de numero/JID, siga:
+
+- guia tecnico: `docs/MESSAGE_DELIVERY_GUARDRAILS.md`
+- limpeza controlada de legado:
+
+```bash
+cd trmultichat/backend
+npm run ops:cleanup-duplicate-tickets
+```
+
 ## Ambiente local (Postgres)
 
 ### 1. Configurar `.env` de desenvolvimento

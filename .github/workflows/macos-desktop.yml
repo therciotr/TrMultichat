@@ -28,6 +28,21 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Resolve app metadata
+        id: metadata
+        run: |
+          APP_VERSION=$(awk -F': ' '/^version:/{print $2; exit}' pubspec.yaml)
+          if [ -z "$APP_VERSION" ]; then
+            echo "Could not resolve version from pubspec.yaml"
+            exit 1
+          fi
+          APP_VERSION=${APP_VERSION//+/-}
+          ZIP_NAME="trmultichat_mobile_macos_${APP_VERSION}.zip"
+          ARTIFACT_NAME="desktop-macos-${APP_VERSION}-run-${GITHUB_RUN_NUMBER}"
+          echo "app_version=$APP_VERSION" >> "$GITHUB_OUTPUT"
+          echo "zip_name=$ZIP_NAME" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=$ARTIFACT_NAME" >> "$GITHUB_OUTPUT"
+
       - name: Build macOS release
         run: flutter build macos --release
 
@@ -43,11 +58,11 @@ jobs:
           APP_DIR=$(dirname "$APP_PATH")
           APP_NAME=$(basename "$APP_PATH")
           cd "$APP_DIR"
-          ditto -c -k --sequesterRsrc --keepParent "$APP_NAME" "$APP_NAME.zip"
+          ditto -c -k --sequesterRsrc --keepParent "$APP_NAME" "${{ steps.metadata.outputs.zip_name }}"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: macos-desktop-app
-          path: trmultichat/mobile_flutter/${{ steps.resolve_app.outputs.app_path }}.zip
+          name: ${{ steps.metadata.outputs.artifact_name }}
+          path: trmultichat/mobile_flutter/build/macos/Build/Products/Release/${{ steps.metadata.outputs.zip_name }}
           if-no-files-found: error

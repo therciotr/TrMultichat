@@ -207,7 +207,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                     children: [
                       DropdownButtonFormField<int?>(
                         isExpanded: true,
-                        initialValue: selectedUserId,
+                        value: selectedUserId,
                         decoration: const InputDecoration(
                           labelText: 'Selecione um usuário',
                           border: OutlineInputBorder(),
@@ -230,7 +230,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       const SizedBox(height: 12),
                       DropdownButtonFormField<int?>(
                         isExpanded: true,
-                        initialValue: selectedQueueId,
+                        value: selectedQueueId,
                         decoration: const InputDecoration(
                           labelText: 'Selecione uma fila',
                           border: OutlineInputBorder(),
@@ -249,7 +249,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                       const SizedBox(height: 12),
                       DropdownButtonFormField<int?>(
                         isExpanded: true,
-                        initialValue: selectedWhatsappId,
+                        value: selectedWhatsappId,
                         decoration: const InputDecoration(
                           labelText: 'Selecione uma conexão',
                           border: OutlineInputBorder(),
@@ -907,40 +907,55 @@ class _Composer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
+        color: cs.surface,
+        boxShadow: [
+          BoxShadow(
+            color: cs.shadow.withValues(alpha: 0.05),
+            blurRadius: 14,
+            offset: const Offset(0, -3),
+          ),
+        ],
         border: Border(
-            top: BorderSide(
-                color: Theme.of(context)
-                    .colorScheme
-                    .outlineVariant
-                    .withOpacity(0.5))),
+            top: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.5))),
       ),
       child: Row(
         children: [
-          IconButton(
-            onPressed: onAttach,
-            icon: const Icon(Icons.attach_file),
-            tooltip: 'Anexar',
+          Container(
+            decoration: BoxDecoration(
+              color: cs.surfaceContainerHighest.withValues(alpha: 0.55),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: IconButton(
+              onPressed: onAttach,
+              icon: const Icon(Icons.attach_file),
+              tooltip: 'Anexar',
+            ),
           ),
-          IconButton(
-            onPressed: micEnabled ? onToggleRecord : null,
-            icon:
-                Icon(isRecording ? Icons.stop_circle_outlined : Icons.mic_none),
-            tooltip: isRecording ? 'Parar e enviar' : 'Gravar áudio',
+          const SizedBox(width: 6),
+          Container(
+            decoration: BoxDecoration(
+              color: cs.surfaceContainerHighest.withValues(alpha: 0.55),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: IconButton(
+              onPressed: micEnabled ? onToggleRecord : null,
+              icon: Icon(
+                  isRecording ? Icons.stop_circle_outlined : Icons.mic_none),
+              tooltip: isRecording ? 'Parar e enviar' : 'Gravar áudio',
+            ),
           ),
+          const SizedBox(width: 6),
           Expanded(
             child: isRecording
                 ? Container(
                     padding: const EdgeInsets.symmetric(
                         horizontal: 14, vertical: 12),
                     decoration: BoxDecoration(
-                      color: Theme.of(context)
-                          .colorScheme
-                          .surfaceContainerHighest
-                          .withOpacity(0.55),
+                      color: cs.surfaceContainerHighest.withValues(alpha: 0.55),
                       borderRadius: BorderRadius.circular(22),
                     ),
                     child: Row(
@@ -954,7 +969,7 @@ class _Composer extends StatelessWidget {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                                color: Theme.of(context).colorScheme.onSurface,
+                                color: cs.onSurface,
                                 fontWeight: FontWeight.w700),
                           ),
                         ),
@@ -976,10 +991,8 @@ class _Composer extends StatelessWidget {
                     decoration: InputDecoration(
                       hintText: 'Mensagem',
                       filled: true,
-                      fillColor: Theme.of(context)
-                          .colorScheme
-                          .surfaceContainerHighest
-                          .withOpacity(0.55),
+                      fillColor:
+                          cs.surfaceContainerHighest.withValues(alpha: 0.55),
                       border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(22),
                           borderSide: BorderSide.none),
@@ -993,8 +1006,19 @@ class _Composer extends StatelessWidget {
             width: 46,
             height: 46,
             decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.primary,
+              gradient: LinearGradient(
+                colors: [cs.primary, cs.tertiary],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
               borderRadius: BorderRadius.circular(18),
+              boxShadow: [
+                BoxShadow(
+                  color: cs.primary.withValues(alpha: 0.35),
+                  blurRadius: 12,
+                  offset: const Offset(0, 5),
+                ),
+              ],
             ),
             child: IconButton(
               onPressed: onSend,
@@ -1030,10 +1054,11 @@ class _Bubble extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final cs = Theme.of(context).colorScheme;
     final bg = isMe
-        ? Theme.of(context).colorScheme.primary
-        : Theme.of(context).colorScheme.surfaceContainerHighest;
-    final fg = isMe ? Colors.white : Theme.of(context).colorScheme.onSurface;
+        ? cs.primary.withValues(alpha: 0.94)
+        : cs.surfaceContainerHighest.withValues(alpha: 0.72);
+    final fg = isMe ? Colors.white : cs.onSurface;
     final mt = (mediaType ?? '').toLowerCase();
     final rawMediaUrl = mediaUrl?.trim();
     final urlLower = (rawMediaUrl ?? '').toLowerCase();
@@ -1151,6 +1176,18 @@ class _Bubble extends ConsumerWidget {
             BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.78),
         decoration: BoxDecoration(
           color: bg,
+          border: Border.all(
+            color: isMe
+                ? Colors.white.withValues(alpha: 0.2)
+                : cs.outlineVariant.withValues(alpha: 0.45),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: cs.shadow.withValues(alpha: 0.08),
+              blurRadius: 14,
+              offset: const Offset(0, 6),
+            ),
+          ],
           borderRadius: BorderRadius.only(
             topLeft: const Radius.circular(14),
             topRight: const Radius.circular(14),
@@ -1173,7 +1210,7 @@ class _Bubble extends ConsumerWidget {
               children: [
                 if (pending)
                   Icon(Icons.access_time,
-                      size: 14, color: fg.withOpacity(0.85)),
+                      size: 14, color: fg.withValues(alpha: 0.85)),
                 if (error != null) ...[
                   Icon(Icons.error_outline,
                       size: 14, color: Colors.red.shade200),
@@ -1216,13 +1253,13 @@ class _MediaThumb extends ConsumerWidget {
         width: double.infinity,
         decoration: BoxDecoration(
           color: (isMe ? Colors.white : Theme.of(context).colorScheme.surface)
-              .withOpacity(0.10),
+              .withValues(alpha: 0.10),
           borderRadius: r,
         ),
         child: Center(
           child: Icon(
               isVideo ? Icons.play_circle_outline : Icons.image_outlined,
-              color: fg.withOpacity(0.85),
+              color: fg.withValues(alpha: 0.85),
               size: 48),
         ),
       );
@@ -1309,10 +1346,10 @@ class _MediaThumb extends ConsumerWidget {
                 fit: StackFit.expand,
                 children: [
                   w,
-                  Container(color: Colors.black.withOpacity(0.10)),
+                  Container(color: Colors.black.withValues(alpha: 0.10)),
                   Center(
                     child: Icon(Icons.play_circle_fill,
-                        color: Colors.white.withOpacity(0.92), size: 54),
+                        color: Colors.white.withValues(alpha: 0.92), size: 54),
                   ),
                 ],
               ),

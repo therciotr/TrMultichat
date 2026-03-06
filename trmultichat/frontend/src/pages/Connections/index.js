@@ -23,6 +23,7 @@ import {
 	SignalCellular4Bar,
 	CropFree,
 	DeleteOutline,
+	VpnKey,
 } from "@material-ui/icons";
 
 import MainContainer from "../../components/MainContainer";
@@ -74,7 +75,7 @@ const useStyles = makeStyles((theme) => {
 	},
 	card: {
 		padding: theme.spacing(2),
-		borderRadius: 14,
+		borderRadius: 16,
 		border,
 		background: isDark
 			? "linear-gradient(180deg, rgba(11, 76, 70, 0.10), rgba(15,23,42,0.92) 42%)"
@@ -84,6 +85,17 @@ const useStyles = makeStyles((theme) => {
 		flexDirection: "column",
 		gap: theme.spacing(1.25),
 		minWidth: 0,
+		boxShadow: isDark
+			? "0 10px 24px rgba(0,0,0,0.28)"
+			: "0 10px 24px rgba(17, 24, 39, 0.08)",
+		transition: "transform .18s ease, box-shadow .18s ease, border-color .18s ease",
+		"&:hover": {
+			transform: "translateY(-2px)",
+			boxShadow: isDark
+				? "0 16px 30px rgba(0,0,0,0.35)"
+				: "0 16px 30px rgba(15, 23, 42, 0.14)",
+			borderColor: isDark ? "rgba(125, 211, 252, .35)" : "rgba(15, 118, 110, .35)",
+		},
 	},
 	cardHeader: {
 		display: "flex",
@@ -107,6 +119,27 @@ const useStyles = makeStyles((theme) => {
 		alignItems: "center",
 		flexWrap: "wrap",
 		gap: theme.spacing(1),
+		paddingTop: theme.spacing(1),
+		borderTop: `1px solid ${theme.palette.divider}`,
+	},
+	actionButton: {
+		height: 30,
+		paddingInline: 10,
+		fontWeight: 800,
+		borderRadius: 999,
+		fontSize: 12,
+	},
+	metaLabel: {
+		fontSize: 11,
+		fontWeight: 800,
+		letterSpacing: ".02em",
+		textTransform: "uppercase",
+		color: theme.palette.text.secondary,
+	},
+	connectionId: {
+		fontWeight: 700,
+		color: theme.palette.text.secondary,
+		fontSize: 12,
 	},
 	emptyState: {
 		padding: theme.spacing(4),
@@ -249,19 +282,23 @@ const Connections = () => {
 	};
 
 	const renderActionButtons = whatsApp => {
+		const normalizedStatus = String(whatsApp?.status || "").toUpperCase();
+		const showPairingButton =
+			normalizedStatus !== "OPENING";
+
 		return (
 			<>
 				{whatsApp.status === "qrcode" && (
-					<TrButton size="small" startIcon={<QrcodeIcon />} onClick={() => handleOpenQrModal(whatsApp)}>
+					<TrButton className={classes.actionButton} size="small" startIcon={<QrcodeIcon />} onClick={() => handleOpenQrModal(whatsApp)}>
 						{i18n.t("connections.buttons.qrcode")}
 					</TrButton>
 				)}
 				{whatsApp.status === "DISCONNECTED" && (
 					<>
-						<TrButton size="small" startIcon={<RefreshIcon />} onClick={() => handleStartWhatsAppSession(whatsApp.id)}>
+						<TrButton className={classes.actionButton} size="small" startIcon={<RefreshIcon />} onClick={() => handleStartWhatsAppSession(whatsApp.id)}>
 							{i18n.t("connections.buttons.tryAgain")}
 						</TrButton>{" "}
-						<TrButton size="small" startIcon={<QrcodeIcon />} onClick={() => handleRequestNewQrCode(whatsApp.id)}>
+						<TrButton className={classes.actionButton} size="small" startIcon={<QrcodeIcon />} onClick={() => handleRequestNewQrCode(whatsApp.id)}>
 							{i18n.t("connections.buttons.newQr")}
 						</TrButton>
 					</>
@@ -269,13 +306,23 @@ const Connections = () => {
 				{(whatsApp.status === "CONNECTED" ||
 					whatsApp.status === "PAIRING" ||
 					whatsApp.status === "TIMEOUT") && (
-					<TrButton size="small" onClick={() => { handleOpenConfirmationModal("disconnect", whatsApp.id); }}>
+					<TrButton className={classes.actionButton} size="small" onClick={() => { handleOpenConfirmationModal("disconnect", whatsApp.id); }}>
 						{i18n.t("connections.buttons.disconnect")}
 					</TrButton>
 				)}
 				{whatsApp.status === "OPENING" && (
-					<TrButton size="small" disabled>
+					<TrButton className={classes.actionButton} size="small" disabled>
 						{i18n.t("connections.buttons.connecting")}
+					</TrButton>
+				)}
+				{showPairingButton && (
+					<TrButton
+						className={classes.actionButton}
+						size="small"
+						startIcon={<VpnKey />}
+						onClick={() => handleOpenQrModal(whatsApp)}
+					>
+						Pairing Code
 					</TrButton>
 				)}
 			</>
@@ -469,13 +516,16 @@ const Connections = () => {
 										</Box>
 									</div>
 
-									<Typography variant="caption" color="textSecondary" style={{ fontWeight: 800 }}>
+									<Typography className={classes.metaLabel}>
 										Última atualização
 									</Typography>
 									<Typography variant="body2">
 										{whatsApp.updatedAt
 											? format(parseISO(whatsApp.updatedAt), "dd/MM/yy HH:mm")
 											: "-"}
+									</Typography>
+									<Typography className={classes.connectionId}>
+										ID da conexão: #{whatsApp.id}
 									</Typography>
 
 									<Can

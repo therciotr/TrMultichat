@@ -26,6 +26,7 @@ const REAL_AUTH_DIR = path.join(PUBLIC_DIR, "baileys");
 const inlineSessions = new Map<number, any>();
 const inlineRestartAttempts = new Map<number, number>();
 const inlinePairingKeepAliveAttempts = new Map<number, number>();
+const inlinePairingRegenAt = new Map<number, number>();
 const startLocks = new Map<number, Promise<void>>();
 const inlineConnectionState = new Map<number, string>();
 
@@ -171,18 +172,16 @@ async function safeStopSession(opts: {
 
 async function waitForInlineSock(whatsappId: number, timeoutMs = 10_000) {
   const started = Date.now();
-  let lastSock: any = null;
   while (Date.now() - started < timeoutMs) {
     const sock = getInlineSock(whatsappId);
     if (sock) {
-      lastSock = sock;
       const wsState = Number((sock as any)?.ws?.readyState);
       // Prefer OPEN state (1). If state is unavailable, still accept.
       if (!Number.isFinite(wsState) || wsState === 1) return sock;
     }
     await sleep(120);
   }
-  return lastSock;
+  return getInlineSock(whatsappId) || null;
 }
 
 async function waitForConnectionState(
@@ -217,6 +216,7 @@ export async function disconnectInlineSession(opts: {
   });
   inlineRestartAttempts.delete(whatsappId);
   inlinePairingKeepAliveAttempts.delete(whatsappId);
+  inlinePairingRegenAt.delete(whatsappId);
 
   saveSessionSnapshot(companyId, whatsappId, {
     status: "DISCONNECTED",
@@ -247,27 +247,9 @@ function normalizePairingPhoneNumber(raw: any): string {
 function pairingPhoneCandidates(raw: string): string[] {
   const normalized = normalizePairingPhoneNumber(raw);
   if (!normalized) return [];
-  const seen = new Set<string>();
-  const out: string[] = [];
-  const push = (v: string) => {
-    const d = String(v || "").replace(/\D+/g, "");
-    if (!d || seen.has(d)) return;
-    seen.add(d);
-    out.push(d);
-  };
-
-  // Always try exactly what the operator informed first.
-  push(normalized);
-
-  // BR fallback: if number came with 9th digit, also try without it.
-  if (normalized.length === 13 && normalized.startsWith("55") && normalized[4] === "9") {
-    push(`${normalized.slice(0, 4)}${normalized.slice(5)}`);
-  }
-  // BR fallback: if number came without 9th digit, also try with it.
-  if (normalized.length === 12 && normalized.startsWith("55")) {
-    push(`${normalized.slice(0, 4)}9${normalized.slice(4)}`);
-  }
-  return out;
+  // Keep pairing deterministic: always use exactly the normalized number.
+  // Alternating BR 9th-digit variants on retries can poison user flow in iOS.
+  return [normalized];
 }
 
 export function getInlinePairingStatus(whatsappId: number): {
@@ -441,7 +423,6 @@ export async function startOrRefreshInlineSession(opts: { companyId: number; wha
   const useMultiFileAuthState = baileysMod?.useMultiFileAuthState;
   const DisconnectReason = baileysMod?.DisconnectReason;
   const fetchLatestBaileysVersion = baileysMod?.fetchLatestBaileysVersion;
-  const Browsers = baileysMod?.Browsers;
 
   if (typeof makeWASocket !== "function" || typeof useMultiFileAuthState !== "function") {
     throw new Error("Baileys module exports missing (makeWASocket/useMultiFileAuthState)");
@@ -487,7 +468,8 @@ export async function startOrRefreshInlineSession(opts: { companyId: number; wha
     logger,
     msgRetryCounterCache,
     ...(waVersion ? { version: waVersion } : {}),
-    ...(Browsers?.macOS ? { browser: Browsers.macOS("Desktop") } : {}),
+    // Keep browser identity on Baileys default to maximize compatibility
+    // with phone-number pairing on iOS/WhatsApp Business variants.
     connectTimeoutMs: 60_000,
   });
   inlineSessions.set(whatsappId, sock);
@@ -544,6 +526,29 @@ export async function startOrRefreshInlineSession(opts: { companyId: number; wha
     }
 
     if (connection === "open") {
+      const prev = readRealSessions()[String(whatsappId)] || ({} as any);
+      const pairingActive = isPairingStillActive(prev);
+      const registered = Boolean((sock as any)?.authState?.creds?.registered);
+      const meId = String((sock as any)?.authState?.creds?.me?.id || (sock as any)?.user?.id || "").trim();
+      const isAuthenticated = Boolean(registered && meId.includes("@"));
+
+      // During pairing, transport can open before final account authentication.
+      // Do not mark CONNECTED or clear pairing data until session is truly authenticated.
+      if (pairingActive && !isAuthenticated) {
+        saveSessionSnapshot(companyId, whatsappId, {
+          status: "pairing",
+          qrcode: "",
+          pairingCode: prev?.pairingCode || null,
+          pairingExpiresAt: prev?.pairingExpiresAt || null,
+          pairingPhoneNumber: prev?.pairingPhoneNumber || null,
+          lastConnection: "open",
+          lastDisconnectStatusCode: null,
+          lastDisconnectMessage: null
+        } as any);
+        void updateWhatsAppStatus(companyId, whatsappId, "pairing");
+        return;
+      }
+
       saveSessionSnapshot(companyId, whatsappId, {
         status: "CONNECTED",
         qrcode: "",
@@ -556,6 +561,7 @@ export async function startOrRefreshInlineSession(opts: { companyId: number; wha
       });
       inlineRestartAttempts.delete(whatsappId);
       inlinePairingKeepAliveAttempts.delete(whatsappId);
+      inlinePairingRegenAt.delete(whatsappId);
       inlineConnectionState.set(whatsappId, "open");
       void updateWhatsAppStatus(companyId, whatsappId, "CONNECTED");
       try {
@@ -578,9 +584,9 @@ export async function startOrRefreshInlineSession(opts: { companyId: number; wha
       const prev = readRealSessions()[String(whatsappId)] || ({} as any);
       const pairingActive = isPairingStillActive(prev);
 
-      // During phone-number pairing flow, 401 can happen transiently before final link.
-      // Keep the same pairing context until expiration; avoid restart loops.
-      if (shouldLogout && pairingActive) {
+      // During phone-number pairing flow, close events can be transient.
+      // Keep the same pairing context until expiration; avoid clearing pairing metadata.
+      if (pairingActive) {
         saveSessionSnapshot(companyId, whatsappId, {
           status: "pairing",
           qrcode: "",
@@ -592,6 +598,41 @@ export async function startOrRefreshInlineSession(opts: { companyId: number; wha
           lastDisconnectMessage: disconnectMessage ? String(disconnectMessage).slice(0, 500) : null
         } as any);
         void updateWhatsAppStatus(companyId, whatsappId, "pairing");
+
+        // Keep pairing code alive, but avoid restart loops on 401.
+        // Repeated transport restarts during number-linking can invalidate the
+        // confirmation window on iPhone before the operator finishes the flow.
+        const transientWhilePairing =
+          Number(statusCode) === 408 ||
+          Number(statusCode) === 428 ||
+          Number(statusCode) === 440 ||
+          Number(statusCode) === 503 ||
+          Number(statusCode) === 515 ||
+          !Number.isFinite(Number(statusCode));
+        if (transientWhilePairing) {
+          const attempts = (inlinePairingKeepAliveAttempts.get(whatsappId) || 0) + 1;
+          inlinePairingKeepAliveAttempts.set(whatsappId, attempts);
+          const delayMs = Math.min(12_000, 1200 * attempts);
+          tracePairing(whatsappId, "pairing:transport-revive", {
+            attempts,
+            delayMs,
+            statusCode: Number.isFinite(Number(statusCode)) ? Number(statusCode) : null
+          });
+          setTimeout(() => {
+            // Never wipe auth or regenerate code here; just recover websocket transport.
+            startOrRefreshInlineSession({ companyId, whatsappId, forceNewQr: false }).catch(() => {});
+          }, delayMs);
+        }
+
+        // Keep code stable during pairing lifecycle.
+        // A 401 can happen for transient transport reasons; auto-regenerating here
+        // can rotate the code while the operator is typing on iPhone.
+        if (Number(statusCode) === 401) {
+          inlinePairingKeepAliveAttempts.set(whatsappId, 0);
+          tracePairing(whatsappId, "pairing:status401:keep-current-code", {
+            phone: String(prev?.pairingPhoneNumber || "").trim()
+          });
+        }
         return;
       }
 

@@ -256,16 +256,20 @@ const MessageInput = ({ ticketStatus }) => {
 				: inputMessage.trim(),
 			quotedMsg: replyingMessage,
 		};
+		let sent = false;
 		try {
 			await api.post(`/messages/${ticketId}`, message);
+			sent = true;
 		} catch (err) {
 			toastError(err);
 		}
 
-		setInputMessage("");
-		setShowEmoji(false);
 		setLoading(false);
-		setReplyingMessage(null);
+		if (sent) {
+			setInputMessage("");
+			setShowEmoji(false);
+			setReplyingMessage(null);
+		}
 	};
 
 	const handleStartRecording = async () => {
@@ -453,9 +457,10 @@ const MessageInput = ({ ticketStatus }) => {
 							onPaste={e => {
 								ticketStatus === "open" && handleInputPaste(e);
 							}}
-							onKeyPress={e => {
-								if (loading || e.shiftKey) return;
-								else if (e.key === "Enter") {
+							onKeyDown={e => {
+								if (loading || ticketStatus !== "open") return;
+								if (e.key === "Enter" && !e.shiftKey) {
+									e.preventDefault();
 									handleSendMessage();
 								}
 							}}
