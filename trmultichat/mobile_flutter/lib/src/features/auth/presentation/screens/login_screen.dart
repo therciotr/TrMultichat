@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/di/core_providers.dart';
@@ -15,11 +16,15 @@ class LoginScreen extends ConsumerStatefulWidget {
 class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _email = TextEditingController();
   final _password = TextEditingController();
+  final _emailFocus = FocusNode();
+  final _passwordFocus = FocusNode();
 
   @override
   void dispose() {
     _email.dispose();
     _password.dispose();
+    _emailFocus.dispose();
+    _passwordFocus.dispose();
     super.dispose();
   }
 
@@ -53,9 +58,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               end: Alignment.bottomCenter,
             ),
           ),
-          child: ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
+          child: Shortcuts(
+            shortcuts: const <LogicalKeySet, Intent>{
+              LogicalKeySet(LogicalKeyboardKey.tab): NextFocusIntent(),
+              LogicalKeySet(LogicalKeyboardKey.shift, LogicalKeyboardKey.tab):
+                  PreviousFocusIntent(),
+            },
+            child: FocusTraversalGroup(
+              child: ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
               const SizedBox(height: 6),
               Center(
                 child: Container(
@@ -105,50 +117,61 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   child: Text(auth.error!, style: const TextStyle(color: Colors.red)),
                 ),
               const SizedBox(height: 12),
-              TextField(
-                controller: _email,
-                enabled: !loading,
-                keyboardType: TextInputType.emailAddress,
-                autocorrect: false,
-                textInputAction: TextInputAction.next,
-                decoration: const InputDecoration(labelText: 'E-mail', border: OutlineInputBorder()),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _password,
-                enabled: !loading,
-                obscureText: true,
-                textInputAction: TextInputAction.done,
-                decoration: const InputDecoration(labelText: 'Senha', border: OutlineInputBorder()),
-                onSubmitted: (_) => _submit(),
-              ),
-              const SizedBox(height: 14),
-              SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: FilledButton(
-                  onPressed: loading ? null : _submit,
-                  child: Text(loading ? 'Entrando...' : 'Entrar'),
-                ),
-              ),
-              const SizedBox(height: 10),
-              if (canBioLogin)
-                SizedBox(
-                  width: double.infinity,
-                  height: 48,
-                  child: OutlinedButton.icon(
-                    onPressed: loading ? null : () => ref.read(authControllerProvider.notifier).biometricLogin(),
-                    icon: const Icon(Icons.face),
-                    label: const Text('Entrar com Face ID'),
+                  TextField(
+                    controller: _email,
+                    focusNode: _emailFocus,
+                    enabled: !loading,
+                    keyboardType: TextInputType.emailAddress,
+                    autocorrect: false,
+                    textInputAction: TextInputAction.next,
+                    onSubmitted: (_) => _passwordFocus.requestFocus(),
+                    decoration: const InputDecoration(
+                        labelText: 'E-mail', border: OutlineInputBorder()),
                   ),
-                ),
-              if (canBioLogin) const SizedBox(height: 6),
-              TextButton(
-                onPressed: loading ? null : () => _showForgotDialog(context),
-                child: const Text('Esqueci minha senha'),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _password,
+                    focusNode: _passwordFocus,
+                    enabled: !loading,
+                    obscureText: true,
+                    textInputAction: TextInputAction.done,
+                    decoration: const InputDecoration(
+                        labelText: 'Senha', border: OutlineInputBorder()),
+                    onSubmitted: (_) => _submit(),
+                  ),
+                  const SizedBox(height: 14),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: FilledButton(
+                      onPressed: loading ? null : _submit,
+                      child: Text(loading ? 'Entrando...' : 'Entrar'),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  if (canBioLogin)
+                    SizedBox(
+                      width: double.infinity,
+                      height: 48,
+                      child: OutlinedButton.icon(
+                        onPressed: loading
+                            ? null
+                            : () => ref
+                                .read(authControllerProvider.notifier)
+                                .biometricLogin(),
+                        icon: const Icon(Icons.face),
+                        label: const Text('Entrar com Face ID'),
+                      ),
+                    ),
+                  if (canBioLogin) const SizedBox(height: 6),
+                  TextButton(
+                    onPressed: loading ? null : () => _showForgotDialog(context),
+                    child: const Text('Esqueci minha senha'),
+                  ),
+                  const SizedBox(height: 10),
+                ],
               ),
-              const SizedBox(height: 10),
-            ],
+            ),
           ),
         ),
       ),

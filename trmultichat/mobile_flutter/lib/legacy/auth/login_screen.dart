@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -15,6 +16,8 @@ class LoginScreen extends ConsumerStatefulWidget {
 class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _email = TextEditingController();
   final _password = TextEditingController();
+  final _emailFocus = FocusNode();
+  final _passwordFocus = FocusNode();
   bool _loading = false;
   String? _error;
 
@@ -22,6 +25,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   void dispose() {
     _email.dispose();
     _password.dispose();
+    _emailFocus.dispose();
+    _passwordFocus.dispose();
     super.dispose();
   }
 
@@ -53,10 +58,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             constraints: const BoxConstraints(maxWidth: 420),
             child: Padding(
               padding: const EdgeInsets.all(16),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
+              child: Shortcuts(
+                shortcuts: const <LogicalKeySet, Intent>{
+                  LogicalKeySet(LogicalKeyboardKey.tab): NextFocusIntent(),
+                  LogicalKeySet(
+                    LogicalKeyboardKey.shift,
+                    LogicalKeyboardKey.tab,
+                  ): PreviousFocusIntent(),
+                },
+                child: FocusTraversalGroup(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
                   Text('Entrar', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800)),
                   const SizedBox(height: 6),
                   Text('Acesse sua conta para atender clientes.', style: Theme.of(context).textTheme.bodyMedium),
@@ -71,33 +85,45 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       child: Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.onErrorContainer)),
                     ),
                   const SizedBox(height: 12),
-                  TextField(
-                    controller: _email,
-                    keyboardType: TextInputType.emailAddress,
-                    textInputAction: TextInputAction.next,
-                    autocorrect: false,
-                    enableSuggestions: false,
-                    decoration: const InputDecoration(labelText: 'E-mail', prefixIcon: Icon(Icons.alternate_email)),
+                      TextField(
+                        controller: _email,
+                        focusNode: _emailFocus,
+                        keyboardType: TextInputType.emailAddress,
+                        textInputAction: TextInputAction.next,
+                        onSubmitted: (_) => _passwordFocus.requestFocus(),
+                        autocorrect: false,
+                        enableSuggestions: false,
+                        decoration: const InputDecoration(
+                          labelText: 'E-mail',
+                          prefixIcon: Icon(Icons.alternate_email),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _password,
+                        focusNode: _passwordFocus,
+                        obscureText: true,
+                        textInputAction: TextInputAction.done,
+                        onSubmitted: (_) => _loading ? null : _login(),
+                        decoration: const InputDecoration(
+                          labelText: 'Senha',
+                          prefixIcon: Icon(Icons.lock_outline),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      FilledButton(
+                        onPressed: _loading ? null : _login,
+                        child: Text(_loading ? 'Entrando...' : 'Entrar'),
+                      ),
+                      const SizedBox(height: 10),
+                      TextButton(
+                        onPressed:
+                            _loading ? null : () => context.push('/forgot'),
+                        child: const Text('Esqueci minha senha'),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _password,
-                    obscureText: true,
-                    textInputAction: TextInputAction.done,
-                    onSubmitted: (_) => _loading ? null : _login(),
-                    decoration: const InputDecoration(labelText: 'Senha', prefixIcon: Icon(Icons.lock_outline)),
-                  ),
-                  const SizedBox(height: 16),
-                  FilledButton(
-                    onPressed: _loading ? null : _login,
-                    child: Text(_loading ? 'Entrando...' : 'Entrar'),
-                  ),
-                  const SizedBox(height: 10),
-                  TextButton(
-                    onPressed: _loading ? null : () => context.push('/forgot'),
-                    child: const Text('Esqueci minha senha'),
-                  ),
-                ],
+                ),
               ),
             ),
           ),
