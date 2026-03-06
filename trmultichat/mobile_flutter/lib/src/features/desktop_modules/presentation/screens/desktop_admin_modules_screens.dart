@@ -780,6 +780,8 @@ class DesktopConnectionsScreen extends ConsumerStatefulWidget {
 class _DesktopConnectionsScreenState
     extends _BaseCrudScreen<DesktopConnectionsScreen> {
   List<Map<String, dynamic>> rows = const [];
+  List<Map<String, dynamic>> _queueOptions = const [];
+  List<Map<String, dynamic>> _promptOptions = const [];
   final Set<int> _sessionBusy = <int>{};
 
   int? _asInt(dynamic value) {
@@ -806,6 +808,31 @@ class _DesktopConnectionsScreenState
       rows =
           list.whereType<Map>().map((e) => e.cast<String, dynamic>()).toList();
     });
+  }
+
+  Future<void> _loadConnectionFormSources() async {
+    try {
+      final queueRes = await dio.get('/queue');
+      final queueList = (queueRes.data as List? ?? const <dynamic>[]);
+      _queueOptions = queueList
+          .whereType<Map>()
+          .map((e) => e.cast<String, dynamic>())
+          .toList();
+    } catch (_) {
+      _queueOptions = const [];
+    }
+    try {
+      final promptRes = await dio.get('/prompt');
+      final promptData =
+          (promptRes.data as Map?)?.cast<String, dynamic>() ?? const {};
+      final promptList = (promptData['prompts'] as List? ?? const <dynamic>[]);
+      _promptOptions = promptList
+          .whereType<Map>()
+          .map((e) => e.cast<String, dynamic>())
+          .toList();
+    } catch (_) {
+      _promptOptions = const [];
+    }
   }
 
   Future<void> _triggerSessionAction(
@@ -1043,6 +1070,7 @@ class _DesktopConnectionsScreenState
 
   Future<void> openForm([Map<String, dynamic>? initial]) async {
     final id = (initial?['id'] as num?)?.toInt();
+    await _loadConnectionFormSources();
     final name =
         TextEditingController(text: (initial?['name'] ?? '').toString());
     final token =
@@ -1058,22 +1086,6 @@ class _DesktopConnectionsScreenState
         text: (initial?['outOfHoursMessage'] ?? '').toString());
     final rating = TextEditingController(
         text: (initial?['ratingMessage'] ?? '').toString());
-    final queueIdsCtrl = TextEditingController(
-      text: ((initial?['queues'] as List?)
-                  ?.whereType<Map>()
-                  .map((q) => q['id'])
-                  .whereType<num>()
-                  .map((n) => n.toInt().toString())
-                  .join(',') ??
-              '')
-          .toString(),
-    );
-    final promptIdCtrl = TextEditingController(
-      text: (initial?['promptId'] ?? '').toString(),
-    );
-    final sendIdQueueCtrl = TextEditingController(
-      text: (initial?['sendIdQueue'] ?? '').toString(),
-    );
     final timeSendQueueCtrl = TextEditingController(
       text: (initial?['timeSendQueue'] ?? '').toString(),
     );
@@ -1089,6 +1101,23 @@ class _DesktopConnectionsScreenState
     final expiresInactiveMsgCtrl = TextEditingController(
       text: (initial?['expiresInactiveMessage'] ?? '').toString(),
     );
+    final selectedQueueIds = <int>{};
+    if (initial?['queues'] is List) {
+      for (final q in (initial?['queues'] as List)) {
+        if (q is Map) {
+          final qid = _asInt(q['id']);
+          if (qid != null && qid > 0) selectedQueueIds.add(qid);
+        }
+      }
+    }
+    if (initial?['queueIds'] is List) {
+      for (final qid in (initial?['queueIds'] as List)) {
+        final id = _asInt(qid);
+        if (id != null && id > 0) selectedQueueIds.add(id);
+      }
+    }
+    int? promptId = _asInt(initial?['promptId']);
+    int sendIdQueue = _asInt(initial?['sendIdQueue']) ?? 0;
     String provider = (initial?['provider'] ?? 'beta').toString();
     bool isDefault = initial?['isDefault'] == true;
     await showDialog<void>(
@@ -1153,28 +1182,90 @@ class _DesktopConnectionsScreenState
                     ),
                   ),
                   const SizedBox(height: 8),
-                  TextField(
-                    controller: queueIdsCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Filas (IDs separados por vírgula)',
-                      hintText: 'Ex.: 1,2,5',
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Filas',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 8),
-                  TextField(
-                    controller: promptIdCtrl,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: 'Prompt ID',
+                  if (_queueOptions.isEmpty)
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text('Nenhuma fila encontrada para seleção.'),
+                    )
+                  else
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: _queueOptions.map((q) {
+                          final qid = _asInt(q['id']);
+                          if (qid == null) return const SizedBox.shrink();
+                          final qname = (q['name'] ?? 'Fila #$qid').toString();
+                          final selected = selectedQueueIds.contains(qid);
+                          return FilterChip(
+                            label: Text(qname),
+                            selected: selected,
+                            onSelected: (v) => setLocal(() {
+                              if (v) {
+                                selectedQueueIds.add(qid);
+                              } else {
+                                selectedQueueIds.remove(qid);
+                              }
+                            }),
+                          );
+                        }).toList(),
+                      ),
                     ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<int?>(
+                    value: promptId,
+                    decoration: const InputDecoration(
+                      labelText: 'Prompt',
+                    ),
+                    items: [
+                      const DropdownMenuItem<int?>(
+                        value: null,
+                        child: Text('Nenhum'),
+                      ),
+                      ..._promptOptions.map((p) {
+                        final pid = _asInt(p['id']);
+                        final pname = (p['name'] ?? 'Prompt').toString();
+                        return DropdownMenuItem<int?>(
+                          value: pid,
+                          child: Text(pname),
+                        );
+                      }),
+                    ],
+                    onChanged: (v) => setLocal(() => promptId = v),
                   ),
                   const SizedBox(height: 8),
-                  TextField(
-                    controller: sendIdQueueCtrl,
-                    keyboardType: TextInputType.number,
+                  DropdownButtonFormField<int>(
+                    value: sendIdQueue == 0 ? 0 : sendIdQueue,
                     decoration: const InputDecoration(
-                      labelText: 'Redirecionar para fila (sendIdQueue)',
+                      labelText: 'Redirecionar para fila',
                     ),
+                    items: [
+                      const DropdownMenuItem<int>(
+                        value: 0,
+                        child: Text('Nenhuma'),
+                      ),
+                      ..._queueOptions.map((q) {
+                        final qid = _asInt(q['id']) ?? 0;
+                        final qname = (q['name'] ?? 'Fila').toString();
+                        return DropdownMenuItem<int>(
+                          value: qid,
+                          child: Text(qname),
+                        );
+                      }),
+                    ],
+                    onChanged: (v) => setLocal(() => sendIdQueue = v ?? 0),
                   ),
                   const SizedBox(height: 8),
                   TextField(
@@ -1227,11 +1318,6 @@ class _DesktopConnectionsScreenState
                 child: const Text('Cancelar')),
             FilledButton(
               onPressed: () async {
-                final queueIds = queueIdsCtrl.text
-                    .split(',')
-                    .map((s) => int.tryParse(s.trim()))
-                    .whereType<int>()
-                    .toList();
                 final payload = <String, dynamic>{
                   'name': name.text.trim(),
                   'token': token.text.trim(),
@@ -1241,9 +1327,9 @@ class _DesktopConnectionsScreenState
                   'complationMessage': completion.text.trim(),
                   'outOfHoursMessage': out.text.trim(),
                   'ratingMessage': rating.text.trim(),
-                  'queueIds': queueIds,
-                  'promptId': int.tryParse(promptIdCtrl.text.trim()),
-                  'sendIdQueue': int.tryParse(sendIdQueueCtrl.text.trim()) ?? 0,
+                  'queueIds': selectedQueueIds.toList(),
+                  'promptId': promptId,
+                  'sendIdQueue': sendIdQueue,
                   'timeSendQueue': int.tryParse(timeSendQueueCtrl.text.trim()) ?? 0,
                   'maxUseBotQueues':
                       int.tryParse(maxUseBotQueuesCtrl.text.trim()) ?? 0,
@@ -1273,9 +1359,6 @@ class _DesktopConnectionsScreenState
     completion.dispose();
     out.dispose();
     rating.dispose();
-    queueIdsCtrl.dispose();
-    promptIdCtrl.dispose();
-    sendIdQueueCtrl.dispose();
     timeSendQueueCtrl.dispose();
     maxUseBotQueuesCtrl.dispose();
     timeUseBotQueuesCtrl.dispose();
