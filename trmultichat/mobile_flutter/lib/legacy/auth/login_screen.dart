@@ -59,7 +59,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Shortcuts(
-                shortcuts: const <LogicalKeySet, Intent>{
+                shortcuts: <LogicalKeySet, Intent>{
                   LogicalKeySet(LogicalKeyboardKey.tab): NextFocusIntent(),
                   LogicalKeySet(
                     LogicalKeyboardKey.shift,

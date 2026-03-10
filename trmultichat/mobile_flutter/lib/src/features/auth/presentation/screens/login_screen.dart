@@ -59,7 +59,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             ),
           ),
           child: Shortcuts(
-            shortcuts: const <LogicalKeySet, Intent>{
+            shortcuts: <LogicalKeySet, Intent>{
               LogicalKeySet(LogicalKeyboardKey.tab): NextFocusIntent(),
               LogicalKeySet(LogicalKeyboardKey.shift, LogicalKeyboardKey.tab):
                   PreviousFocusIntent(),
