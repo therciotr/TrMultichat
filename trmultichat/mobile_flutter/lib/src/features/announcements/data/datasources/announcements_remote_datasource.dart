@@ -87,6 +87,100 @@ class AnnouncementsRemoteDataSource {
     return AnnouncementDto.fromJson((res.data as Map).cast<String, dynamic>());
   }
 
+  Future<Announcement> update({
+    required int id,
+    required String title,
+    required String text,
+    int priority = 3,
+    bool status = true,
+    bool sendToAll = true,
+    int? targetUserId,
+    bool allowReply = true,
+  }) async {
+    final payload = <String, dynamic>{
+      'title': title.trim(),
+      'text': text.trim(),
+      'priority': priority,
+      'status': status,
+      'sendToAll': sendToAll,
+      'allowReply': allowReply,
+      'targetUserId':
+          sendToAll ? null : (targetUserId != null && targetUserId > 0 ? targetUserId : null),
+    };
+    final res = await _dio.put('/announcements/$id', data: payload);
+    return AnnouncementDto.fromJson((res.data as Map).cast<String, dynamic>());
+  }
+
+  Future<void> uploadMedia(
+    int id, {
+    String? filePath,
+    List<int>? fileBytes,
+    Stream<List<int>>? fileStream,
+    int? fileSize,
+    required String fileName,
+    String? mimeType,
+    UploadProgress? onProgress,
+    CancelToken? cancelToken,
+  }) async {
+    final hasPath = filePath != null && filePath.trim().isNotEmpty;
+    final initialHasBytes = fileBytes != null && fileBytes.isNotEmpty;
+    final hasStream = fileStream != null;
+    if (!hasPath && !initialHasBytes && !hasStream) {
+      throw ArgumentError('filePath, fileBytes or fileStream is required');
+    }
+
+    List<int>? resolvedBytes = fileBytes;
+    Stream<List<int>>? resolvedStream = fileStream;
+    int? resolvedStreamSize = fileSize;
+
+    if ((resolvedBytes == null || resolvedBytes.isEmpty) &&
+        resolvedStream != null &&
+        (resolvedStreamSize == null || resolvedStreamSize <= 0)) {
+      final buffered = await _readAllBytes(resolvedStream);
+      resolvedBytes = buffered.isEmpty ? null : buffered;
+      resolvedStream = null;
+      resolvedStreamSize = null;
+    }
+
+    final hasBytes = resolvedBytes != null && resolvedBytes.isNotEmpty;
+    final hasUsableStream =
+        resolvedStream != null && resolvedStreamSize != null && resolvedStreamSize > 0;
+    final mediaType = mimeType != null ? MediaType.parse(mimeType) : null;
+
+    final form = FormData.fromMap({
+      'file': hasBytes
+          ? MultipartFile.fromBytes(
+              resolvedBytes!,
+              filename: fileName,
+              contentType: mediaType,
+            )
+          : hasUsableStream
+              ? MultipartFile(
+                  resolvedStream!,
+                  resolvedStreamSize!,
+                  filename: fileName,
+                  contentType: mediaType,
+                )
+              : await MultipartFile.fromFile(
+                  filePath!,
+                  filename: fileName,
+                  contentType: mediaType,
+                ),
+    });
+
+    await _dio.post(
+      '/announcements/$id/media-upload',
+      data: form,
+      cancelToken: cancelToken,
+      onSendProgress:
+          onProgress == null ? null : (sent, total) => onProgress(sent, total),
+    );
+  }
+
+  Future<void> deleteMedia(int id) async {
+    await _dio.delete('/announcements/$id/media-upload');
+  }
+
   Future<List<AnnouncementReply>> getReplies(int id) async {
     final res = await _dio.get('/announcements/$id/replies');
     final data = (res.data as Map).cast<String, dynamic>();

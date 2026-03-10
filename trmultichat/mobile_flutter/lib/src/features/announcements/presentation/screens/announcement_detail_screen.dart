@@ -129,6 +129,12 @@ class _AnnouncementDetailScreenState extends ConsumerState<AnnouncementDetailScr
         auth.user?.isSuper == true ||
         (auth.user?.profile ?? '').toLowerCase() == 'admin' ||
         (auth.user?.profile ?? '').toLowerCase() == 'super';
+    final canReply = isAdmin || (a?.allowReply == true);
+    final priorityLabel = switch (a?.priority ?? 3) {
+      1 => 'Alta',
+      2 => 'Media',
+      _ => 'Baixa',
+    };
 
     return Scaffold(
       appBar: AppBar(
@@ -192,6 +198,29 @@ class _AnnouncementDetailScreenState extends ConsumerState<AnnouncementDetailScr
                     Text(
                       a.senderName ?? '',
                       style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                    ),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        Chip(label: Text(priorityLabel)),
+                        Chip(label: Text(a.status ? 'Ativo' : 'Inativo')),
+                        Chip(
+                          label: Text(
+                            a.sendToAll
+                                ? 'Destino: Todos'
+                                : 'Destino: Usuario #${a.targetUserId ?? '-'}',
+                          ),
+                        ),
+                        Chip(
+                          label: Text(
+                            a.allowReply ? 'Resposta: Sim' : 'Resposta: Nao',
+                          ),
+                        ),
+                        if ((a.mediaName ?? '').trim().isNotEmpty)
+                          Chip(label: Text(a.mediaName!)),
+                      ],
                     ),
                     const SizedBox(height: 12),
                     Container(
@@ -260,10 +289,13 @@ class _AnnouncementDetailScreenState extends ConsumerState<AnnouncementDetailScr
                   Expanded(
                     child: TextField(
                       controller: _reply,
+                      enabled: canReply && !st.sending,
                       minLines: 1,
                       maxLines: 4,
                       decoration: InputDecoration(
-                        hintText: 'Responder',
+                        hintText: canReply
+                            ? 'Responder'
+                            : 'Respostas desativadas para usuarios',
                         filled: true,
                         fillColor: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.55),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(22), borderSide: BorderSide.none),
@@ -273,7 +305,7 @@ class _AnnouncementDetailScreenState extends ConsumerState<AnnouncementDetailScr
                   ),
                   const SizedBox(width: 8),
                   FilledButton(
-                    onPressed: st.sending
+                    onPressed: !canReply || st.sending
                         ? null
                         : () async {
                             final text = _reply.text;

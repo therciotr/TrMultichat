@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../../core/utils/phone_format.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
+import '../../domain/entities/contact.dart';
 import '../providers/contacts_providers.dart';
 
 class ContactsScreen extends ConsumerStatefulWidget {
@@ -18,6 +19,131 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
   final _listCtrl = ScrollController();
   int? _hoveredContactId;
   int? _pressedContactId;
+  final Set<int> _selectedIds = <int>{};
+
+  bool _isAdminLike({
+    required bool admin,
+    required bool isSuper,
+    required String? profile,
+  }) {
+    final p = (profile ?? '').trim().toLowerCase();
+    return admin || isSuper || p == 'admin' || p == 'super';
+  }
+
+  Future<bool> _confirmDeleteOne(Contact c) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Excluir contato?'),
+        content: Text(
+          'Deseja excluir "${c.name.trim().isEmpty ? 'Contato' : c.name.trim()}"?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Excluir'),
+          ),
+        ],
+      ),
+    );
+    return ok == true;
+  }
+
+  Future<bool> _deleteOne(Contact c) async {
+    final ok = await _confirmDeleteOne(c);
+    if (!ok) return false;
+    final deleted =
+        await ref.read(contactsControllerProvider.notifier).deleteOne(c.id);
+    if (!mounted) return false;
+    if (deleted) {
+      setState(() => _selectedIds.remove(c.id));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Contato excluido com sucesso.')),
+      );
+      return true;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Falha ao excluir contato.')),
+    );
+    return false;
+  }
+
+  Future<void> _deleteSelected() async {
+    if (_selectedIds.isEmpty) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Excluir ${_selectedIds.length} contato(s)?'),
+        content: const Text(
+          'Esta ação é irreversível e removerá os contatos selecionados.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Excluir'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    final deleted = await ref
+        .read(contactsControllerProvider.notifier)
+        .deleteMany(_selectedIds.toList());
+    if (!mounted) return;
+    if (deleted > 0) {
+      setState(() => _selectedIds.clear());
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Contatos excluidos: $deleted')),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Falha ao excluir contatos.')),
+      );
+    }
+  }
+
+  Future<void> _deleteAll() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Excluir TODOS os contatos?'),
+        content: const Text(
+          'Esta ação é irreversível e removerá todos os contatos visíveis da empresa.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Excluir todos'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    final deleted = await ref.read(contactsControllerProvider.notifier).deleteAll();
+    if (!mounted) return;
+    if (deleted >= 0) {
+      setState(() => _selectedIds.clear());
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Contatos excluidos: $deleted')),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Falha ao excluir todos os contatos.')),
+      );
+    }
+  }
 
   String _initialsFromName(String name) {
     final clean = name.trim();
@@ -52,12 +178,22 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
   Widget build(BuildContext context) {
     final st = ref.watch(contactsControllerProvider);
     final ctrl = ref.read(contactsControllerProvider.notifier);
+    final auth = ref.watch(authControllerProvider);
     final theme = Theme.of(context);
     final cs = Theme.of(context).colorScheme;
     final platform = Theme.of(context).platform;
     final isDesktop = platform == TargetPlatform.macOS ||
         platform == TargetPlatform.windows ||
         platform == TargetPlatform.linux;
+    final canDelete = _isAdminLike(
+      admin: auth.user?.admin ?? false,
+      isSuper: auth.user?.isSuper ?? false,
+      profile: auth.user?.profile,
+    );
+    final allVisibleSelected =
+        st.items.isNotEmpty && _selectedIds.length == st.items.length;
+    final someSelected =
+        _selectedIds.isNotEmpty && _selectedIds.length < st.items.length;
 
     Widget contactTile(dynamic c) {
       final id = int.tryParse('${c.id}') ?? 0;
@@ -66,7 +202,8 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
       final name = c.name.trim().isEmpty ? 'Contato' : c.name.trim();
       final initials = _initialsFromName(name);
       final phone = formatPhoneBr(c.number);
-      return AnimatedScale(
+      final selected = _selectedIds.contains(id);
+      Widget card = AnimatedScale(
         duration: const Duration(milliseconds: 160),
         scale: hovered ? 1.006 : 1,
         child: InkWell(
@@ -90,14 +227,18 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(20),
-              color: hovered
-                  ? cs.surfaceContainerHighest.withValues(alpha: 0.24)
-                  : cs.surface,
+              color: selected
+                  ? cs.primary.withValues(alpha: 0.08)
+                  : hovered
+                      ? cs.surfaceContainerHighest.withValues(alpha: 0.24)
+                      : cs.surface,
               border: Border.all(
-                color: hovered
-                    ? cs.primary.withValues(alpha: 0.45)
-                    : cs.outlineVariant.withValues(alpha: 0.45),
-                width: hovered ? 1.1 : 1,
+                color: selected
+                    ? cs.primary.withValues(alpha: 0.55)
+                    : hovered
+                        ? cs.primary.withValues(alpha: 0.45)
+                        : cs.outlineVariant.withValues(alpha: 0.45),
+                width: hovered || selected ? 1.1 : 1,
               ),
               boxShadow: [
                 BoxShadow(
@@ -112,6 +253,22 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
               opacity: pressed ? 0.92 : 1,
               child: Row(
                 children: [
+                  if (canDelete) ...[
+                    Checkbox(
+                      value: selected,
+                      tristate: false,
+                      onChanged: (_) {
+                        setState(() {
+                          if (selected) {
+                            _selectedIds.remove(id);
+                          } else {
+                            _selectedIds.add(id);
+                          }
+                        });
+                      },
+                    ),
+                    const SizedBox(width: 4),
+                  ],
                   Container(
                     width: 44,
                     height: 44,
@@ -152,49 +309,113 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
                                 ),
                               ),
                             ),
-                            Container(
-                              width: 8,
-                              height: 8,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: cs.primary.withValues(alpha: 0.78),
+                            if (c.isGroup == true)
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: cs.secondaryContainer
+                                      .withValues(alpha: 0.75),
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                                child: Text(
+                                  'Grupo',
+                                  style: theme.textTheme.labelSmall?.copyWith(
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              )
+                            else
+                              Container(
+                                width: 8,
+                                height: 8,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: cs.primary.withValues(alpha: 0.78),
+                                ),
                               ),
-                            ),
                           ],
                         ),
                         const SizedBox(height: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 9, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: cs.surfaceContainerHighest
-                                .withValues(alpha: hovered ? 0.95 : 0.7),
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.phone_outlined,
-                                  size: 12, color: cs.onSurfaceVariant),
-                              const SizedBox(width: 5),
-                              Flexible(
-                                child: Text(
-                                  phone.isEmpty ? 'Sem número' : phone,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: theme.textTheme.bodySmall?.copyWith(
-                                    color: cs.onSurfaceVariant,
-                                    fontWeight: FontWeight.w600,
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 9, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: cs.surfaceContainerHighest
+                                    .withValues(alpha: hovered ? 0.95 : 0.7),
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.phone_outlined,
+                                      size: 12, color: cs.onSurfaceVariant),
+                                  const SizedBox(width: 5),
+                                  Flexible(
+                                    child: Text(
+                                      phone.isEmpty ? 'Sem número' : phone,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style:
+                                          theme.textTheme.bodySmall?.copyWith(
+                                        color: cs.onSurfaceVariant,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
                                   ),
+                                ],
+                              ),
+                            ),
+                            if ((c.email ?? '').trim().isNotEmpty)
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 9, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: cs.surfaceContainerHighest
+                                      .withValues(alpha: 0.6),
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.alternate_email,
+                                        size: 12, color: cs.onSurfaceVariant),
+                                    const SizedBox(width: 5),
+                                    ConstrainedBox(
+                                      constraints:
+                                          const BoxConstraints(maxWidth: 180),
+                                      child: Text(
+                                        c.email!,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style:
+                                            theme.textTheme.bodySmall?.copyWith(
+                                          color: cs.onSurfaceVariant,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
-                            ],
-                          ),
+                          ],
                         ),
                       ],
                     ),
                   ),
                   const SizedBox(width: 6),
+                  if (canDelete)
+                    IconButton(
+                      tooltip: 'Excluir contato',
+                      onPressed: () => _deleteOne(c),
+                      icon: const Icon(Icons.delete_outline),
+                    ),
                   AnimatedContainer(
                     duration: const Duration(milliseconds: 180),
                     width: 30,
@@ -216,6 +437,44 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
           ),
         ),
       );
+
+      if (canDelete) {
+        card = Dismissible(
+          key: ValueKey('contact-$id'),
+          direction: DismissDirection.endToStart,
+          confirmDismiss: (_) => _confirmDeleteOne(c),
+          onDismissed: (_) async {
+            final deleted =
+                await ref.read(contactsControllerProvider.notifier).deleteOne(id);
+            if (!mounted) return;
+            if (deleted) {
+              setState(() => _selectedIds.remove(id));
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    'Contato "${name.trim().isEmpty ? 'Contato' : name}" excluido.',
+                  ),
+                ),
+              );
+            } else {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Falha ao excluir contato.')),
+              );
+            }
+          },
+          background: Container(
+            alignment: Alignment.centerRight,
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            decoration: BoxDecoration(
+              color: cs.errorContainer,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Icon(Icons.delete_outline, color: cs.error),
+          ),
+          child: card,
+        );
+      }
+      return card;
     }
 
     return Scaffold(
@@ -311,6 +570,29 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
                           ),
                         ),
                       ),
+                      if (canDelete) ...[
+                        const SizedBox(width: 8),
+                        Tooltip(
+                          message: 'Selecionar todos os contatos visíveis',
+                          child: Checkbox(
+                            value: allVisibleSelected
+                                ? true
+                                : (someSelected ? null : false),
+                            tristate: true,
+                            onChanged: (_) {
+                              setState(() {
+                                if (allVisibleSelected) {
+                                  _selectedIds.clear();
+                                } else {
+                                  _selectedIds
+                                    ..clear()
+                                    ..addAll(st.items.map((e) => e.id));
+                                }
+                              });
+                            },
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                   const SizedBox(height: 12),
@@ -355,6 +637,46 @@ class _ContactsScreenState extends ConsumerState<ContactsScreen> {
                       ),
                     ),
                   ),
+                  if (canDelete) ...[
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: st.items.isEmpty
+                              ? null
+                              : () {
+                                  setState(() {
+                                    if (allVisibleSelected) {
+                                      _selectedIds.clear();
+                                    } else {
+                                      _selectedIds
+                                        ..clear()
+                                        ..addAll(st.items.map((e) => e.id));
+                                    }
+                                  });
+                                },
+                          icon: const Icon(Icons.done_all),
+                          label: Text(
+                            allVisibleSelected
+                                ? 'Limpar seleção'
+                                : 'Selecionar todos',
+                          ),
+                        ),
+                        FilledButton.tonalIcon(
+                          onPressed: _selectedIds.isEmpty ? null : _deleteSelected,
+                          icon: const Icon(Icons.delete_sweep_outlined),
+                          label: Text('Excluir (${_selectedIds.length})'),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: st.items.isEmpty ? null : _deleteAll,
+                          icon: const Icon(Icons.warning_amber_rounded),
+                          label: const Text('Excluir todos'),
+                        ),
+                      ],
+                    ),
+                  ],
                 ],
               ),
             ),

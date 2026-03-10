@@ -52,6 +52,41 @@ class ContactsController extends StateNotifier<ContactsState> {
     }
   }
 
+  Future<bool> deleteOne(int id) async {
+    if (id <= 0) return false;
+    try {
+      await _remote.delete(id);
+      final next = state.items.where((c) => c.id != id).toList();
+      state = state.copyWith(items: next, error: null);
+      return true;
+    } catch (_) {
+      state = state.copyWith(error: 'Falha ao excluir contato');
+      return false;
+    }
+  }
+
+  Future<int> deleteMany(List<int> ids) async {
+    try {
+      final deleted = await _remote.bulkDelete(ids);
+      await refresh();
+      return deleted;
+    } catch (_) {
+      state = state.copyWith(error: 'Falha ao excluir contatos');
+      return 0;
+    }
+  }
+
+  Future<int> deleteAll() async {
+    try {
+      final deleted = await _remote.deleteAll();
+      await refresh();
+      return deleted;
+    } catch (_) {
+      state = state.copyWith(error: 'Falha ao excluir todos os contatos');
+      return 0;
+    }
+  }
+
   @override
   void dispose() {
     _searchDebounce?.cancel();

@@ -70,7 +70,9 @@ class AnnouncementsController extends StateNotifier<AnnouncementsState> {
     required String title,
     required String text,
     int priority = 3,
+    bool status = true,
     bool sendToAll = true,
+    int? targetUserId,
     bool allowReply = true,
   }) async {
     final t = title.trim();
@@ -85,7 +87,9 @@ class AnnouncementsController extends StateNotifier<AnnouncementsState> {
         title: t,
         text: body,
         priority: priority,
+        status: status,
         sendToAll: sendToAll,
+        targetUserId: targetUserId,
         allowReply: allowReply,
       );
       final (items, _) =
@@ -95,6 +99,45 @@ class AnnouncementsController extends StateNotifier<AnnouncementsState> {
     } catch (_) {
       state =
           state.copyWith(loading: false, error: 'Falha ao criar chat interno');
+      return false;
+    }
+  }
+
+  Future<bool> update({
+    required int id,
+    required String title,
+    required String text,
+    int priority = 3,
+    bool status = true,
+    bool sendToAll = true,
+    int? targetUserId,
+    bool allowReply = true,
+  }) async {
+    final t = title.trim();
+    final body = text.trim();
+    if (id <= 0 || t.isEmpty || body.isEmpty) {
+      state = state.copyWith(error: 'Informe título e mensagem');
+      return false;
+    }
+    state = state.copyWith(loading: true, error: null);
+    try {
+      await _remote.update(
+        id: id,
+        title: t,
+        text: body,
+        priority: priority,
+        status: status,
+        sendToAll: sendToAll,
+        targetUserId: targetUserId,
+        allowReply: allowReply,
+      );
+      final (items, _) =
+          await _remote.list(pageNumber: 1, searchParam: state.search);
+      state = state.copyWith(loading: false, items: items, error: null);
+      return true;
+    } catch (_) {
+      state =
+          state.copyWith(loading: false, error: 'Falha ao atualizar chat interno');
       return false;
     }
   }

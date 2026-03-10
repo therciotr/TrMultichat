@@ -119,6 +119,45 @@ class _ContactDetailScreenState extends ConsumerState<ContactDetailScreen> {
     return 'Não foi possível criar o ticket.';
   }
 
+  Future<void> _deleteContact(ContactDetailState state) async {
+    final c = state.contact;
+    if (c == null) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Excluir contato?'),
+        content: Text(
+          'Deseja excluir "${c.name.trim().isEmpty ? 'Contato' : c.name.trim()}"?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Excluir'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await ref.read(contactsRemoteDataSourceProvider).delete(c.id);
+      await ref.read(contactsControllerProvider.notifier).refresh();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Contato excluido com sucesso.')),
+      );
+      Navigator.of(context).pop();
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Falha ao excluir contato.')),
+      );
+    }
+  }
+
   Future<void> _createTicketForContact(ContactDetailState state) async {
     final c = state.contact;
     if (c == null || _creatingTicket) return;
@@ -222,9 +261,23 @@ class _ContactDetailScreenState extends ConsumerState<ContactDetailScreen> {
     final st = ref.watch(contactDetailProvider(widget.id));
     final ctrl = ref.read(contactDetailProvider(widget.id).notifier);
     final c = st.contact;
+    final auth = ref.watch(authControllerProvider);
+    final isAdmin = (auth.user?.admin ?? false) ||
+        (auth.user?.isSuper ?? false) ||
+        _isAdminProfile(auth.user?.profile);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Contato')),
+      appBar: AppBar(
+        title: const Text('Contato'),
+        actions: [
+          if (isAdmin)
+            IconButton(
+              tooltip: 'Excluir contato',
+              onPressed: c == null || st.loading ? null : () => _deleteContact(st),
+              icon: const Icon(Icons.delete_outline),
+            ),
+        ],
+      ),
       body: SafeArea(
         child: Column(
           children: [
@@ -283,9 +336,38 @@ class _ContactDetailScreenState extends ConsumerState<ContactDetailScreen> {
                                           .colorScheme
                                           .onSurfaceVariant),
                                 ),
+                                if ((c.email ?? '').trim().isNotEmpty) ...[
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    c.email!,
+                                    style: TextStyle(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onSurfaceVariant,
+                                    ),
+                                  ),
+                                ],
                               ],
                             ),
                           ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          if (c.isGroup)
+                            const Chip(label: Text('Grupo')),
+                          Chip(
+                            label: Text(
+                              c.number.trim().isEmpty
+                                  ? 'Sem numero'
+                                  : formatPhoneBr(c.number),
+                            ),
+                          ),
+                          if ((c.email ?? '').trim().isNotEmpty)
+                            Chip(label: Text(c.email!)),
                         ],
                       ),
                       const SizedBox(height: 16),

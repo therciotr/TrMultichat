@@ -57,4 +57,28 @@ class ContactsRemoteDataSource {
     final res = await _dio.get('/contacts/$id');
     return ContactDto.fromJson((res.data as Map).cast<String, dynamic>());
   }
+
+  Future<void> delete(int id) async {
+    await _dio.delete('/contacts/$id');
+  }
+
+  Future<int> deleteAll() async {
+    final res = await _dio.delete('/contacts');
+    final data = res.data;
+    if (data is Map) {
+      return (data['deleted'] as num?)?.toInt() ?? 0;
+    }
+    return 0;
+  }
+
+  Future<int> bulkDelete(List<int> ids) async {
+    final clean = ids.where((e) => e > 0).toSet().toList();
+    if (clean.isEmpty) return 0;
+    final res = await _dio.post('/contacts/bulk-delete', data: {'ids': clean});
+    final data = res.data;
+    if (data is Map) {
+      return (data['deleted'] as num?)?.toInt() ?? clean.length;
+    }
+    return clean.length;
+  }
 }

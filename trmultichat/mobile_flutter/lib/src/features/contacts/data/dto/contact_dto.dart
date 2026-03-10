@@ -12,6 +12,10 @@ class ContactDto {
       id: (json['id'] as num?)?.toInt() ?? 0,
       name: (json['name']?.toString() ?? '').trim(),
       number: (json['number']?.toString() ?? '').trim(),
+      email: (json['email']?.toString() ?? '').trim().isEmpty
+          ? null
+          : (json['email']?.toString() ?? '').trim(),
+      isGroup: json['isGroup'] == true,
       profilePicUrl: profilePicUrl,
     );
   }
