@@ -33,6 +33,7 @@ import ZoomInOutlinedIcon from "@material-ui/icons/ZoomInOutlined";
 import DoneAllOutlinedIcon from "@material-ui/icons/DoneAllOutlined";
 import ReplayOutlinedIcon from "@material-ui/icons/ReplayOutlined";
 import FilterListOutlinedIcon from "@material-ui/icons/FilterListOutlined";
+import FolderOpenOutlinedIcon from "@material-ui/icons/FolderOpenOutlined";
 
 import api from "../../services/api";
 import toastError from "../../errors/toastError";
@@ -45,6 +46,13 @@ import ConfirmationModal from "../../components/ConfirmationModal";
 import Dialog from "@material-ui/core/Dialog";
 import DialogContent from "@material-ui/core/DialogContent";
 import DialogTitle from "@material-ui/core/DialogTitle";
+import DialogActions from "@material-ui/core/DialogActions";
+import {
+  getRegisteredFileDetail,
+  listRegisteredFiles,
+  pickUsableOptions,
+  downloadRegisteredOptionAsFile,
+} from "../../utils/registeredFiles";
 
 const useStyles = makeStyles((theme) => {
   const isDark = theme.palette.type === "dark";
@@ -304,6 +312,13 @@ export default function Informativos() {
   const [sending, setSending] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [file, setFile] = useState(null);
+  const [registeredFileOpen, setRegisteredFileOpen] = useState(false);
+  const [registeredFiles, setRegisteredFiles] = useState([]);
+  const [registeredLoading, setRegisteredLoading] = useState(false);
+  const [selectedFileListId, setSelectedFileListId] = useState("");
+  const [selectedFileList, setSelectedFileList] = useState(null);
+  const [registeredOptions, setRegisteredOptions] = useState([]);
+  const [selectedOptionId, setSelectedOptionId] = useState("");
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewItem, setPreviewItem] = useState(null);
 
@@ -452,6 +467,78 @@ export default function Informativos() {
       setReplyText("");
       setFile(null);
       setEmojiOpen(false);
+      await fetchReplies(selected.id);
+    } catch (e) {
+      toastError(e);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleOpenRegisteredFiles = async () => {
+    setRegisteredFileOpen(true);
+    setRegisteredLoading(true);
+    try {
+      const files = await listRegisteredFiles();
+      setRegisteredFiles(files);
+      if (files.length > 0) {
+        const firstId = String(files[0].id || "");
+        setSelectedFileListId(firstId);
+        const detail = await getRegisteredFileDetail(firstId);
+        const usable = pickUsableOptions(detail);
+        setSelectedFileList(detail);
+        setRegisteredOptions(usable);
+        setSelectedOptionId(usable[0]?.id ? String(usable[0].id) : "");
+      } else {
+        setSelectedFileList(null);
+        setRegisteredOptions([]);
+        setSelectedOptionId("");
+      }
+    } catch (err) {
+      toastError(err);
+    } finally {
+      setRegisteredLoading(false);
+    }
+  };
+
+  const handleChangeRegisteredList = async (event) => {
+    const nextId = String(event.target.value || "");
+    setSelectedFileListId(nextId);
+    setSelectedFileList(null);
+    setRegisteredOptions([]);
+    setSelectedOptionId("");
+    if (!nextId) return;
+    setRegisteredLoading(true);
+    try {
+      const detail = await getRegisteredFileDetail(nextId);
+      const usable = pickUsableOptions(detail);
+      setSelectedFileList(detail);
+      setRegisteredOptions(usable);
+      setSelectedOptionId(usable[0]?.id ? String(usable[0].id) : "");
+    } catch (err) {
+      toastError(err);
+    } finally {
+      setRegisteredLoading(false);
+    }
+  };
+
+  const handleSendRegisteredReply = async () => {
+    if (!selected?.id || !selectedOptionId) return;
+    const option = registeredOptions.find(
+      item => String(item.id) === String(selectedOptionId)
+    );
+    if (!option) return;
+    setSending(true);
+    try {
+      const sentFile = await downloadRegisteredOptionAsFile(option);
+      const formData = new FormData();
+      formData.append("file", sentFile);
+      formData.append(
+        "text",
+        String(option?.name || selectedFileList?.message || "").trim() || sentFile.name
+      );
+      await api.post(`/announcements/${selected.id}/replies`, formData);
+      setRegisteredFileOpen(false);
       await fetchReplies(selected.id);
     } catch (e) {
       toastError(e);
@@ -987,6 +1074,13 @@ export default function Informativos() {
                   <IconButton onClick={() => setEmojiOpen((v) => !v)} disabled={sending} title="Emojis">
                     <MoodOutlinedIcon />
                   </IconButton>
+                  <IconButton
+                    onClick={handleOpenRegisteredFiles}
+                    disabled={sending || !canReply}
+                    title="Lista de arquivos"
+                  >
+                    <FolderOpenOutlinedIcon />
+                  </IconButton>
                   {file ? (
                     <span className={classes.pill} title={file.name} style={{ maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       <AttachFileOutlinedIcon style={{ fontSize: 16 }} />
@@ -1004,6 +1098,13 @@ export default function Informativos() {
                     value={replyText}
                     onChange={(e) => setReplyText(e.target.value)}
                     disabled={!canReply || sending}
+                    onKeyDown={(e) => {
+                      if (!canReply || sending) return;
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        handleSendReply();
+                      }
+                    }}
                   />
                   <IconButton
                     color="primary"
@@ -1024,6 +1125,64 @@ export default function Informativos() {
                     />
                   </div>
                 ) : null}
+                <Dialog
+                  open={registeredFileOpen}
+                  onClose={() => setRegisteredFileOpen(false)}
+                  maxWidth="sm"
+                  fullWidth
+                >
+                  <DialogTitle>Selecionar arquivo cadastrado</DialogTitle>
+                  <DialogContent dividers>
+                    <TextField
+                      select
+                      fullWidth
+                      margin="dense"
+                      label="Lista de arquivos"
+                      value={selectedFileListId}
+                      onChange={handleChangeRegisteredList}
+                    >
+                      {registeredFiles.map((item) => (
+                        <MenuItem key={item.id} value={String(item.id)}>
+                          {item.name}
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                    {selectedFileList?.message ? (
+                      <TextField
+                        fullWidth
+                        margin="dense"
+                        label="Mensagem padrão"
+                        value={selectedFileList.message}
+                        InputProps={{ readOnly: true }}
+                        multiline
+                        minRows={2}
+                      />
+                    ) : null}
+                    <TextField
+                      select
+                      fullWidth
+                      margin="dense"
+                      label="Arquivo cadastrado"
+                      value={selectedOptionId}
+                      onChange={(e) => setSelectedOptionId(String(e.target.value || ""))}
+                      disabled={registeredLoading || !registeredOptions.length}
+                    >
+                      {registeredOptions.map((item) => (
+                        <MenuItem key={item.id} value={String(item.id)}>
+                          {item.name || item.path}
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                  </DialogContent>
+                  <DialogActions>
+                    <TrButton onClick={() => setRegisteredFileOpen(false)} disabled={sending}>
+                      Fechar
+                    </TrButton>
+                    <TrButton onClick={handleSendRegisteredReply} disabled={sending || !selectedOptionId}>
+                      {sending ? "Enviando..." : "Enviar arquivo"}
+                    </TrButton>
+                  </DialogActions>
+                </Dialog>
               </>
             )}
           </Grid>
