@@ -33,7 +33,6 @@ import api from "../../services/api";
 import useCompanies from "../../hooks/useCompanies";
 import { useThemeBranding } from "../../context/ThemeContext";
 import { toast } from "react-toastify";
-import { Vibrant } from "node-vibrant/browser";
 
 const useStyles = makeStyles((theme) => ({
   root: {
@@ -505,15 +504,11 @@ export default function BrandingSettings({ currentUser }) {
     if (!file) return;
     setLogoPaletteLoading(true);
     try {
-      const dataUrl = await fileToDataUrl(file);
-      const palette = await Vibrant.from(dataUrl).getPalette();
-      setLogoPalette(palette || null);
-      if (palette) applyPaletteToForm(palette, "auto");
-    } catch (e) {
+      // Temporarily disable node-vibrant runtime extraction in production build,
+      // since the current frontend toolchain does not transpile that package correctly.
+      // Keep manual color editing/upload working normally.
       setLogoPalette(null);
-      // eslint-disable-next-line no-console
-      console.error("[branding] palette detection failed", e);
-      toast.error("Não foi possível detectar as cores da logo. Tente uma imagem .png/.jpg.");
+      toast.info("Logo enviada. Ajuste as cores manualmente nesta tela.");
     } finally {
       setLogoPaletteLoading(false);
     }

@@ -21,10 +21,11 @@ import MicIcon from "@material-ui/icons/Mic";
 import CheckCircleOutlineIcon from "@material-ui/icons/CheckCircleOutline";
 import HighlightOffIcon from "@material-ui/icons/HighlightOff";
 import MailOutlineOutlinedIcon from "@material-ui/icons/MailOutlineOutlined";
+import FolderOpenOutlinedIcon from "@material-ui/icons/FolderOpenOutlined";
 import AlternateEmailIcon from "@material-ui/icons/AlternateEmail";
 import SubjectIcon from "@material-ui/icons/Subject";
 import NotesOutlinedIcon from "@material-ui/icons/NotesOutlined";
-import { Button, Dialog, DialogActions, DialogContent, FormControlLabel, InputAdornment, Switch, TextField, Typography } from "@material-ui/core";
+import { Button, Dialog, DialogActions, DialogContent, DialogTitle, FormControlLabel, InputAdornment, Switch, TextField, Typography, MenuItem } from "@material-ui/core";
 import Autocomplete from "@material-ui/lab/Autocomplete";
 import { isString, isEmpty, isObject, has } from "lodash";
 import StarBorderOutlinedIcon from "@material-ui/icons/StarBorderOutlined";
@@ -40,6 +41,12 @@ import { AuthContext } from "../../context/Auth/AuthContext";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import toastError from "../../errors/toastError";
 import { toast } from "react-toastify";
+import {
+  getRegisteredFileDetail,
+  listRegisteredFiles,
+  pickUsableOptions,
+  downloadRegisteredOptionAsFile,
+} from "../../utils/registeredFiles";
 
 import useQuickMessages from "../../hooks/useQuickMessages";
 import { TrButton } from "../ui";
@@ -809,6 +816,13 @@ const MessageInputCustom = (props) => {
   const [showEmoji, setShowEmoji] = useState(false);
   const [loading, setLoading] = useState(false);
   const [recording, setRecording] = useState(false);
+  const [registeredFileOpen, setRegisteredFileOpen] = useState(false);
+  const [registeredFiles, setRegisteredFiles] = useState([]);
+  const [registeredLoading, setRegisteredLoading] = useState(false);
+  const [selectedFileListId, setSelectedFileListId] = useState("");
+  const [selectedOptionId, setSelectedOptionId] = useState("");
+  const [selectedFileList, setSelectedFileList] = useState(null);
+  const [registeredOptions, setRegisteredOptions] = useState([]);
   const inputRef = useRef();
   const sendingRef = useRef(false);
   const { setReplyingMessage, replyingMessage } =
@@ -951,6 +965,79 @@ const MessageInputCustom = (props) => {
 
     setLoading(false);
     setMedias([]);
+  };
+
+  const handleOpenRegisteredFiles = async () => {
+    setRegisteredFileOpen(true);
+    setRegisteredLoading(true);
+    try {
+      const files = await listRegisteredFiles();
+      setRegisteredFiles(files);
+      if (files.length > 0) {
+        const firstId = String(files[0].id || "");
+        setSelectedFileListId(firstId);
+        const detail = await getRegisteredFileDetail(firstId);
+        const usable = pickUsableOptions(detail);
+        setSelectedFileList(detail);
+        setRegisteredOptions(usable);
+        setSelectedOptionId(usable[0]?.id ? String(usable[0].id) : "");
+      } else {
+        setSelectedFileList(null);
+        setRegisteredOptions([]);
+        setSelectedOptionId("");
+      }
+    } catch (err) {
+      toastError(err);
+    } finally {
+      setRegisteredLoading(false);
+    }
+  };
+
+  const handleChangeRegisteredList = async (event) => {
+    const nextId = String(event.target.value || "");
+    setSelectedFileListId(nextId);
+    setSelectedOptionId("");
+    setSelectedFileList(null);
+    setRegisteredOptions([]);
+    if (!nextId) return;
+    setRegisteredLoading(true);
+    try {
+      const detail = await getRegisteredFileDetail(nextId);
+      const usable = pickUsableOptions(detail);
+      setSelectedFileList(detail);
+      setRegisteredOptions(usable);
+      setSelectedOptionId(usable[0]?.id ? String(usable[0].id) : "");
+    } catch (err) {
+      toastError(err);
+    } finally {
+      setRegisteredLoading(false);
+    }
+  };
+
+  const handleSendRegisteredFile = async () => {
+    if (!selectedFileList || !selectedOptionId) return;
+    const option = registeredOptions.find(
+      item => String(item.id) === String(selectedOptionId)
+    );
+    if (!option) return;
+    setLoading(true);
+    try {
+      const file = await downloadRegisteredOptionAsFile(option);
+      const formData = new FormData();
+      formData.append("fromMe", true);
+      formData.append("medias", file);
+      const baseMessage = String(option?.name || selectedFileList?.message || "").trim();
+      const signedBody = signMessage && baseMessage
+        ? `*${user?.name}:*\n${baseMessage}`
+        : baseMessage || file.name;
+      formData.append("body", signedBody);
+      await api.post(`/messages/${ticketId}`, formData);
+      setRegisteredFileOpen(false);
+    } catch (err) {
+      toastError(err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleSendEmailWithAttachment = async () => {
@@ -1263,6 +1350,64 @@ const MessageInputCustom = (props) => {
             </TrButton>
           </DialogActions>
         </Dialog>
+        <Dialog
+          open={registeredFileOpen}
+          onClose={() => setRegisteredFileOpen(false)}
+          maxWidth="sm"
+          fullWidth
+        >
+          <DialogTitle>Selecionar arquivo cadastrado</DialogTitle>
+          <DialogContent dividers>
+            <TextField
+              select
+              fullWidth
+              margin="dense"
+              label="Lista de arquivos"
+              value={selectedFileListId}
+              onChange={handleChangeRegisteredList}
+            >
+              {registeredFiles.map(item => (
+                <MenuItem key={item.id} value={String(item.id)}>
+                  {item.name}
+                </MenuItem>
+              ))}
+            </TextField>
+            {selectedFileList?.message ? (
+              <TextField
+                fullWidth
+                margin="dense"
+                label="Mensagem padrão"
+                value={selectedFileList.message}
+                InputProps={{ readOnly: true }}
+                multiline
+                minRows={2}
+              />
+            ) : null}
+            <TextField
+              select
+              fullWidth
+              margin="dense"
+              label="Arquivo cadastrado"
+              value={selectedOptionId}
+              onChange={(e) => setSelectedOptionId(String(e.target.value || ""))}
+              disabled={registeredLoading || !registeredOptions.length}
+            >
+              {registeredOptions.map(item => (
+                <MenuItem key={item.id} value={String(item.id)}>
+                  {item.name || item.path}
+                </MenuItem>
+              ))}
+            </TextField>
+          </DialogContent>
+          <DialogActions>
+            <TrButton onClick={() => setRegisteredFileOpen(false)} disabled={loading}>
+              Fechar
+            </TrButton>
+            <TrButton onClick={handleSendRegisteredFile} disabled={loading || !selectedOptionId}>
+              {loading ? "Enviando..." : "Enviar arquivo"}
+            </TrButton>
+          </DialogActions>
+        </Dialog>
       </Paper>
     );
   else {
@@ -1282,6 +1427,16 @@ const MessageInputCustom = (props) => {
             handleChangeMedias={handleChangeMedias}
             inputId={`upload-button-${ticketId}`}
           />
+
+          <IconButton
+            aria-label="registered-file"
+            component="span"
+            disabled={disableOption()}
+            onClick={handleOpenRegisteredFiles}
+            title="Lista de arquivos"
+          >
+            <FolderOpenOutlinedIcon className={classes.sendMessageIcons} />
+          </IconButton>
 
           <SignSwitch
             width={props.width}
