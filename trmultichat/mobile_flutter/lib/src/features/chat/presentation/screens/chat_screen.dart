@@ -14,6 +14,7 @@ import 'package:video_thumbnail/video_thumbnail.dart';
 
 import '../../../../core/attachments/attachment_cache_providers.dart';
 import '../../../../core/di/core_providers.dart';
+import '../../../../core/files/registered_file_helpers.dart';
 import '../../../../core/share/share_providers.dart';
 import '../../../../core/ui/attachment_preview.dart';
 import '../../../../core/utils/mime_guess.dart';
@@ -128,6 +129,33 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Falha ao apagar ticket: ${e.toString()}')),
+      );
+    }
+  }
+
+  Future<void> _sendRegisteredFile(dynamic ctrl) async {
+    final dio = ref.read(dioProvider);
+    try {
+      final selected = await pickRegisteredFileSelection(
+        context,
+        dio,
+        title: 'Selecionar arquivo cadastrado',
+      );
+      if (selected == null) return;
+      final downloaded = await downloadRegisteredFile(dio, selected);
+      final body = selected.optionName.trim().isNotEmpty
+          ? selected.optionName.trim()
+          : selected.fileListMessage.trim();
+      await ctrl.sendMedia(
+        body: body,
+        fileBytes: downloaded.bytes,
+        fileName: downloaded.fileName,
+        mimeType: downloaded.mimeType,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Falha ao enviar arquivo cadastrado: $e')),
       );
     }
   }
@@ -580,6 +608,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   _text.clear();
                   await ctrl.sendText(v);
                 },
+                onRegisteredFile: () async {
+                  if (st.uploading) return;
+                  FocusManager.instance.primaryFocus?.unfocus();
+                  await _sendRegisteredFile(ctrl);
+                },
                 isRecording: _isRecording,
                 recordSeconds: _recordSeconds,
                 micEnabled: !st.uploading,
@@ -882,6 +915,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 class _Composer extends StatelessWidget {
   final TextEditingController controller;
   final VoidCallback onAttach;
+  final VoidCallback onRegisteredFile;
   final bool isRecording;
   final int recordSeconds;
   final bool micEnabled;
@@ -891,6 +925,7 @@ class _Composer extends StatelessWidget {
   const _Composer({
     required this.controller,
     required this.onAttach,
+    required this.onRegisteredFile,
     required this.isRecording,
     required this.recordSeconds,
     required this.micEnabled,
@@ -933,6 +968,18 @@ class _Composer extends StatelessWidget {
               onPressed: onAttach,
               icon: const Icon(Icons.attach_file),
               tooltip: 'Anexar',
+            ),
+          ),
+          const SizedBox(width: 6),
+          Container(
+            decoration: BoxDecoration(
+              color: cs.surfaceContainerHighest.withValues(alpha: 0.55),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: IconButton(
+              onPressed: onRegisteredFile,
+              icon: const Icon(Icons.folder_open_outlined),
+              tooltip: 'Enviar arquivo cadastrado',
             ),
           ),
           const SizedBox(width: 6),

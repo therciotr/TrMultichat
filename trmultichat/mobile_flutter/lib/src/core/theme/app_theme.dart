@@ -25,7 +25,9 @@ class AppTheme {
   static ThemeData light(Branding branding) {
     final primary = _hex(branding.primaryColor);
     final secondary = _hex(branding.secondaryColor);
+    final button = _hex(branding.buttonColor);
     final text = _hex(branding.textColor);
+    final background = _hex(branding.backgroundColor);
     final scheme = ColorScheme.fromSeed(
       seedColor: primary,
       primary: primary,
@@ -43,7 +45,7 @@ class AppTheme {
         elevation: 0,
         centerTitle: true,
       ),
-      scaffoldBackgroundColor: const Color(0xFFF5F7FA),
+      scaffoldBackgroundColor: background,
       cardTheme: CardThemeData(
         elevation: 0,
         color: Colors.white,
@@ -72,6 +74,8 @@ class AppTheme {
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
+          backgroundColor: button,
+          foregroundColor: Colors.white,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           textStyle: const TextStyle(fontWeight: FontWeight.w700),
@@ -104,6 +108,8 @@ class AppTheme {
   static ThemeData dark(Branding branding) {
     final primary = _hex(branding.primaryColor);
     final secondary = _hex(branding.secondaryColor);
+    final button = _hex(branding.buttonColor);
+    final background = _hex(branding.backgroundColor);
     final scheme = ColorScheme.fromSeed(
       seedColor: primary,
       primary: primary,
@@ -120,7 +126,7 @@ class AppTheme {
         elevation: 0,
         centerTitle: true,
       ),
-      scaffoldBackgroundColor: const Color(0xFF0E1116),
+      scaffoldBackgroundColor: background,
       cardTheme: CardThemeData(
         elevation: 0,
         shape: RoundedRectangleBorder(
@@ -139,6 +145,8 @@ class AppTheme {
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
+          backgroundColor: button,
+          foregroundColor: Colors.white,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
           textStyle: const TextStyle(fontWeight: FontWeight.w700),
         ),

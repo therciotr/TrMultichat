@@ -1479,77 +1479,264 @@ class _DesktopFilesScreenState extends _BaseCrudScreen<DesktopFilesScreen> {
     });
   }
 
+  String _fileNameFromPath(String path) {
+    final clean = path.trim();
+    if (clean.isEmpty) return '';
+    final parts = clean.split('/');
+    return parts.isEmpty ? clean : parts.last;
+  }
+
+  Future<Map<String, dynamic>> _loadFileDetail(int id) async {
+    final res = await dio.get('/files/$id');
+    return (res.data as Map?)?.cast<String, dynamic>() ?? const {};
+  }
+
+  Future<void> _uploadFileOptions(
+    int fileId,
+    List<Map<String, dynamic>> savedOptions,
+    List<Map<String, dynamic>> drafts,
+  ) async {
+    final form = FormData();
+    for (var i = 0; i < drafts.length && i < savedOptions.length; i++) {
+      final draft = drafts[i];
+      final file = draft['file'] as PlatformFile?;
+      if (file == null) continue;
+      MultipartFile multipart;
+      if (file.bytes != null && file.bytes!.isNotEmpty) {
+        multipart = MultipartFile.fromBytes(file.bytes!, filename: file.name);
+      } else if ((file.path ?? '').trim().isNotEmpty) {
+        multipart = await MultipartFile.fromFile(file.path!, filename: file.name);
+      } else {
+        continue;
+      }
+      form.files.add(MapEntry('files', multipart));
+      form.fields.add(MapEntry(
+          'mediaType', (draft['mediaType'] ?? '').toString().trim()));
+      form.fields.add(MapEntry('name', (draft['name'] ?? '').toString().trim()));
+      form.fields.add(MapEntry(
+          'id', ((savedOptions[i]['id'] as num?)?.toInt() ?? 0).toString()));
+    }
+    if (form.files.isEmpty) return;
+    await dio.post('/files/uploadList/$fileId', data: form);
+  }
+
   Future<void> openForm([Map<String, dynamic>? initial]) async {
-    final id = (initial?['id'] as num?)?.toInt();
+    final incomingId = (initial?['id'] as num?)?.toInt();
+    final initialData = incomingId == null ? initial : await _loadFileDetail(incomingId);
+    final id = (initialData?['id'] as num?)?.toInt();
     final name =
-        TextEditingController(text: (initial?['name'] ?? '').toString());
+        TextEditingController(text: (initialData?['name'] ?? '').toString());
     final message =
-        TextEditingController(text: (initial?['message'] ?? '').toString());
-    final options = TextEditingController(
-      text: ((initial?['options'] as List?) ?? const [])
-          .whereType<Map>()
-          .map((e) => (e['name'] ?? '').toString())
-          .where((e) => e.isNotEmpty)
-          .join(', '),
-    );
+        TextEditingController(text: (initialData?['message'] ?? '').toString());
+    final optionsDrafts = (((initialData?['options'] as List?) ?? const [])
+            .whereType<Map>()
+            .map((e) => e.cast<String, dynamic>())
+            .map((e) => <String, dynamic>{
+                  'id': e['id'],
+                  'name': (e['name'] ?? '').toString(),
+                  'path': (e['path'] ?? '').toString(),
+                  'mediaType': (e['mediaType'] ?? '').toString(),
+                  'file': null,
+                })
+            .toList())
+        .cast<Map<String, dynamic>>();
+    if (optionsDrafts.isEmpty) {
+      optionsDrafts.add(<String, dynamic>{
+        'id': null,
+        'name': '',
+        'path': '',
+        'mediaType': '',
+        'file': null,
+      });
+    }
     await showDialog<void>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(id == null ? 'Novo arquivo' : 'Editar arquivo'),
-        content: SizedBox(
-          width: 620,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                  controller: name,
-                  decoration: const InputDecoration(labelText: 'Nome')),
-              const SizedBox(height: 8),
-              TextField(
-                  controller: message,
-                  decoration: const InputDecoration(labelText: 'Mensagem'),
-                  maxLines: 3),
-              const SizedBox(height: 8),
-              TextField(
-                  controller: options,
-                  decoration: const InputDecoration(
-                      labelText: 'Opções (separadas por vírgula)')),
-            ],
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) => AlertDialog(
+          title: Text(id == null ? 'Novo arquivo' : 'Editar arquivo'),
+          content: SizedBox(
+            width: 760,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  TextField(
+                    controller: name,
+                    decoration: const InputDecoration(labelText: 'Nome da lista'),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: message,
+                    decoration:
+                        const InputDecoration(labelText: 'Detalhes da lista'),
+                    maxLines: 4,
+                  ),
+                  const SizedBox(height: 14),
+                  const Text(
+                    'Itens da lista',
+                    style: TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(height: 8),
+                  ...optionsDrafts.asMap().entries.map((entry) {
+                    final index = entry.key;
+                    final item = entry.value;
+                    final picked = item['file'] as PlatformFile?;
+                    final fileLabel = picked?.name ??
+                        _fileNameFromPath((item['path'] ?? '').toString());
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 10),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .outlineVariant
+                              .withOpacity(0.55),
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          TextField(
+                            controller: TextEditingController(
+                              text: (item['name'] ?? '').toString(),
+                            ),
+                            onChanged: (v) => item['name'] = v,
+                            decoration: const InputDecoration(
+                              labelText: 'Mensagem para enviar com arquivo',
+                            ),
+                            maxLines: 2,
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  fileLabel.isEmpty
+                                      ? 'Nenhum arquivo selecionado'
+                                      : fileLabel,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              OutlinedButton.icon(
+                                onPressed: () async {
+                                  final pickedResult =
+                                      await FilePicker.platform.pickFiles(
+                                    withData: true,
+                                  );
+                                  final file = pickedResult?.files.isNotEmpty == true
+                                      ? pickedResult!.files.first
+                                      : null;
+                                  if (file == null) return;
+                                  setLocal(() {
+                                    item['file'] = file;
+                                    item['mediaType'] = file.extension == null
+                                        ? ''
+                                        : 'application/${file.extension}';
+                                  });
+                                },
+                                icon: const Icon(Icons.attach_file),
+                                label: const Text('Anexar'),
+                              ),
+                              const SizedBox(width: 8),
+                              IconButton(
+                                tooltip: 'Remover item',
+                                onPressed: optionsDrafts.length == 1
+                                    ? null
+                                    : () => setLocal(() {
+                                          optionsDrafts.removeAt(index);
+                                        }),
+                                icon: const Icon(Icons.delete_outline),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      onPressed: () => setLocal(() {
+                        optionsDrafts.add(<String, dynamic>{
+                          'id': null,
+                          'name': '',
+                          'path': '',
+                          'mediaType': '',
+                          'file': null,
+                        });
+                      }),
+                      icon: const Icon(Icons.add_circle_outline),
+                      label: const Text('Adicionar arquivo'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancelar')),
+            FilledButton(
+              onPressed: () async {
+                final cleanOptions = optionsDrafts
+                    .map((e) => <String, dynamic>{
+                          if (e['id'] != null) 'id': e['id'],
+                          'name': (e['name'] ?? '').toString().trim(),
+                          'path': (e['path'] ?? '').toString(),
+                          'mediaType': (e['mediaType'] ?? '').toString(),
+                        })
+                    .where((e) => (e['name'] ?? '').toString().isNotEmpty)
+                    .toList();
+                final hasAnyFile = optionsDrafts.any((e) {
+                  final picked = e['file'] as PlatformFile?;
+                  final existing = (e['path'] ?? '').toString().trim();
+                  return picked != null || existing.isNotEmpty;
+                });
+                if (!hasAnyFile) {
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Selecione ao menos um arquivo na lista.'),
+                    ),
+                  );
+                  return;
+                }
+                final payload = {
+                  'name': name.text.trim(),
+                  'message': message.text.trim(),
+                  'options': cleanOptions,
+                };
+                final response = id == null
+                    ? await dio.post('/files', data: payload)
+                    : await dio.put('/files/$id', data: payload);
+                final saved = (response.data as Map?)?.cast<String, dynamic>() ??
+                    const <String, dynamic>{};
+                final savedId = (saved['id'] as num?)?.toInt();
+                final savedOptions = ((saved['options'] as List?) ?? const [])
+                    .whereType<Map>()
+                    .map((e) => e.cast<String, dynamic>())
+                    .toList();
+                if (savedId != null && savedId > 0) {
+                  await _uploadFileOptions(savedId, savedOptions, optionsDrafts);
+                }
+                if (!mounted) return;
+                Navigator.pop(ctx);
+                await fetch();
+              },
+              child: const Text('Salvar'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancelar')),
-          FilledButton(
-            onPressed: () async {
-              final payload = {
-                'name': name.text.trim(),
-                'message': message.text.trim(),
-                'options': options.text
-                    .split(',')
-                    .map((e) => e.trim())
-                    .where((e) => e.isNotEmpty)
-                    .map((e) => {'name': e})
-                    .toList(),
-              };
-              if (id == null) {
-                await dio.post('/files', data: payload);
-              } else {
-                await dio.put('/files/$id', data: payload);
-              }
-              if (!mounted) return;
-              Navigator.pop(ctx);
-              await fetch();
-            },
-            child: const Text('Salvar'),
-          ),
-        ],
       ),
     );
     name.dispose();
     message.dispose();
-    options.dispose();
   }
 
   @override
@@ -1573,7 +1760,21 @@ class _DesktopFilesScreenState extends _BaseCrudScreen<DesktopFilesScreen> {
                         const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
                     title: Text((r['name'] ?? '').toString(),
                         style: const TextStyle(fontWeight: FontWeight.w800)),
-                    subtitle: Text((r['message'] ?? '').toString()),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text((r['message'] ?? '').toString()),
+                        const SizedBox(height: 6),
+                        Text(
+                          '${((r['options'] as List?) ?? const []).length} item(ns) com arquivo',
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
                     trailing: _CrudActionButtons(
                       onEdit: () => openForm(r),
                       onDelete: id <= 0

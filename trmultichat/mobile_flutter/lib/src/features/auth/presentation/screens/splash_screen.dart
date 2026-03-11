@@ -37,7 +37,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
     final auth = ref.watch(authControllerProvider);
     final branding = ref.watch(brandingControllerProvider).branding;
     final base = ref.read(dioProvider).options.baseUrl.replaceAll(RegExp(r'/+$'), '');
-    final rawLogo = (branding.logoUrl ?? '').trim();
+    final rawLogo = (branding.appLogoUrl ?? '').trim();
     final logoUrl = rawLogo.isEmpty
         ? null
         : (rawLogo.startsWith('http') ? rawLogo : '$base/${rawLogo.replaceAll(RegExp(r'^/+'), '')}');
@@ -70,23 +70,34 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
                 padding: const EdgeInsets.all(18),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(999),
-                  child: Image.asset(
-                    'assets/logo_login.png',
-                    fit: BoxFit.contain,
-                    errorBuilder: (_, __, ___) {
-                      if (logoUrl == null) return const Icon(Icons.chat_bubble_outline, color: Colors.white, size: 52);
-                      return Image.network(
-                        logoUrl,
-                        fit: BoxFit.contain,
-                        errorBuilder: (_, __, ___) => const Icon(Icons.chat_bubble_outline, color: Colors.white, size: 52),
-                      );
-                    },
-                  ),
+                  child: logoUrl == null
+                      ? Image.asset(
+                          'assets/logo_login.png',
+                          fit: BoxFit.contain,
+                          errorBuilder: (_, __, ___) => const Icon(
+                            Icons.chat_bubble_outline,
+                            color: Colors.white,
+                            size: 52,
+                          ),
+                        )
+                      : Image.network(
+                          logoUrl,
+                          fit: BoxFit.contain,
+                          errorBuilder: (_, __, ___) => Image.asset(
+                            'assets/logo_login.png',
+                            fit: BoxFit.contain,
+                            errorBuilder: (_, __, ___) => const Icon(
+                              Icons.chat_bubble_outline,
+                              color: Colors.white,
+                              size: 52,
+                            ),
+                          ),
+                        ),
                 ),
               ),
               const SizedBox(height: 18),
               Text(
-                'TR Multichat',
+                branding.appTitle,
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                       color: Colors.white,
                       fontWeight: FontWeight.w800,

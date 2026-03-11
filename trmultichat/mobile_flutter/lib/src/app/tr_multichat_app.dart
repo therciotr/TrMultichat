@@ -53,7 +53,7 @@ class _TrMultichatAppState extends ConsumerState<TrMultichatApp> with WidgetsBin
     final auth = ref.watch(authControllerProvider);
 
     return MaterialApp.router(
-      title: 'TR Multichat',
+      title: themeState.branding.appTitle,
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(themeState.branding),
       darkTheme: AppTheme.dark(themeState.branding),

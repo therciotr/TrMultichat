@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/di/core_providers.dart';
+import '../../features/branding/presentation/providers/branding_providers.dart';
 import '../../features/auth/presentation/providers/auth_providers.dart';
 
 class ShellScaffold extends ConsumerWidget {
@@ -78,6 +80,7 @@ class ShellScaffold extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     if (_useDesktopLayout(context)) {
       final auth = ref.watch(authControllerProvider);
+      final branding = ref.watch(brandingControllerProvider).branding;
       final user = auth.user;
       final profile = (user?.profile ?? '').toLowerCase();
       final isSuperLike = user?.isSuper == true || profile == 'super';
@@ -88,6 +91,13 @@ class ShellScaffold extends ConsumerWidget {
       final cs = Theme.of(context).colorScheme;
       final wide = MediaQuery.sizeOf(context).width >= 1320;
       final currentPath = GoRouterState.of(context).uri.path;
+      final rawLogo = (branding.appLogoUrl ?? '').trim();
+      final base = ref.read(dioProvider).options.baseUrl.replaceAll(RegExp(r'/+$'), '');
+      final logoUrl = rawLogo.isEmpty
+          ? null
+          : (rawLogo.startsWith('http')
+              ? rawLogo
+              : '$base/${rawLogo.replaceAll(RegExp(r'^/+'), '')}');
       final atendimento = const <({String label, IconData icon, String route})>[
         (
           label: 'Respostas Rápidas',
@@ -226,18 +236,31 @@ class ShellScaffold extends ConsumerWidget {
                           children: [
                             ClipRRect(
                               borderRadius: BorderRadius.circular(10),
-                              child: Image.asset(
-                                'assets/logo_login.png',
-                                width: 34,
-                                height: 34,
-                                fit: BoxFit.cover,
-                                errorBuilder: (_, __, ___) => CircleAvatar(
-                                  radius: 16,
-                                  backgroundColor: cs.primary.withOpacity(0.12),
-                                  child: Icon(Icons.all_inbox_rounded,
-                                      color: cs.primary),
-                                ),
-                              ),
+                              child: logoUrl == null
+                                  ? Image.asset(
+                                      'assets/logo_login.png',
+                                      width: 34,
+                                      height: 34,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, __, ___) => CircleAvatar(
+                                        radius: 16,
+                                        backgroundColor: cs.primary.withOpacity(0.12),
+                                        child: Icon(Icons.all_inbox_rounded,
+                                            color: cs.primary),
+                                      ),
+                                    )
+                                  : Image.network(
+                                      logoUrl,
+                                      width: 34,
+                                      height: 34,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, __, ___) => CircleAvatar(
+                                        radius: 16,
+                                        backgroundColor: cs.primary.withOpacity(0.12),
+                                        child: Icon(Icons.all_inbox_rounded,
+                                            color: cs.primary),
+                                      ),
+                                    ),
                             ),
                             if (wide) ...[
                               const SizedBox(width: 10),
@@ -245,12 +268,13 @@ class ShellScaffold extends ConsumerWidget {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    const Text(
-                                      'TR Multichat',
+                                    Text(
+                                      branding.appTitle,
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                          fontWeight: FontWeight.w900),
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w900,
+                                      ),
                                     ),
                                     Text(
                                       isAdminLike ? 'Administrador' : 'Usuário',

@@ -2,10 +2,12 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 
 import '../../../../core/di/core_providers.dart';
+import '../../../../core/files/registered_file_helpers.dart';
 import '../../../../core/ui/attachment_preview.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../controllers/announcement_detail_controller.dart';
@@ -27,8 +29,102 @@ class AnnouncementDetailScreen extends ConsumerStatefulWidget {
 
 class _AnnouncementDetailScreenState extends ConsumerState<AnnouncementDetailScreen> {
   final _reply = TextEditingController();
+  final _replyFocus = FocusNode();
   PlatformFile? _picked;
   Uint8List? _pickedBytes;
+
+  Future<void> _submitReply(AnnouncementDetailController ctrl) async {
+    final text = _reply.text;
+    final file = _picked;
+    final bytes = _pickedBytes;
+    final usablePath = _hasUsableLocalPath(file?.path);
+    final stream =
+        (!usablePath && (bytes == null || bytes.isEmpty)) ? file?.readStream : null;
+    final ok = await ctrl.send(
+      text,
+      filePath: usablePath ? file?.path : null,
+      fileBytes: bytes ?? file?.bytes,
+      fileStream: stream,
+      fileSize: stream == null ? null : file?.size,
+      fileName: file?.name,
+      mimeType: null,
+    );
+    if (!ok) {
+      if (!mounted) return;
+      final err =
+          ref.read(announcementDetailProvider(widget.id)).error?.trim() ?? '';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            err.isNotEmpty ? err : 'Falha ao enviar mensagem/anexo',
+          ),
+        ),
+      );
+      return;
+    }
+    _reply.clear();
+    if (mounted) {
+      setState(() {
+        _picked = null;
+        _pickedBytes = null;
+      });
+    }
+  }
+
+  Future<void> _sendRegisteredFile(AnnouncementDetailController ctrl) async {
+    final dio = ref.read(dioProvider);
+    try {
+      final selected = await pickRegisteredFileSelection(
+        context,
+        dio,
+        title: 'Selecionar arquivo cadastrado',
+      );
+      if (selected == null) return;
+      final downloaded = await downloadRegisteredFile(dio, selected);
+      final body = selected.optionName.trim().isNotEmpty
+          ? selected.optionName.trim()
+          : selected.fileListMessage.trim();
+      final ok = await ctrl.send(
+        body,
+        fileBytes: downloaded.bytes,
+        fileName: downloaded.fileName,
+        mimeType: downloaded.mimeType,
+      );
+      if (!ok && mounted) {
+        final err =
+            ref.read(announcementDetailProvider(widget.id)).error?.trim() ?? '';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              err.isNotEmpty ? err : 'Falha ao enviar arquivo cadastrado',
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Falha ao enviar arquivo cadastrado: $e')),
+      );
+    }
+  }
+
+  void _insertReplyNewline() {
+    final selection = _reply.selection;
+    final text = _reply.text;
+    if (!selection.isValid) {
+      _reply.text = '$text\n';
+      _reply.selection = TextSelection.collapsed(offset: _reply.text.length);
+      return;
+    }
+    final start = selection.start;
+    final end = selection.end;
+    final next = text.replaceRange(start, end, '\n');
+    _reply.value = TextEditingValue(
+      text: next,
+      selection: TextSelection.collapsed(offset: start + 1),
+    );
+  }
 
   bool _isImageFile(String? name, String? path, String? mimeType) {
     final n = (name ?? '').toLowerCase();
@@ -108,6 +204,7 @@ class _AnnouncementDetailScreenState extends ConsumerState<AnnouncementDetailScr
   @override
   void dispose() {
     _reply.dispose();
+    _replyFocus.dispose();
     super.dispose();
   }
 
@@ -286,20 +383,57 @@ class _AnnouncementDetailScreenState extends ConsumerState<AnnouncementDetailScr
                           },
                     icon: const Icon(Icons.attach_file),
                   ),
+                  IconButton(
+                    tooltip: 'Arquivo cadastrado',
+                    onPressed: st.sending || !canReply
+                        ? null
+                        : () => _sendRegisteredFile(ctrl),
+                    icon: const Icon(Icons.folder_open_outlined),
+                  ),
                   Expanded(
-                    child: TextField(
-                      controller: _reply,
-                      enabled: canReply && !st.sending,
-                      minLines: 1,
-                      maxLines: 4,
-                      decoration: InputDecoration(
-                        hintText: canReply
-                            ? 'Responder'
-                            : 'Respostas desativadas para usuarios',
-                        filled: true,
-                        fillColor: Theme.of(context).colorScheme.surfaceContainerHighest.withOpacity(0.55),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(22), borderSide: BorderSide.none),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    child: Focus(
+                      onKeyEvent: (_, event) {
+                        if (event is! KeyDownEvent) return KeyEventResult.ignored;
+                        final isEnter =
+                            event.logicalKey == LogicalKeyboardKey.enter ||
+                                event.logicalKey ==
+                                    LogicalKeyboardKey.numpadEnter;
+                        if (!isEnter) return KeyEventResult.ignored;
+                        if (HardwareKeyboard.instance.isShiftPressed) {
+                          _insertReplyNewline();
+                          return KeyEventResult.handled;
+                        }
+                        if (canReply && !st.sending) {
+                          _submitReply(ctrl);
+                        }
+                        return KeyEventResult.handled;
+                      },
+                      child: TextField(
+                        controller: _reply,
+                        focusNode: _replyFocus,
+                        enabled: canReply && !st.sending,
+                        minLines: 1,
+                        maxLines: 4,
+                        keyboardType: TextInputType.multiline,
+                        textInputAction: TextInputAction.newline,
+                        decoration: InputDecoration(
+                          hintText: canReply
+                              ? 'Responder'
+                              : 'Respostas desativadas para usuarios',
+                          filled: true,
+                          fillColor: Theme.of(context)
+                              .colorScheme
+                              .surfaceContainerHighest
+                              .withOpacity(0.55),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(22),
+                            borderSide: BorderSide.none,
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 10,
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -307,47 +441,7 @@ class _AnnouncementDetailScreenState extends ConsumerState<AnnouncementDetailScr
                   FilledButton(
                     onPressed: !canReply || st.sending
                         ? null
-                        : () async {
-                            final text = _reply.text;
-                            final file = _picked;
-                            final bytes = _pickedBytes;
-                            final usablePath = _hasUsableLocalPath(file?.path);
-                            final stream = (!usablePath &&
-                                    (bytes == null || bytes.isEmpty))
-                                ? file?.readStream
-                                : null;
-                            final ok = await ctrl.send(
-                              text,
-                              filePath: usablePath ? file?.path : null,
-                              fileBytes: bytes ?? file?.bytes,
-                              fileStream: stream,
-                              fileSize: stream == null ? null : file?.size,
-                              fileName: file?.name,
-                              mimeType: null,
-                            );
-                            if (!ok) {
-                              if (!mounted) return;
-                              final err = ref
-                                      .read(announcementDetailProvider(widget.id))
-                                      .error
-                                      ?.trim() ??
-                                  '';
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                    content: Text(err.isNotEmpty
-                                        ? err
-                                        : 'Falha ao enviar mensagem/anexo')),
-                              );
-                              return;
-                            }
-                            _reply.clear();
-                            if (mounted) {
-                              setState(() {
-                                _picked = null;
-                                _pickedBytes = null;
-                              });
-                            }
-                          },
+                        : () => _submitReply(ctrl),
                     child: Text(st.sending ? '...' : 'Enviar'),
                   ),
                 ],
