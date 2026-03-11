@@ -19,7 +19,17 @@ import ClearIcon from "@material-ui/icons/Clear";
 import MicIcon from "@material-ui/icons/Mic";
 import CheckCircleOutlineIcon from "@material-ui/icons/CheckCircleOutline";
 import HighlightOffIcon from "@material-ui/icons/HighlightOff";
-import { FormControlLabel, Switch } from "@material-ui/core";
+import FolderOpenOutlinedIcon from "@material-ui/icons/FolderOpenOutlined";
+import {
+	FormControlLabel,
+	Switch,
+	Dialog,
+	DialogTitle,
+	DialogContent,
+	DialogActions,
+	TextField,
+	MenuItem,
+} from "@material-ui/core";
 
 import { i18n } from "../../translate/i18n";
 import api from "../../services/api";
@@ -28,6 +38,12 @@ import { ReplyMessageContext } from "../../context/ReplyingMessage/ReplyingMessa
 import { AuthContext } from "../../context/Auth/AuthContext";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import toastError from "../../errors/toastError";
+import {
+	getRegisteredFileDetail,
+	listRegisteredFiles,
+	pickUsableOptions,
+	downloadRegisteredOptionAsFile,
+} from "../../utils/registeredFiles";
 
 const Mp3Recorder = new MicRecorder({ bitRate: 128 });
 
@@ -172,6 +188,13 @@ const MessageInput = ({ ticketStatus }) => {
 	const [showEmoji, setShowEmoji] = useState(false);
 	const [loading, setLoading] = useState(false);
 	const [recording, setRecording] = useState(false);
+	const [registeredFileOpen, setRegisteredFileOpen] = useState(false);
+	const [registeredFiles, setRegisteredFiles] = useState([]);
+	const [registeredLoading, setRegisteredLoading] = useState(false);
+	const [selectedFileListId, setSelectedFileListId] = useState("");
+	const [selectedOptionId, setSelectedOptionId] = useState("");
+	const [selectedFileList, setSelectedFileList] = useState(null);
+	const [registeredOptions, setRegisteredOptions] = useState([]);
 	const inputRef = useRef();
 	const { setReplyingMessage, replyingMessage } = useContext(
 		ReplyMessageContext
@@ -269,6 +292,79 @@ const MessageInput = ({ ticketStatus }) => {
 			setInputMessage("");
 			setShowEmoji(false);
 			setReplyingMessage(null);
+		}
+	};
+
+	const handleOpenRegisteredFiles = async () => {
+		setRegisteredFileOpen(true);
+		setRegisteredLoading(true);
+		try {
+			const files = await listRegisteredFiles();
+			setRegisteredFiles(files);
+			if (files.length > 0) {
+				const firstId = String(files[0].id || "");
+				setSelectedFileListId(firstId);
+				const detail = await getRegisteredFileDetail(firstId);
+				const usable = pickUsableOptions(detail);
+				setSelectedFileList(detail);
+				setRegisteredOptions(usable);
+				setSelectedOptionId(usable[0]?.id ? String(usable[0].id) : "");
+			} else {
+				setSelectedFileList(null);
+				setRegisteredOptions([]);
+				setSelectedOptionId("");
+			}
+		} catch (err) {
+			toastError(err);
+		} finally {
+			setRegisteredLoading(false);
+		}
+	};
+
+	const handleChangeRegisteredList = async (event) => {
+		const nextId = String(event.target.value || "");
+		setSelectedFileListId(nextId);
+		setSelectedOptionId("");
+		setRegisteredOptions([]);
+		setSelectedFileList(null);
+		if (!nextId) return;
+		setRegisteredLoading(true);
+		try {
+			const detail = await getRegisteredFileDetail(nextId);
+			const usable = pickUsableOptions(detail);
+			setSelectedFileList(detail);
+			setRegisteredOptions(usable);
+			setSelectedOptionId(usable[0]?.id ? String(usable[0].id) : "");
+		} catch (err) {
+			toastError(err);
+		} finally {
+			setRegisteredLoading(false);
+		}
+	};
+
+	const handleSendRegisteredFile = async () => {
+		if (!selectedFileList || !selectedOptionId) return;
+		const option = registeredOptions.find(
+			item => String(item.id) === String(selectedOptionId)
+		);
+		if (!option) return;
+		setLoading(true);
+		try {
+			const file = await downloadRegisteredOptionAsFile(option);
+			const formData = new FormData();
+			formData.append("fromMe", true);
+			formData.append("medias", file);
+			const baseMessage = String(option?.name || selectedFileList?.message || "").trim();
+			const signedBody = signMessage && baseMessage
+				? `*${user?.name}:*\n${baseMessage}`
+				: baseMessage || file.name;
+			formData.append("body", signedBody);
+			await api.post(`/messages/${ticketId}`, formData);
+			setRegisteredFileOpen(false);
+		} catch (err) {
+			toastError(err);
+		} finally {
+			setLoading(false);
 		}
 	};
 
@@ -421,6 +517,15 @@ const MessageInput = ({ ticketStatus }) => {
 							<AttachFileIcon className={classes.sendMessageIcons} />
 						</IconButton>
 					</label>
+					<IconButton
+						aria-label="registered-file"
+						component="span"
+						disabled={loading || recording || ticketStatus !== "open"}
+						onClick={handleOpenRegisteredFiles}
+						title="Lista de arquivos"
+					>
+						<FolderOpenOutlinedIcon className={classes.sendMessageIcons} />
+					</IconButton>
 					<FormControlLabel
 						style={{ marginRight: 7, color: "gray" }}
 						label={i18n.t("messagesInput.signMessage")}
@@ -514,6 +619,70 @@ const MessageInput = ({ ticketStatus }) => {
 						</IconButton>
 					)}
 				</div>
+				<Dialog
+					open={registeredFileOpen}
+					onClose={() => setRegisteredFileOpen(false)}
+					maxWidth="sm"
+					fullWidth
+				>
+					<DialogTitle>Selecionar arquivo cadastrado</DialogTitle>
+					<DialogContent dividers>
+						<TextField
+							select
+							fullWidth
+							margin="dense"
+							label="Lista de arquivos"
+							value={selectedFileListId}
+							onChange={handleChangeRegisteredList}
+						>
+							{registeredFiles.map(item => (
+								<MenuItem key={item.id} value={String(item.id)}>
+									{item.name}
+								</MenuItem>
+							))}
+						</TextField>
+						{selectedFileList?.message ? (
+							<TextField
+								fullWidth
+								margin="dense"
+								label="Mensagem padrão"
+								value={selectedFileList.message}
+								InputProps={{ readOnly: true }}
+								multiline
+								minRows={2}
+							/>
+						) : null}
+						<TextField
+							select
+							fullWidth
+							margin="dense"
+							label="Arquivo cadastrado"
+							value={selectedOptionId}
+							onChange={e => setSelectedOptionId(String(e.target.value || ""))}
+							disabled={registeredLoading || !registeredOptions.length}
+						>
+							{registeredOptions.map(item => (
+								<MenuItem key={item.id} value={String(item.id)}>
+									{item.name || item.path}
+								</MenuItem>
+							))}
+						</TextField>
+					</DialogContent>
+					<DialogActions>
+						<IconButton
+							onClick={() => setRegisteredFileOpen(false)}
+							disabled={loading}
+						>
+							<CancelIcon className={classes.sendMessageIcons} />
+						</IconButton>
+						<IconButton
+							onClick={handleSendRegisteredFile}
+							disabled={loading || !selectedOptionId}
+						>
+							<SendIcon className={classes.sendMessageIcons} />
+						</IconButton>
+					</DialogActions>
+				</Dialog>
 			</Paper>
 		);
 	}
