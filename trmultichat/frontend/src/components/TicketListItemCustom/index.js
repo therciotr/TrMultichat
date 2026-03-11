@@ -484,7 +484,10 @@ const TicketListItemCustom = ({ ticket, selectionMode = false, selected = false,
             if (typeof onToggleSelect === "function") onToggleSelect(ticket.id);
             return;
           }
-          if (ticket.status === "pending") return;
+          if (ticket.status === "pending") {
+            setOpenTicketMessageDialog(true);
+            return;
+          }
           handleSelectTicket(ticket);
         }}
         selected={ticketId && +ticketId === ticket.id}
@@ -525,7 +528,10 @@ const TicketListItemCustom = ({ ticket, selectionMode = false, selected = false,
                   <>
                     <Tooltip title="Espiar Conversa">
                       <VisibilityIcon
-                        onClick={() => setOpenTicketMessageDialog(true)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setOpenTicketMessageDialog(true);
+                        }}
                         fontSize="small"
                         style={{
                           color: undefined,

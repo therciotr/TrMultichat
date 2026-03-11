@@ -1428,15 +1428,17 @@ const MessageInputCustom = (props) => {
             inputId={`upload-button-${ticketId}`}
           />
 
-          <IconButton
-            aria-label="registered-file"
-            component="span"
+          <TrButton
+            variant="outlined"
+            size="small"
             disabled={disableOption()}
             onClick={handleOpenRegisteredFiles}
+            style={{ minWidth: "auto", padding: "6px 10px", marginRight: 6 }}
             title="Lista de arquivos"
           >
-            <FolderOpenOutlinedIcon className={classes.sendMessageIcons} />
-          </IconButton>
+            <FolderOpenOutlinedIcon className={classes.sendMessageIcons} style={{ marginRight: 6 }} />
+            Arquivos
+          </TrButton>
 
           <SignSwitch
             width={props.width}
