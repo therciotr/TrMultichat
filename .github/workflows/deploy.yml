@@ -70,41 +70,70 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup SSH key
-        uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: ${{ secrets.VPS_SSH_KEY }}
+      - name: Install SSH tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y sshpass
 
       - name: Deploy over SSH (run existing deploy script)
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_USER: ${{ secrets.VPS_USER }}
           VPS_PATH: ${{ secrets.VPS_PATH }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_PASSWORD: ${{ secrets.VPS_PASSWORD }}
         run: |
           if [ -z "$VPS_HOST" ] || [ -z "$VPS_USER" ] || [ -z "$VPS_PATH" ]; then
             echo "VPS_HOST, VPS_USER ou VPS_PATH não configurados nos GitHub Secrets."
             exit 1
           fi
 
-          ssh -o StrictHostKeyChecking=no "$VPS_USER@$VPS_HOST" bash << EOF
-            set -e
+          mkdir -p "$HOME/.ssh"
+          chmod 700 "$HOME/.ssh"
 
-            cd "$VPS_PATH"
-
-            echo "[DEPLOY] Pulling latest code from main..."
-            git pull origin main
-
-            echo "[DEPLOY] Running existing deploy script..."
-            if [ -f trmultichat/deploy_trmultichat_frontend_backend.sh ]; then
-              bash trmultichat/deploy_trmultichat_frontend_backend.sh
-            elif [ -f deploy_trmultichat_frontend_backend.sh ]; then
-              bash deploy_trmultichat_frontend_backend.sh
+          SSH_BASE_CMD=""
+          if [ -n "$VPS_SSH_KEY" ]; then
+            printf '%s\n' "$VPS_SSH_KEY" > "$HOME/.ssh/id_deploy"
+            chmod 600 "$HOME/.ssh/id_deploy"
+            if ssh-keygen -y -P "" -f "$HOME/.ssh/id_deploy" >/dev/null 2>&1; then
+              SSH_BASE_CMD="ssh -i $HOME/.ssh/id_deploy -o StrictHostKeyChecking=no"
+              echo "[DEPLOY] Usando chave SSH sem passphrase."
+            elif [ -n "$VPS_PASSWORD" ]; then
+              SSH_BASE_CMD="sshpass -p '$VPS_PASSWORD' ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no"
+              echo "[DEPLOY] Chave SSH exige passphrase. Fazendo fallback para senha da VPS."
             else
-              echo "[DEPLOY] ERRO: Script deploy_trmultichat_frontend_backend.sh não encontrado nem na raiz nem em trmultichat/."
+              echo "[DEPLOY] VPS_SSH_KEY exige passphrase e VPS_PASSWORD não foi configurada."
               exit 1
             fi
+          elif [ -n "$VPS_PASSWORD" ]; then
+            SSH_BASE_CMD="sshpass -p '$VPS_PASSWORD' ssh -o StrictHostKeyChecking=no -o PreferredAuthentications=password -o PubkeyAuthentication=no"
+            echo "[DEPLOY] Usando senha da VPS."
+          else
+            echo "[DEPLOY] Configure VPS_PASSWORD ou uma VPS_SSH_KEY sem passphrase nos secrets."
+            exit 1
+          fi
 
-            echo "[DEPLOY] Done."
+          cat > /tmp/deploy_remote.sh << EOF
+          set -e
+
+          cd "$VPS_PATH"
+
+          echo "[DEPLOY] Pulling latest code from main..."
+          git pull origin main
+
+          echo "[DEPLOY] Running existing deploy script..."
+          if [ -f trmultichat/deploy_trmultichat_frontend_backend.sh ]; then
+            bash trmultichat/deploy_trmultichat_frontend_backend.sh
+          elif [ -f deploy_trmultichat_frontend_backend.sh ]; then
+            bash deploy_trmultichat_frontend_backend.sh
+          else
+            echo "[DEPLOY] ERRO: Script deploy_trmultichat_frontend_backend.sh não encontrado nem na raiz nem em trmultichat/."
+            exit 1
+          fi
+
+          echo "[DEPLOY] Done."
           EOF
+
+          eval "$SSH_BASE_CMD \"$VPS_USER@$VPS_HOST\" 'bash -s' < /tmp/deploy_remote.sh"
 
 
