@@ -258,6 +258,62 @@ async function loadAgentName(companyId: number, userId: number | null | undefine
   }
 }
 
+function ticketFirstName(name: any): string {
+  const clean = String(name || "").trim();
+  if (!clean) return "Cliente";
+  return clean.split(/\s+/).filter(Boolean)[0] || clean;
+}
+
+function ticketDayGreeting(now = new Date()): string {
+  const hour = now.getHours();
+  if (hour < 12) return "Bom dia";
+  if (hour < 18) return "Boa tarde";
+  return "Boa noite";
+}
+
+function ticketDate(now = new Date()): string {
+  const dd = String(now.getDate()).padStart(2, "0");
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const yyyy = String(now.getFullYear());
+  return `${dd}/${mm}/${yyyy}`;
+}
+
+function ticketHour(now = new Date()): string {
+  const hh = String(now.getHours()).padStart(2, "0");
+  const mm = String(now.getMinutes()).padStart(2, "0");
+  return `${hh}:${mm}`;
+}
+
+function renderTicketTemplate(
+  template: any,
+  vars: {
+    name?: string;
+    firstName?: string;
+    ms?: string;
+    protocol?: string;
+    date?: string;
+    hour?: string;
+    agentName?: string;
+    queue?: string;
+  }
+) {
+  const text = String(template || "");
+  const replacements: Record<string, string> = {
+    name: String(vars.name || "").trim(),
+    firstName: String(vars.firstName || "").trim(),
+    ms: String(vars.ms || "").trim(),
+    protocol: String(vars.protocol || "").trim(),
+    date: String(vars.date || "").trim(),
+    hour: String(vars.hour || "").trim(),
+    agentName: String(vars.agentName || "").trim(),
+    queue: String(vars.queue || "").trim(),
+  };
+  return text.replace(
+    /\{\{\s*(name|firstName|ms|protocol|date|hour|agentName|queue)\s*\}\}|\{\s*(name|firstName|ms|protocol|date|hour|agentName|queue)\s*\}/g,
+    (_m, a, b) => replacements[String(a || b || "")] || ""
+  );
+}
+
 async function resolveTicketRemoteJid(
   companyId: number,
   ticketId: number,
@@ -1052,6 +1108,16 @@ router.put("/:id", authMiddleware, async (req, res) => {
             shouldSendGreeting = false;
           }
         }
+        greeting = renderTicketTemplate(greeting, {
+          name: String(ticket?.contact?.name || "Cliente").trim() || "Cliente",
+          firstName: ticketFirstName(ticket?.contact?.name),
+          ms: ticketDayGreeting(),
+          protocol: String(ticket?.uuid || ticket?.id || "").trim(),
+          date: ticketDate(),
+          hour: ticketHour(),
+          agentName: await loadAgentName(companyId, Number(ticket?.userId || 0)),
+          queue: String(ticket?.queue?.name || "").trim(),
+        });
 
         const sock = await ensureSockConnected(companyId, whatsappId, 15000);
         if (!sock) {
@@ -1224,6 +1290,16 @@ router.put("/:id", authMiddleware, async (req, res) => {
           const queueName = String(ticket?.queue?.name || "").trim() || undefined;
           ratingMessage = buildPremiumRating({ clientName, queueName });
         }
+        ratingMessage = renderTicketTemplate(ratingMessage, {
+          name: String(ticket?.contact?.name || "Cliente").trim() || "Cliente",
+          firstName: ticketFirstName(ticket?.contact?.name),
+          ms: ticketDayGreeting(),
+          protocol: String(ticket?.uuid || ticket?.id || "").trim(),
+          date: ticketDate(),
+          hour: ticketHour(),
+          agentName: await loadAgentName(companyId, Number(ticket?.userId || 0)),
+          queue: String(ticket?.queue?.name || "").trim(),
+        });
 
         const alreadyRating = await pgQuery<{ c: number }>(
           `SELECT COUNT(1)::int as c FROM "Messages" WHERE "ticketId" = $1 AND "companyId" = $2 AND "dataJson"::text ILIKE '%\"system\":\"rating\"%'`,

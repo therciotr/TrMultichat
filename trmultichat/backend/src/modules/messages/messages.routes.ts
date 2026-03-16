@@ -91,6 +91,62 @@ function extractRemoteJid(row: { remoteJid?: string | null; dataJson?: string | 
   return jid;
 }
 
+function contactFirstName(name: any): string {
+  const clean = String(name || "").trim();
+  if (!clean) return "Cliente";
+  return clean.split(/\s+/).filter(Boolean)[0] || clean;
+}
+
+function daytimeGreeting(now = new Date()): string {
+  const hour = now.getHours();
+  if (hour < 12) return "Bom dia";
+  if (hour < 18) return "Boa tarde";
+  return "Boa noite";
+}
+
+function formatTemplateDate(now = new Date()): string {
+  const dd = String(now.getDate()).padStart(2, "0");
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const yyyy = String(now.getFullYear());
+  return `${dd}/${mm}/${yyyy}`;
+}
+
+function formatTemplateHour(now = new Date()): string {
+  const hh = String(now.getHours()).padStart(2, "0");
+  const mm = String(now.getMinutes()).padStart(2, "0");
+  return `${hh}:${mm}`;
+}
+
+function renderMessageTemplate(
+  template: any,
+  vars: {
+    name?: string;
+    firstName?: string;
+    ms?: string;
+    protocol?: string;
+    date?: string;
+    hour?: string;
+    agentName?: string;
+    queue?: string;
+  }
+): string {
+  const text = String(template || "");
+  const replacements: Record<string, string> = {
+    name: String(vars.name || "").trim(),
+    firstName: String(vars.firstName || "").trim(),
+    ms: String(vars.ms || "").trim(),
+    protocol: String(vars.protocol || "").trim(),
+    date: String(vars.date || "").trim(),
+    hour: String(vars.hour || "").trim(),
+    agentName: String(vars.agentName || "").trim(),
+    queue: String(vars.queue || "").trim(),
+  };
+  return text.replace(
+    /\{\{\s*(name|firstName|ms|protocol|date|hour|agentName|queue)\s*\}\}|\{\s*(name|firstName|ms|protocol|date|hour|agentName|queue)\s*\}/g,
+    (_m, a, b) => replacements[String(a || b || "")] || ""
+  );
+}
+
 async function loadTicketWithContact(ticketId: number, companyId: number) {
   const rows = await pgQuery<any>(
     `
@@ -351,6 +407,16 @@ router.post("/:ticketId", authMiddleware, upload.any(), async (req, res) => {
   );
   const contact = contactRows[0];
   if (!contact) return res.status(404).json({ error: true, message: "contact not found" });
+
+  const now = new Date();
+  bodyText = renderMessageTemplate(bodyText, {
+    name: String(contact.name || "").trim() || "Cliente",
+    firstName: contactFirstName(contact.name),
+    ms: daytimeGreeting(now),
+    protocol: String(ticket.uuid || ticket.id || "").trim(),
+    date: formatTemplateDate(now),
+    hour: formatTemplateHour(now),
+  });
 
   // Keep outgoing format consistent with web:
   // prefix plain agent messages as "*Agent Name:*\\nmessage" when not already prefixed.
