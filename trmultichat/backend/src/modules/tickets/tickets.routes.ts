@@ -244,6 +244,127 @@ function emitRealtimeMessage(companyId: number, message: any) {
   } catch {}
 }
 
+async function loadAgentName(companyId: number, userId: number | null | undefined) {
+  const uid = Number(userId || 0);
+  if (!uid) return "";
+  try {
+    const u = await pgQuery<any>(
+      `SELECT name FROM "Users" WHERE id = $1 AND "companyId" = $2 LIMIT 1`,
+      [uid, companyId]
+    );
+    return String(u?.[0]?.name || "").trim();
+  } catch {
+    return "";
+  }
+}
+
+async function resolveTicketRemoteJid(
+  companyId: number,
+  ticketId: number,
+  contactId: number,
+  fallbackNumber: string
+) {
+  let remoteJid = "";
+  const outboundCandidates = outboundNumberCandidates(fallbackNumber);
+
+  try {
+    const inboundTicket = await pgQuery<{ remoteJid: string; dataJson: string | null }>(
+      `SELECT "remoteJid", "dataJson" FROM "Messages" WHERE "ticketId" = $1 AND "companyId" = $2 AND "fromMe" = false ORDER BY "createdAt" DESC LIMIT 1`,
+      [ticketId, companyId]
+    );
+    const inboundJid = extractRemoteJid(inboundTicket?.[0]);
+    if (inboundJid.includes("@")) remoteJid = inboundJid;
+  } catch {}
+
+  if (!remoteJid) {
+    try {
+      const inboundContact = await pgQuery<{ remoteJid: string; dataJson: string | null }>(
+        `SELECT "remoteJid", "dataJson" FROM "Messages" WHERE "companyId" = $1 AND "contactId" = $2 AND "fromMe" = false ORDER BY "createdAt" DESC LIMIT 1`,
+        [companyId, contactId]
+      );
+      const inboundJid = extractRemoteJid(inboundContact?.[0]);
+      if (inboundJid.includes("@")) remoteJid = inboundJid;
+    } catch {}
+  }
+
+  if (!remoteJid) {
+    const fallbackDigits =
+      outboundCandidates.find((d) => d.startsWith("55") && (d.length === 12 || d.length === 13)) ||
+      outboundCandidates[0] ||
+      "";
+    if (fallbackDigits) remoteJid = `${fallbackDigits}@s.whatsapp.net`;
+  }
+
+  return remoteJid;
+}
+
+function buildPremiumGreeting({
+  clientName,
+  agentName,
+  queueName,
+}: {
+  clientName: string;
+  agentName: string;
+  queueName?: string;
+}) {
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? "Bom dia" : hour < 18 ? "Boa tarde" : "Boa noite";
+  const queueSuffix = queueName ? ` da fila *${queueName}*` : "";
+  return `${greeting}, *${clientName}*. Meu nome é *${agentName || "Atendente"}*${queueSuffix} e vou assumir seu atendimento agora. Se preferir, pode me enviar por aqui mais detalhes para agilizar a solução.`;
+}
+
+function buildPremiumRating({
+  clientName,
+  queueName,
+}: {
+  clientName: string;
+  queueName?: string;
+}) {
+  const queueSuffix = queueName ? ` no atendimento da fila *${queueName}*` : "";
+  return `*${clientName}*, seu atendimento foi concluído${queueSuffix}. Sua opinião é muito importante para mantermos um atendimento cada vez melhor.\n\nPor favor, responda com uma nota de *1 a 5*:\n*5* Excelente\n*4* Muito bom\n*3* Bom\n*2* Regular\n*1* Ruim\n\nSe quiser, também pode escrever um comentário rápido sobre sua experiência.`;
+}
+
+async function persistAndEmitSystemMessage(
+  companyId: number,
+  ticketId: number,
+  contactId: number,
+  remoteJid: string,
+  body: string,
+  system: "greeting" | "rating"
+) {
+  const sentId = `${system}-${Date.now()}-${Math.round(Math.random() * 1e6)}`;
+  await pgQuery(
+    `
+      INSERT INTO "Messages"
+        (id, body, ack, read, "ticketId", "createdAt", "updatedAt", "fromMe", "isDeleted",
+         "contactId", "companyId", "remoteJid", "dataJson")
+      VALUES
+        ($1, $2, 0, true, $3, NOW(), NOW(), true, false, $4, $5, $6, $7)
+      ON CONFLICT (id) DO NOTHING
+    `,
+    [sentId, body, ticketId, contactId, companyId, remoteJid, JSON.stringify({ system })]
+  );
+  emitRealtimeMessage(companyId, {
+    id: sentId,
+    body,
+    ack: 0,
+    read: true,
+    mediaType: null,
+    mediaUrl: null,
+    ticketId,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    fromMe: true,
+    isDeleted: false,
+    contactId,
+    companyId,
+    quotedMsgId: null,
+    remoteJid,
+    dataJson: JSON.stringify({ system }),
+    participant: null
+  });
+}
+
 async function loadTicketWithRelations(ticketId: number, companyId: number) {
   const rows = await pgQuery<any>(
     `
@@ -876,43 +997,16 @@ router.put("/:id", authMiddleware, async (req, res) => {
           return;
         }
 
-        // Delivery routing:
-        // 1) Prefer last inbound in this ticket (most reliable route for current thread).
-        // 2) Then inbound from this contact.
-        // 3) Only then fallback to canonical number candidates (with/without 9).
-        let remoteJid = "";
         const c = await pgQuery<{ number: string }>(
           `SELECT number FROM "Contacts" WHERE id = $1 AND "companyId" = $2 LIMIT 1`,
           [contactId, companyId]
         );
-        const outboundCandidates = outboundNumberCandidates(String(c?.[0]?.number || ""));
-
-        try {
-          const inboundTicket = await pgQuery<{ remoteJid: string; dataJson: string | null }>(
-            `SELECT "remoteJid", "dataJson" FROM "Messages" WHERE "ticketId" = $1 AND "companyId" = $2 AND "fromMe" = false ORDER BY "createdAt" DESC LIMIT 1`,
-            [id, companyId]
-          );
-          const inboundJid = extractRemoteJid(inboundTicket?.[0]);
-          if (inboundJid.includes("@")) remoteJid = inboundJid;
-        } catch {}
-
-        if (!remoteJid) {
-          try {
-            const inboundContact = await pgQuery<{ remoteJid: string; dataJson: string | null }>(
-              `SELECT "remoteJid", "dataJson" FROM "Messages" WHERE "companyId" = $1 AND "contactId" = $2 AND "fromMe" = false ORDER BY "createdAt" DESC LIMIT 1`,
-              [companyId, contactId]
-            );
-            const inboundJid = extractRemoteJid(inboundContact?.[0]);
-            if (inboundJid.includes("@")) remoteJid = inboundJid;
-          } catch {}
-        }
-
-        if (!remoteJid) {
-          const fallbackDigits = outboundCandidates.find((d) => d.startsWith("55") && (d.length === 12 || d.length === 13))
-            || outboundCandidates[0]
-            || "";
-          if (fallbackDigits) remoteJid = `${fallbackDigits}@s.whatsapp.net`;
-        }
+        const remoteJid = await resolveTicketRemoteJid(
+          companyId,
+          id,
+          contactId,
+          String(c?.[0]?.number || "")
+        );
         if (!remoteJid) {
           appendAcceptLog({ where: "accept", reason: "missing remoteJid", whatsappId, contactId, ticketId: id });
           return;
@@ -950,19 +1044,10 @@ router.put("/:id", authMiddleware, async (req, res) => {
             } else {
               shouldSendGreeting = true;
             }
-            const hour = new Date().getHours();
-            const ms = hour < 12 ? "Bom dia" : hour < 18 ? "Boa tarde" : "Boa noite";
-            let agentName = "";
-            try {
-              const u = await pgQuery<any>(`SELECT name FROM "Users" WHERE id = $1 AND "companyId" = $2 LIMIT 1`, [
-                Number(ticket?.userId || 0),
-                companyId
-              ]);
-              agentName = String(u?.[0]?.name || "").trim();
-            } catch {}
+            const agentName = await loadAgentName(companyId, Number(ticket?.userId || 0));
             const clientName = String(ticket?.contact?.name || "Cliente").trim() || "Cliente";
-            const agentPart = agentName ? `*${agentName}*` : "*Atendente*";
-            greeting = `${ms} *${clientName}*, meu nome é ${agentPart} e agora vou prosseguir com seu atendimento!`;
+            const queueName = String(ticket?.queue?.name || "").trim() || undefined;
+            greeting = buildPremiumGreeting({ clientName, agentName, queueName });
           } catch {
             shouldSendGreeting = false;
           }
@@ -1093,6 +1178,72 @@ router.put("/:id", authMiddleware, async (req, res) => {
         }
       } catch (e: any) {
         appendAcceptLog({ where: "accept:outer", ticketId: id, err: e?.message || String(e) });
+      }
+    })();
+  }
+
+  const becameClosed =
+    String(prevTicket?.status || "").toLowerCase() !== "closed" &&
+    String(ticket?.status || "").toLowerCase() === "closed" &&
+    !ticket?.isGroup;
+  if (becameClosed) {
+    (async () => {
+      try {
+        const enabled =
+          String((await getSettingValue(companyId, "userRating")) || "").toLowerCase() ===
+          "enabled";
+        if (!enabled) return;
+
+        const whatsappId = Number(ticket?.whatsappId || prevTicket?.whatsappId || 0);
+        const contactId = Number(ticket?.contactId || prevTicket?.contactId || 0);
+        if (!whatsappId || !contactId) return;
+
+        const contactRows = await pgQuery<{ number: string }>(
+          `SELECT number FROM "Contacts" WHERE id = $1 AND "companyId" = $2 LIMIT 1`,
+          [contactId, companyId]
+        );
+        const remoteJid = await resolveTicketRemoteJid(
+          companyId,
+          id,
+          contactId,
+          String(contactRows?.[0]?.number || "")
+        );
+        if (!remoteJid) return;
+
+        let ratingMessage = "";
+        try {
+          const w = await pgQuery<any>(
+            `SELECT "ratingMessage" as rm FROM "Whatsapps" WHERE id = $1 AND "companyId" = $2 LIMIT 1`,
+            [whatsappId, companyId]
+          );
+          ratingMessage = String(w?.[0]?.rm || "").trim();
+        } catch {}
+
+        if (!ratingMessage) {
+          const clientName = String(ticket?.contact?.name || "Cliente").trim() || "Cliente";
+          const queueName = String(ticket?.queue?.name || "").trim() || undefined;
+          ratingMessage = buildPremiumRating({ clientName, queueName });
+        }
+
+        const alreadyRating = await pgQuery<{ c: number }>(
+          `SELECT COUNT(1)::int as c FROM "Messages" WHERE "ticketId" = $1 AND "companyId" = $2 AND "dataJson"::text ILIKE '%\"system\":\"rating\"%'`,
+          [id, companyId]
+        );
+        if (Number(alreadyRating?.[0]?.c || 0) > 0) return;
+
+        const sock = await ensureSockConnected(companyId, whatsappId, 15000);
+        if (!sock) return;
+        await sendTextWithRetry(sock, remoteJid, ratingMessage, 3);
+        await persistAndEmitSystemMessage(
+          companyId,
+          id,
+          contactId,
+          remoteJid,
+          ratingMessage,
+          "rating"
+        );
+      } catch (e: any) {
+        appendAcceptLog({ where: "close:rating", ticketId: id, err: e?.message || String(e) });
       }
     })();
   }

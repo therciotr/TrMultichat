@@ -351,26 +351,6 @@ const TicketListItemCustom = ({ ticket, selectionMode = false, selected = false,
                 status: "open",
                 userId: user?.id,
             });
-            
-            let settingIndex;
-
-            try {
-                const { data } = await api.get("/settings/");
-                
-                const settingsList = Array.isArray(data) ? data : [];
-                settingIndex = settingsList.filter((s) => s.key === "sendGreetingAccepted");
-                
-            } catch (err) {
-                toastError(err);
-                   
-            }
-            
-            // Guard: settings might not include this key
-            if (settingIndex?.[0]?.value === "enabled" && !ticket.isGroup) {
-                handleSendMessage(ticket.id);
-                
-            }
-
         } catch (err) {
             setLoading(false);
             
@@ -384,24 +364,6 @@ const TicketListItemCustom = ({ ticket, selectionMode = false, selected = false,
         // handleChangeTab(null, "open");
         history.push(`/tickets/${ticket.uuid}`);
     };
-	
-	    const handleSendMessage = async (id) => {
-        
-        const msg = `{{ms}} *{{name}}*, meu nome é *${user?.name}* e agora vou prosseguir com seu atendimento!`;
-        const message = {
-            read: 1,
-            fromMe: true,
-            mediaUrl: "",
-            body: `*Mensagem Automática:*\n${msg.trim()}`,
-        };
-        try {
-            await api.post(`/messages/${id}`, message);
-        } catch (err) {
-            toastError(err);
-            
-        }
-    };
-	/* CÓDIGO NOVO SAUDAÇÃO */
 
   const handleSelectTicket = (ticket) => {
     const code = uuidv4();
