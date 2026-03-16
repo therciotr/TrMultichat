@@ -34,6 +34,7 @@ import DoneAllOutlinedIcon from "@material-ui/icons/DoneAllOutlined";
 import ReplayOutlinedIcon from "@material-ui/icons/ReplayOutlined";
 import FilterListOutlinedIcon from "@material-ui/icons/FilterListOutlined";
 import FolderOpenOutlinedIcon from "@material-ui/icons/FolderOpenOutlined";
+import FlashOnOutlinedIcon from "@material-ui/icons/FlashOnOutlined";
 
 import api from "../../services/api";
 import toastError from "../../errors/toastError";
@@ -319,6 +320,10 @@ export default function Informativos() {
   const [selectedFileList, setSelectedFileList] = useState(null);
   const [registeredOptions, setRegisteredOptions] = useState([]);
   const [selectedOptionId, setSelectedOptionId] = useState("");
+  const [quickReplyOpen, setQuickReplyOpen] = useState(false);
+  const [quickReplies, setQuickReplies] = useState([]);
+  const [quickReplySearch, setQuickReplySearch] = useState("");
+  const [quickReplyCategory, setQuickReplyCategory] = useState("all");
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewItem, setPreviewItem] = useState(null);
 
@@ -539,6 +544,80 @@ export default function Informativos() {
       );
       await api.post(`/announcements/${selected.id}/replies`, formData);
       setRegisteredFileOpen(false);
+      await fetchReplies(selected.id);
+    } catch (e) {
+      toastError(e);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleOpenQuickReplies = async () => {
+    try {
+      const { data } = await api.get("/quick-messages/list", {
+        params: { companyId: user?.companyId, userId: user?.id },
+      });
+      setQuickReplies(Array.isArray(data) ? data : []);
+      setQuickReplyOpen(true);
+    } catch (e) {
+      toastError(e);
+    }
+  };
+
+  const quickReplyCategories = useMemo(() => {
+    const out = new Set();
+    (quickReplies || []).forEach((item) => {
+      const cat = String(item?.category || "").trim();
+      if (cat) out.add(cat);
+    });
+    return ["all", ...Array.from(out)];
+  }, [quickReplies]);
+
+  const filteredQuickReplies = useMemo(() => {
+    const term = String(quickReplySearch || "").trim().toLowerCase();
+    const category = String(quickReplyCategory || "all");
+    return (quickReplies || []).filter((item) => {
+      const categoryOk =
+        category === "all" || String(item?.category || "") === category;
+      if (!categoryOk) return false;
+      if (!term) return true;
+      return (
+        String(item?.shortcode || "").toLowerCase().includes(term) ||
+        String(item?.message || "").toLowerCase().includes(term)
+      );
+    });
+  }, [quickReplies, quickReplySearch, quickReplyCategory]);
+
+  const absoluteQuickMediaUrl = (raw) => {
+    const value = String(raw || "").trim();
+    if (!value) return "";
+    if (/^https?:\/\//i.test(value)) return value;
+    const base = String(api?.defaults?.baseURL || "").replace(/\/+$/, "");
+    return `${base}/${value.replace(/^\/+/, "")}`;
+  };
+
+  const handleUseQuickReply = async (item) => {
+    if (!item || !selected?.id) return;
+    const text = String(item?.message || "").trim();
+    const mediaPath = String(item?.mediaPath || "").trim();
+    if (!mediaPath) {
+      setReplyText(text);
+      setQuickReplyOpen(false);
+      return;
+    }
+    setSending(true);
+    try {
+      const mediaUrl = absoluteQuickMediaUrl(mediaPath);
+      const resp = await fetch(mediaUrl);
+      const blob = await resp.blob();
+      const filename =
+        String(item?.mediaName || mediaPath.split("/").pop() || "arquivo");
+      const fileObj = new File([blob], filename, { type: blob.type || "application/octet-stream" });
+      const formData = new FormData();
+      formData.append("file", fileObj);
+      formData.append("text", text || filename);
+      await api.post(`/announcements/${selected.id}/replies`, formData);
+      setQuickReplyOpen(false);
       await fetchReplies(selected.id);
     } catch (e) {
       toastError(e);
@@ -1075,6 +1154,13 @@ export default function Informativos() {
                     <MoodOutlinedIcon />
                   </IconButton>
                   <IconButton
+                    onClick={handleOpenQuickReplies}
+                    disabled={sending || !canReply}
+                    title="Respostas rápidas"
+                  >
+                    <FlashOnOutlinedIcon />
+                  </IconButton>
+                  <IconButton
                     onClick={handleOpenRegisteredFiles}
                     disabled={sending || !canReply}
                     title="Lista de arquivos"
@@ -1098,6 +1184,9 @@ export default function Informativos() {
                     value={replyText}
                     onChange={(e) => setReplyText(e.target.value)}
                     disabled={!canReply || sending}
+                    multiline
+                    minRows={1}
+                    maxRows={4}
                     onKeyDown={(e) => {
                       if (!canReply || sending) return;
                       if (e.key === "Enter" && !e.shiftKey) {
@@ -1125,6 +1214,81 @@ export default function Informativos() {
                     />
                   </div>
                 ) : null}
+                <Dialog
+                  open={quickReplyOpen}
+                  onClose={() => setQuickReplyOpen(false)}
+                  maxWidth="sm"
+                  fullWidth
+                >
+                  <DialogTitle>Selecionar resposta rápida</DialogTitle>
+                  <DialogContent dividers>
+                    <TextField
+                      fullWidth
+                      margin="dense"
+                      label="Buscar resposta"
+                      value={quickReplySearch}
+                      onChange={(e) => setQuickReplySearch(e.target.value)}
+                    />
+                    <TextField
+                      select
+                      fullWidth
+                      margin="dense"
+                      label="Categoria"
+                      value={quickReplyCategory}
+                      onChange={(e) =>
+                        setQuickReplyCategory(String(e.target.value || "all"))
+                      }
+                    >
+                      {quickReplyCategories.map((cat) => (
+                        <MenuItem key={cat} value={cat}>
+                          {cat === "all" ? "Todas" : cat}
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                    <div style={{ marginTop: 12, display: "grid", gap: 8, maxHeight: 360, overflowY: "auto" }}>
+                      {filteredQuickReplies.map((item) => (
+                        <div
+                          key={`qr-${item.id}`}
+                          onClick={() => handleUseQuickReply(item)}
+                          style={{
+                            border: "1px solid rgba(15,23,42,0.10)",
+                            borderRadius: 12,
+                            padding: 12,
+                            cursor: "pointer",
+                            background: "rgba(248,250,252,0.9)",
+                          }}
+                        >
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                            <div style={{ fontWeight: 900 }}>/ {item.shortcode}</div>
+                            {item.category ? (
+                              <div style={{ fontSize: 11, opacity: 0.7, fontWeight: 700 }}>
+                                {item.category}
+                              </div>
+                            ) : null}
+                          </div>
+                          <div style={{ marginTop: 6, fontSize: 13, opacity: 0.85 }}>
+                            {String(item.message || "").slice(0, 180) || "—"}
+                          </div>
+                          {item.mediaPath ? (
+                            <div style={{ marginTop: 6, fontSize: 11, fontWeight: 800, opacity: 0.7 }}>
+                              Contém anexo
+                            </div>
+                          ) : null}
+                        </div>
+                      ))}
+                      {!filteredQuickReplies.length ? (
+                        <div style={{ fontSize: 13, opacity: 0.7 }}>
+                          Nenhuma resposta rápida encontrada.
+                        </div>
+                      ) : null}
+                    </div>
+                  </DialogContent>
+                  <DialogActions>
+                    <TrButton onClick={() => setQuickReplyOpen(false)}>
+                      Fechar
+                    </TrButton>
+                  </DialogActions>
+                </Dialog>
                 <Dialog
                   open={registeredFileOpen}
                   onClose={() => setRegisteredFileOpen(false)}

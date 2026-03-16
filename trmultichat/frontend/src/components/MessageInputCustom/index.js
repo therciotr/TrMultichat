@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext, useRef } from "react";
+import React, { useState, useEffect, useContext, useRef, useMemo } from "react";
 import withWidth, { isWidthUp } from "@material-ui/core/withWidth";
 import "emoji-mart/css/emoji-mart.css";
 import { Picker } from "emoji-mart";
@@ -22,6 +22,7 @@ import CheckCircleOutlineIcon from "@material-ui/icons/CheckCircleOutline";
 import HighlightOffIcon from "@material-ui/icons/HighlightOff";
 import MailOutlineOutlinedIcon from "@material-ui/icons/MailOutlineOutlined";
 import FolderOpenOutlinedIcon from "@material-ui/icons/FolderOpenOutlined";
+import FlashOnOutlinedIcon from "@material-ui/icons/FlashOnOutlined";
 import AlternateEmailIcon from "@material-ui/icons/AlternateEmail";
 import SubjectIcon from "@material-ui/icons/Subject";
 import NotesOutlinedIcon from "@material-ui/icons/NotesOutlined";
@@ -404,6 +405,9 @@ const CustomInput = (props) => {
   const [quickMessages, setQuickMessages] = useState([]);
   const [options, setOptions] = useState([]);
   const [popupOpen, setPopupOpen] = useState(false);
+  const [quickReplyDialogOpen, setQuickReplyDialogOpen] = useState(false);
+  const [quickReplySearch, setQuickReplySearch] = useState("");
+  const [quickReplyCategory, setQuickReplyCategory] = useState("all");
 
   const { user } = useContext(AuthContext);
   const companyId = localStorage.getItem("companyId");
@@ -588,6 +592,48 @@ const CustomInput = (props) => {
     return a;
   };
 
+  const quickReplyCategories = useMemo(() => {
+    const out = new Set();
+    (quickMessages || []).forEach((item) => {
+      const cat = String(item?.category || "").trim();
+      if (cat) out.add(cat);
+    });
+    return ["all", ...Array.from(out)];
+  }, [quickMessages]);
+
+  const quickReplyDialogItems = useMemo(() => {
+    const term = String(quickReplySearch || "").trim().toLowerCase();
+    const cat = String(quickReplyCategory || "all");
+    const filtered = (quickMessages || []).filter((item) => {
+      const categoryOk = cat === "all" || String(item?.category || "") === cat;
+      if (!categoryOk) return false;
+      if (!term) return true;
+      const shortcode = String(item?.shortcode || "").toLowerCase();
+      const message = String(item?.value || "").toLowerCase();
+      const label = String(item?.label || "").toLowerCase();
+      return shortcode.includes(term) || message.includes(term) || label.includes(term);
+    });
+    return sortPremium(filtered).slice(0, 40);
+  }, [quickMessages, quickReplySearch, quickReplyCategory]);
+
+  const applyQuickReply = (opt) => {
+    if (!opt) return;
+    if (!isNil(opt.mediaPath)) {
+      handleQuickAnswersClick(opt);
+      bumpUsage(opt);
+      setQuickReplyDialogOpen(false);
+      return;
+    }
+    setInputMessage(opt.value);
+    bumpUsage(opt);
+    setQuickReplyDialogOpen(false);
+    setTimeout(() => {
+      try {
+        inputRef.current && inputRef.current.focus();
+      } catch (_) {}
+    }, 0);
+  };
+
   useEffect(() => {
     if (
       isString(inputMessage) &&
@@ -695,6 +741,16 @@ const CustomInput = (props) => {
 
   return (
     <div className={classes.messageInputWrapper}>
+      <TrButton
+        variant="outlined"
+        size="small"
+        disabled={disableOption()}
+        onClick={() => setQuickReplyDialogOpen(true)}
+        style={{ minWidth: "auto", padding: "6px 10px", marginRight: 8 }}
+      >
+        <FlashOnOutlinedIcon className={classes.sendMessageIcons} style={{ marginRight: 6 }} />
+        Respostas
+      </TrButton>
       <Autocomplete
         freeSolo
         open={popupOpen}
@@ -803,6 +859,75 @@ const CustomInput = (props) => {
           );
         }}
       />
+      <Dialog
+        open={quickReplyDialogOpen}
+        onClose={() => setQuickReplyDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Selecionar resposta rápida</DialogTitle>
+        <DialogContent dividers>
+          <TextField
+            fullWidth
+            margin="dense"
+            label="Buscar resposta"
+            value={quickReplySearch}
+            onChange={(e) => setQuickReplySearch(e.target.value)}
+          />
+          <TextField
+            select
+            fullWidth
+            margin="dense"
+            label="Categoria"
+            value={quickReplyCategory}
+            onChange={(e) => setQuickReplyCategory(String(e.target.value || "all"))}
+          >
+            {quickReplyCategories.map((cat) => (
+              <MenuItem key={cat} value={cat}>
+                {cat === "all" ? "Todas" : cat}
+              </MenuItem>
+            ))}
+          </TextField>
+          <div style={{ marginTop: 12, display: "grid", gap: 8, maxHeight: 360, overflowY: "auto" }}>
+            {quickReplyDialogItems.map((opt) => (
+              <div
+                key={`qr-${opt.id}`}
+                onClick={() => applyQuickReply(opt)}
+                style={{
+                  border: "1px solid rgba(15,23,42,0.10)",
+                  borderRadius: 12,
+                  padding: 12,
+                  cursor: "pointer",
+                  background: "rgba(248,250,252,0.9)",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                  <div style={{ fontWeight: 900 }}>/ {opt.shortcode}</div>
+                  {opt.category ? (
+                    <div style={{ fontSize: 11, opacity: 0.7, fontWeight: 700 }}>{opt.category}</div>
+                  ) : null}
+                </div>
+                <div style={{ marginTop: 6, fontSize: 13, opacity: 0.85 }}>
+                  {String(opt.value || "").slice(0, 180) || "—"}
+                </div>
+                {opt.mediaPath ? (
+                  <div style={{ marginTop: 6, fontSize: 11, fontWeight: 800, opacity: 0.7 }}>
+                    Contém anexo
+                  </div>
+                ) : null}
+              </div>
+            ))}
+            {!quickReplyDialogItems.length ? (
+              <div style={{ fontSize: 13, opacity: 0.7 }}>Nenhuma resposta rápida encontrada.</div>
+            ) : null}
+          </div>
+        </DialogContent>
+        <DialogActions>
+          <TrButton onClick={() => setQuickReplyDialogOpen(false)}>
+            Fechar
+          </TrButton>
+        </DialogActions>
+      </Dialog>
     </div>
   );
 };

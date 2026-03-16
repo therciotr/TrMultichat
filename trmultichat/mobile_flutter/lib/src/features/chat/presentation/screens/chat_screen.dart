@@ -15,6 +15,7 @@ import 'package:video_thumbnail/video_thumbnail.dart';
 import '../../../../core/attachments/attachment_cache_providers.dart';
 import '../../../../core/di/core_providers.dart';
 import '../../../../core/files/registered_file_helpers.dart';
+import '../../../../core/quick_replies/quick_reply_helpers.dart';
 import '../../../../core/share/share_providers.dart';
 import '../../../../core/ui/attachment_preview.dart';
 import '../../../../core/utils/mime_guess.dart';
@@ -156,6 +157,38 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Falha ao enviar arquivo cadastrado: $e')),
+      );
+    }
+  }
+
+  Future<void> _openQuickReplies(dynamic ctrl) async {
+    final auth = ref.read(authControllerProvider);
+    final dio = ref.read(dioProvider);
+    try {
+      final replies = await fetchQuickReplies(
+        dio,
+        companyId: auth.user?.companyId,
+        userId: auth.user?.id,
+      );
+      if (!mounted || replies.isEmpty) return;
+      final selected = await pickQuickReply(context, replies);
+      if (selected == null) return;
+      if ((selected.mediaPath ?? '').trim().isNotEmpty) {
+        final downloaded = await downloadQuickReplyMedia(dio, selected);
+        await ctrl.sendMedia(
+          body: selected.message,
+          fileBytes: downloaded.bytes,
+          fileName: downloaded.fileName,
+          mimeType: downloaded.mimeType,
+        );
+        return;
+      }
+      _text.text = selected.message;
+      _text.selection = TextSelection.collapsed(offset: _text.text.length);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Falha ao carregar respostas rápidas: $e')),
       );
     }
   }
@@ -608,6 +641,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   _text.clear();
                   await ctrl.sendText(v);
                 },
+                onQuickReply: () async {
+                  if (st.uploading) return;
+                  FocusManager.instance.primaryFocus?.unfocus();
+                  await _openQuickReplies(ctrl);
+                },
                 onRegisteredFile: () async {
                   if (st.uploading) return;
                   FocusManager.instance.primaryFocus?.unfocus();
@@ -915,6 +953,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
 class _Composer extends StatelessWidget {
   final TextEditingController controller;
   final VoidCallback onAttach;
+  final VoidCallback onQuickReply;
   final VoidCallback onRegisteredFile;
   final bool isRecording;
   final int recordSeconds;
@@ -925,6 +964,7 @@ class _Composer extends StatelessWidget {
   const _Composer({
     required this.controller,
     required this.onAttach,
+    required this.onQuickReply,
     required this.onRegisteredFile,
     required this.isRecording,
     required this.recordSeconds,
@@ -968,6 +1008,18 @@ class _Composer extends StatelessWidget {
               onPressed: onAttach,
               icon: const Icon(Icons.attach_file),
               tooltip: 'Anexar',
+            ),
+          ),
+          const SizedBox(width: 6),
+          Container(
+            decoration: BoxDecoration(
+              color: cs.surfaceContainerHighest.withValues(alpha: 0.55),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: IconButton(
+              onPressed: onQuickReply,
+              icon: const Icon(Icons.flash_on_outlined),
+              tooltip: 'Respostas rápidas',
             ),
           ),
           const SizedBox(width: 6),

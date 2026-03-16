@@ -8,6 +8,7 @@ import 'package:file_picker/file_picker.dart';
 
 import '../../../../core/di/core_providers.dart';
 import '../../../../core/files/registered_file_helpers.dart';
+import '../../../../core/quick_replies/quick_reply_helpers.dart';
 import '../../../../core/ui/attachment_preview.dart';
 import '../../../auth/presentation/providers/auth_providers.dart';
 import '../controllers/announcement_detail_controller.dart';
@@ -105,6 +106,49 @@ class _AnnouncementDetailScreenState extends ConsumerState<AnnouncementDetailScr
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Falha ao enviar arquivo cadastrado: $e')),
+      );
+    }
+  }
+
+  Future<void> _openQuickReplies(AnnouncementDetailController ctrl) async {
+    final auth = ref.read(authControllerProvider);
+    final dio = ref.read(dioProvider);
+    try {
+      final replies = await fetchQuickReplies(
+        dio,
+        companyId: auth.user?.companyId,
+        userId: auth.user?.id,
+      );
+      if (!mounted || replies.isEmpty) return;
+      final selected = await pickQuickReply(context, replies);
+      if (selected == null) return;
+      if ((selected.mediaPath ?? '').trim().isNotEmpty) {
+        final downloaded = await downloadQuickReplyMedia(dio, selected);
+        final ok = await ctrl.send(
+          selected.message,
+          fileBytes: downloaded.bytes,
+          fileName: downloaded.fileName,
+          mimeType: downloaded.mimeType,
+        );
+        if (!ok && mounted) {
+          final err =
+              ref.read(announcementDetailProvider(widget.id)).error?.trim() ?? '';
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                err.isNotEmpty ? err : 'Falha ao enviar resposta rápida',
+              ),
+            ),
+          );
+        }
+        return;
+      }
+      _reply.text = selected.message;
+      _reply.selection = TextSelection.collapsed(offset: _reply.text.length);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Falha ao carregar respostas rápidas: $e')),
       );
     }
   }
@@ -389,6 +433,13 @@ class _AnnouncementDetailScreenState extends ConsumerState<AnnouncementDetailScr
                         ? null
                         : () => _sendRegisteredFile(ctrl),
                     icon: const Icon(Icons.folder_open_outlined),
+                  ),
+                  IconButton(
+                    tooltip: 'Respostas rápidas',
+                    onPressed: st.sending || !canReply
+                        ? null
+                        : () => _openQuickReplies(ctrl),
+                    icon: const Icon(Icons.flash_on_outlined),
                   ),
                   Expanded(
                     child: Focus(
